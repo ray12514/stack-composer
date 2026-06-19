@@ -124,8 +124,12 @@ def validate_lane_plan(
     profile: dict[str, Any], stack: dict[str, Any], contract: dict[str, Any]
 ) -> list[Issue]:
     from stack_composer.render.plan import plan_lanes
+    from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
-    _, _, _, issues = plan_lanes(profile, stack, contract)
+    lanes, _, _, issues = plan_lanes(profile, stack, contract)
+    for lane in lanes:
+        _, prereq_issues = platform_module_prereqs_for_lane(lane, profile)
+        issues.extend(prereq_issues)
     return issues
 
 
