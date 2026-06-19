@@ -7,28 +7,43 @@ status = "bootstrap; scripts/generate-third-party.py will own this in Phase 1"
 name = "PyYAML"
 version = ">=6.0,<7"
 license_spdx = "MIT"
+project_url = "https://pyyaml.org/"
+source_url = "https://github.com/yaml/pyyaml"
+license_file = "THIRD_PARTY_LICENSES/PyYAML.txt"
 purpose = "YAML read/write"
 
 [[dependency]]
 name = "Jinja2"
 version = ">=3.1,<4"
 license_spdx = "BSD-3-Clause"
+project_url = "https://palletsprojects.com/p/jinja/"
+source_url = "https://github.com/pallets/jinja"
+license_file = "THIRD_PARTY_LICENSES/Jinja2.txt"
 purpose = "Template rendering"
 
 [[dependency]]
 name = "MarkupSafe"
 version = ">=2.1,<3"
 license_spdx = "BSD-3-Clause"
+project_url = "https://palletsprojects.com/p/markupsafe/"
+source_url = "https://github.com/pallets/markupsafe"
+license_file = "THIRD_PARTY_LICENSES/MarkupSafe.txt"
 purpose = "Jinja2 dependency"
 
 [[dependency]]
 name = "fastjsonschema"
 version = ">=2.20,<3"
 license_spdx = "BSD-3-Clause"
+project_url = "https://horejsek.github.io/python-fastjsonschema/"
+source_url = "https://github.com/horejsek/python-fastjsonschema"
+license_file = "THIRD_PARTY_LICENSES/fastjsonschema.txt"
 purpose = "JSON Schema validation"
 
 [[dependency]]
 name = "click"
 version = ">=8.1,<9"
 license_spdx = "BSD-3-Clause"
+project_url = "https://palletsprojects.com/p/click/"
+source_url = "https://github.com/pallets/click"
+license_file = "THIRD_PARTY_LICENSES/click.txt"
 purpose = "CLI dispatch"
