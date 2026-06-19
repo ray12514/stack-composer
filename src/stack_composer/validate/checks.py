@@ -246,6 +246,17 @@ def validate_package_repositories(stack: dict[str, Any], package_repos_dir: Path
     issues: list[Issue] = []
     namespaces: dict[str, str] = {}
     for index, repo in enumerate(stack.get("package_repositories", []) or []):
+        if "priority" not in repo:
+            issues.append(
+                Issue(
+                    "error",
+                    "package-repo-priority-implicit",
+                    f"stack.package_repositories[{index}].priority",
+                    "package repository must declare priority explicitly "
+                    "(before_builtin or after_builtin) so shadow direction "
+                    "is recorded in stack source, not relied on from schema default",
+                )
+            )
         repo_path = Path(repo["path"])
         if not repo_path.is_absolute():
             repo_path = package_repos_dir.parent / repo_path
@@ -317,7 +328,7 @@ def resolve_package_repositories(
                 "name": repo["name"],
                 "namespace": repo["namespace"],
                 "path": repo_path.as_posix(),
-                "priority": repo["priority"],
+                "priority": repo.get("priority"),
                 "source_commit": "unknown",
             }
         )
