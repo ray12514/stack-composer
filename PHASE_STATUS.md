@@ -28,6 +28,10 @@ Current render coverage:
 - Plans lanes for the current reference contract vocabulary
   (`runtime_without_gpu`, `runtime_with_gpu`, Cray MPICH, package-set specs,
   and `per_gpu_arch`).
+- Validates selected package repositories have `repo.yaml`, matching namespaces,
+  and no duplicate namespaces.
+- Validates package-set tier/kind compatibility and inline spec kind
+  compatibility with the selected build class.
 
 ## Phase 2 - Maintainer Commands
 
