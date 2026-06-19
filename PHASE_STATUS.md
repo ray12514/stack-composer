@@ -32,6 +32,8 @@ Current render coverage:
   and no duplicate namespaces.
 - Validates package-set tier/kind compatibility and inline spec kind
   compatibility with the selected build class.
+- Validates matching `per_system` narrowing axes against profile/contract
+  resolved compiler, MPI, and GPU selector candidates.
 - Builds `dist/stack-composer-<version>.tar.gz` with `stack-composer.pyz`,
   project license, third-party manifest, and third-party license files.
 - Regenerates third-party manifest/license texts from installed runtime
