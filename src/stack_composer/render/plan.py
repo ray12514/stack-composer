@@ -203,7 +203,7 @@ def make_lane(
     target = (
         "x86_64_v3" if build_class["default_target"] == "foundation" else node["cpu"]["preferred"]
     )
-    release_tag = stack["_release_tag"]
+    release_tag = stack.get("_release_tag", "validate")
     system_name = profile["system"]["name"]
     stack_name = stack["name"]
     release_root = f"/shared/stack/releases/{release_tag}/{system_name}/{stack_name}"
@@ -218,6 +218,7 @@ def make_lane(
         "runtime_node_type": node_name,
         "gpu_selector": gpu_selector_name,
         "gpu_arch": gpu_selector.get("arch_target") if gpu_selector else None,
+        "mpi_provider": mpi_provider,
         "env_path": f"environments/{compiler}/{lane_suffix}",
         "spec_source": spec_source_id(build),
         "view_root": f"{release_root}/views/{compiler}/{lane_suffix}",
@@ -252,18 +253,17 @@ def apply_narrowing(
         if dropped:
             narrowed_by[axis] = {"kept": sorted(after), "dropped": dropped}
     if narrowing.get("mpi"):
-        allowed_mpi = {provider.replace("-", "") for provider in narrowing["mpi"]}
-        before_lanes = {lane["lane"] for lane in narrowed if "mpi" in lane["lane"]}
+        allowed_mpi = set(narrowing["mpi"])
+        before_providers = {lane["mpi_provider"] for lane in narrowed if lane.get("mpi_provider")}
         narrowed = [
             lane
             for lane in narrowed
-            if "mpi" not in lane["lane"]
-            or any(provider in lane["lane"] for provider in allowed_mpi)
+            if not lane.get("mpi_provider") or lane["mpi_provider"] in allowed_mpi
         ]
-        after_lanes = {lane["lane"] for lane in narrowed if "mpi" in lane["lane"]}
-        dropped = sorted(before_lanes - after_lanes)
+        after_providers = {lane["mpi_provider"] for lane in narrowed if lane.get("mpi_provider")}
+        dropped = sorted(before_providers - after_providers)
         if dropped:
-            narrowed_by["mpi"] = {"kept": sorted(after_lanes), "dropped": dropped}
+            narrowed_by["mpi"] = {"kept": sorted(after_providers), "dropped": dropped}
     if not narrowed_by:
         return narrowed, None
     return narrowed, {

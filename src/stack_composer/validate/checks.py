@@ -319,6 +319,7 @@ def validate_per_system_narrowing(
     if not system_block:
         return issues
     build_names = {build["name"] for build in stack.get("builds", [])}
+    builds_by_name = {build["name"]: build for build in stack.get("builds", [])}
     gpu_selectors = contract.get("gpu_selectors", {})
     for build_name, narrowing in (system_block.get("builds") or {}).items():
         if build_name not in build_names:
@@ -330,6 +331,12 @@ def validate_per_system_narrowing(
                     "narrowing references a build name not present in stack.builds",
                 )
             )
+            continue
+        issues.extend(
+            validate_narrowing_candidates(
+                build_name, narrowing, builds_by_name[build_name], profile, stack, contract
+            )
+        )
         for gpu_selector in narrowing.get("gpu_selectors", []) or []:
             if gpu_selector not in gpu_selectors:
                 issues.append(
@@ -340,4 +347,47 @@ def validate_per_system_narrowing(
                         f"gpu selector {gpu_selector!r} is not defined in template contract",
                     )
                 )
+    return issues
+
+
+def validate_narrowing_candidates(
+    build_name: str,
+    narrowing: dict[str, Any],
+    build: dict[str, Any],
+    profile: dict[str, Any],
+    stack: dict[str, Any],
+    contract: dict[str, Any],
+) -> list[Issue]:
+    from stack_composer.render.plan import lane_candidates_for_build
+
+    if build.get("class") not in contract.get("build_classes", {}):
+        return []
+    if build.get("toolchain") not in contract.get("toolchains", {}):
+        return []
+    if build.get("nodes") not in contract.get("node_selectors", {}):
+        return []
+    lanes, _, _ = lane_candidates_for_build(profile, stack, contract, build)
+    candidates = {
+        "compilers": {lane["compiler"] for lane in lanes if lane.get("compiler")},
+        "mpi": {lane["mpi_provider"] for lane in lanes if lane.get("mpi_provider")},
+        "gpu_selectors": {lane["gpu_selector"] for lane in lanes if lane.get("gpu_selector")},
+    }
+    issue_codes = {
+        "compilers": "unresolved-narrowing-compiler",
+        "mpi": "unresolved-narrowing-mpi",
+        "gpu_selectors": "unresolved-narrowing-gpu-selector",
+    }
+    issues = []
+    system_name = profile["system"]["name"]
+    for axis, allowed in narrowing.items():
+        unknown = sorted(set(allowed or []) - candidates.get(axis, set()))
+        if unknown:
+            issues.append(
+                Issue(
+                    "error",
+                    issue_codes[axis],
+                    f"per_system.{system_name}.builds.{build_name}.{axis}",
+                    f"narrowing values {unknown!r} do not resolve for build {build_name!r}",
+                )
+            )
     return issues
