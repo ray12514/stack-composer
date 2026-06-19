@@ -17,8 +17,8 @@ Phase 1 foundation is in progress:
 - `render` writes a deterministic draft workspace for the reference fixture
   vocabulary, including rendered config scopes, lane environments, package repos,
   and `release-manifest.yaml`.
-- Full v6 resolver coverage, release packaging, and third-party license
-  enforcement are still in progress.
+- Release packaging and third-party license enforcement are present.
+- Full v6 resolver coverage is still in progress.
 
 ## Development
 

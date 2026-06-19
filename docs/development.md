@@ -20,6 +20,6 @@ through hardcoded repository URLs in the implementation.
 shiv-built `stack-composer.pyz`, project license, third-party manifest, and
 third-party license files.
 
-The current third-party script enforces manifest consistency and syncs packaged
-resources. Full wheel-derived license text regeneration is still a Phase 1
-follow-up.
+The third-party script refreshes exact dependency versions and license texts
+from installed runtime distributions, enforces manifest consistency, and syncs
+packaged resources.
