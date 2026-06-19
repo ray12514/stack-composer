@@ -161,6 +161,49 @@ def test_validate_inputs_rejects_required_build_that_cannot_resolve(tmp_path: Pa
     )
 
 
+def test_validate_inputs_rejects_build_with_both_specs_and_package_set(tmp_path: Path) -> None:
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    for build in stack["builds"]:
+        if build["name"] == "gpu":
+            build["specs"] = ["hdf5@1.14.5"]
+            break
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    issues, _ = validate_inputs(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+    assert any(
+        issue.code == "schema" and "builds[3]" in issue.message for issue in issues
+    )
+
+
+def test_validate_inputs_rejects_build_with_neither_specs_nor_package_set(tmp_path: Path) -> None:
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    for build in stack["builds"]:
+        if build["name"] == "gpu":
+            build.pop("package_set")
+            build["specs"] = None
+            break
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    issues, _ = validate_inputs(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+    assert any(
+        issue.code == "schema" and "builds[3]" in issue.message for issue in issues
+    )
+
+
 def stack_with_narrowing(build_name: str, axis: str, values: list[str]) -> dict:
     stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
     stack["per_system"]["example-cray"]["builds"][build_name][axis] = values
