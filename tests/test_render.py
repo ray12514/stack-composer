@@ -6,8 +6,14 @@ from pathlib import Path
 import pytest
 from jinja2 import UndefinedError
 
+from copy import deepcopy
+
 from stack_composer.errors import ValidationFailed
+from stack_composer.model.contract import load_contract
+from stack_composer.model.profile import load_profile
+from stack_composer.model.stack import load_stack, load_stack_defaults, merge_defaults
 from stack_composer.render.engine import render_workspace
+from stack_composer.render.plan import plan_lanes
 from stack_composer.render.release import ReleaseVars, SourceRepo
 from stack_composer.schema_registry import validate_schema
 from stack_composer.yaml_io import load_yaml
@@ -83,6 +89,27 @@ def test_render_workspace_removes_pending_on_template_failure(tmp_path: Path) ->
     workspace = output_root / "example-cray" / "science-stack" / "2026.06"
     assert not workspace.exists()
     assert not workspace.with_name(workspace.name + ".rendering").exists()
+
+
+def test_plan_lanes_reports_per_system_empty_when_narrowing_drops_all_lanes() -> None:
+    profile, _ = load_profile(fixture_path("profiles", "example-cray", "profile.yaml"))
+    raw_stack, _ = load_stack(fixture_path("stacks", "science-stack", "stack.yaml"))
+    template_set = fixture_path("template-sets", "v6")
+    defaults, _ = load_stack_defaults(template_set / "stack-defaults.yaml")
+    contract, _ = load_contract(template_set / "contract.yaml")
+    stack = merge_defaults(defaults, deepcopy(raw_stack))
+    for build in stack["builds"]:
+        if build["name"] == "mpi":
+            build["required"] = True
+            break
+    stack["per_system"]["example-cray"]["builds"]["mpi"] = {"compilers": ["does-not-exist"]}
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack, contract)
+    assert all(lane["source_build"] != "mpi" for lane in lanes)
+    mpi_issues = [i for i in issues if i.path == "stack.builds.mpi"]
+    assert len(mpi_issues) == 1
+    assert mpi_issues[0].code == "per_system_empty"
+    assert "narrowing dropped every lane" in mpi_issues[0].message
 
 
 def render_fixture(

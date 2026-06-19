@@ -17,6 +17,7 @@ def plan_lanes(
 
     for build in stack.get("builds", []):
         candidates, reason_code, reason = lane_candidates_for_build(profile, stack, contract, build)
+        had_candidates_before_narrowing = bool(candidates)
         candidates, narrowing_result = apply_narrowing(candidates, narrowing.get(build["name"], {}))
         if narrowing_result:
             applied_narrowing = applied_narrowing or {"system": system_name, "builds": {}}
@@ -24,6 +25,12 @@ def plan_lanes(
         if candidates:
             lanes.extend(candidates)
             continue
+        if had_candidates_before_narrowing:
+            reason_code = "per_system_empty"
+            reason = (
+                f"per_system.{system_name} narrowing dropped every lane "
+                f"for build {build['name']!r}"
+            )
         if build.get("required", False):
             issues.append(
                 Issue(
