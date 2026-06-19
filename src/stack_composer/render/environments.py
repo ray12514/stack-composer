@@ -5,6 +5,8 @@ from typing import Any
 
 from jinja2 import Environment
 
+from stack_composer.errors import ValidationFailed
+from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 from stack_composer.render.scopes import scopes_for_lane
 
 
@@ -17,6 +19,9 @@ def render_lane_environment(
     lane: dict[str, Any],
     rendered_scopes: list[str],
 ) -> None:
+    prereqs, prereq_issues = platform_module_prereqs_for_lane(lane, ctx["profile"])
+    if prereq_issues:
+        raise ValidationFailed(prereq_issues)
     lane_ctx = dict(ctx)
     lane_ctx.update(
         {
@@ -25,7 +30,7 @@ def render_lane_environment(
             "scopes": scopes_for_lane(rendered_scopes),
             "toolchain": toolchain_for_lane(ctx["profile"], lane),
             "view_root": lane["view_root"],
-            "platform_module_prereqs": [],
+            "platform_module_prereqs": prereqs,
         }
     )
     src = template_dir / "environments" / lane["kind"] / "spack.yaml.j2"
