@@ -14,7 +14,7 @@ Tracks progress against `stack-planning/docs/stack_composer_design_v1.md`.
 - [x] Implement schema loading and validation helpers.
 - [x] Implement `validate` schema checks and initial render preflight checks.
 - [ ] Author complete third-party license generation/enforcement.
-- [ ] Author `scripts/build-pyz.sh` release packaging.
+- [x] Author `scripts/build-pyz.sh` release packaging.
 - [x] Implement deterministic render workspace writes for the initial fixture vocabulary.
 - [x] Make `render` byte-identical for fixed fixture inputs.
 - [ ] Expand `validate` to cover every v6 render invariant.
@@ -32,6 +32,10 @@ Current render coverage:
   and no duplicate namespaces.
 - Validates package-set tier/kind compatibility and inline spec kind
   compatibility with the selected build class.
+- Builds `dist/stack-composer-<version>.tar.gz` with `stack-composer.pyz`,
+  project license, third-party manifest, and third-party license files.
+- Enforces bootstrap third-party manifest consistency against `pyproject.toml`;
+  full wheel-derived license text regeneration is still pending.
 
 ## Phase 2 - Maintainer Commands
 

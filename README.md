@@ -29,6 +29,12 @@ python3 -m venv .venv
 .venv/bin/ruff check .
 ```
 
+Build a local release artifact with:
+
+```bash
+PYTHON=.venv/bin/python scripts/build-pyz.sh
+```
+
 ## GitLab Note
 
 The implementation does not hardcode GitHub-specific URLs or remote names.

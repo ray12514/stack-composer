@@ -13,3 +13,13 @@ Current implementation decisions:
 
 The GitLab migration should be handled through remotes and future CI files, not
 through hardcoded repository URLs in the implementation.
+
+## Release Build
+
+`scripts/build-pyz.sh` produces `dist/stack-composer-<version>.tar.gz` with a
+shiv-built `stack-composer.pyz`, project license, third-party manifest, and
+third-party license files.
+
+The current third-party script enforces manifest consistency and syncs packaged
+resources. Full wheel-derived license text regeneration is still a Phase 1
+follow-up.
