@@ -27,6 +27,22 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "serial", "mpi", "gpu"}
 
 
+def test_render_workspace_handles_generic_linux_without_gpu(tmp_path: Path) -> None:
+    workspace = render_fixture(tmp_path / "out-a", profile_name="example-linux")
+
+    manifest = load_yaml(workspace / "release-manifest.yaml")
+    assert validate_schema("release-manifest", manifest, "release-manifest.yaml") == []
+    assert manifest["profile"]["system_name"] == "example-linux"
+    assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "serial", "mpi"}
+    assert manifest["skipped_builds"] == [
+        {
+            "build": "gpu",
+            "reason_code": "nodes_unmatched",
+            "reason": "no profile node type matches selector 'gpu'",
+        }
+    ]
+
+
 def test_render_workspace_is_byte_deterministic(tmp_path: Path) -> None:
     first = render_fixture(tmp_path / "out-a")
     second = render_fixture(tmp_path / "out-b")
@@ -69,9 +85,11 @@ def test_render_workspace_removes_pending_on_template_failure(tmp_path: Path) ->
     assert not workspace.with_name(workspace.name + ".rendering").exists()
 
 
-def render_fixture(output_root: Path, templates_root: Path | None = None) -> Path:
+def render_fixture(
+    output_root: Path, templates_root: Path | None = None, profile_name: str = "example-cray"
+) -> Path:
     return render_workspace(
-        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        profile_path=fixture_path("profiles", profile_name, "profile.yaml"),
         stack_path=fixture_path("stacks", "science-stack", "stack.yaml"),
         templates_root=templates_root or fixture_path("template-sets"),
         release_vars=ReleaseVars(

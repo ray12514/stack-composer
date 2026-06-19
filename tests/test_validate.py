@@ -11,17 +11,18 @@ from tests.conftest import fixture_path
 
 
 def test_validate_inputs_accepts_reference_fixtures() -> None:
-    issues, context = validate_inputs(
-        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
-        stack_path=fixture_path("stacks", "science-stack", "stack.yaml"),
-        templates_root=fixture_path("template-sets"),
-        package_sets_dir=fixture_path("package-sets"),
-        package_repos_dir=fixture_path("package-repos"),
-    )
-    issue_data = [(issue.code, issue.path, issue.message) for issue in issues]
-    assert issue_data == []
-    assert context["profile"]["system"]["name"] == "example-cray"
-    assert context["stack"]["name"] == "science-stack"
+    for profile_name in ("example-cray", "example-linux"):
+        issues, context = validate_inputs(
+            profile_path=fixture_path("profiles", profile_name, "profile.yaml"),
+            stack_path=fixture_path("stacks", "science-stack", "stack.yaml"),
+            templates_root=fixture_path("template-sets"),
+            package_sets_dir=fixture_path("package-sets"),
+            package_repos_dir=fixture_path("package-repos"),
+        )
+        issue_data = [(issue.code, issue.path, issue.message) for issue in issues]
+        assert issue_data == []
+        assert context["profile"]["system"]["name"] == profile_name
+        assert context["stack"]["name"] == "science-stack"
 
 
 def test_validate_inputs_rejects_unknown_build_class(tmp_path) -> None:

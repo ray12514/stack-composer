@@ -30,6 +30,8 @@ Current render coverage:
 - Plans lanes for the current reference contract vocabulary
   (`runtime_without_gpu`, `runtime_with_gpu`, Cray MPICH, package-set specs,
   and `per_gpu_arch`).
+- Renders both reference profiles in tests: Cray with GPU lanes and generic
+  Linux with site MPI and a skipped non-required GPU build.
 - Validates selected package repositories have `repo.yaml`, matching namespaces,
   and no duplicate namespaces.
 - Validates package-set tier/kind compatibility and inline spec kind
