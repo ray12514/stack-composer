@@ -23,6 +23,8 @@ Current render coverage:
 
 - Writes through a `.rendering` side path and atomically renames on success.
 - Deletes partial side-path output on render failure.
+- Refuses existing workspaces unless overwrite is requested, and refuses stale
+  `.rendering` side paths.
 - Renders Jinja config scopes and lane environments with `StrictUndefined`.
 - Writes a schema-valid draft `release-manifest.yaml`.
 - Plans lanes for the current reference contract vocabulary
