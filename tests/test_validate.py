@@ -140,6 +140,27 @@ def test_validate_inputs_rejects_unresolved_narrowing_gpu_selector(tmp_path: Pat
     assert any(issue.code == "unresolved-narrowing-gpu-selector" for issue in issues)
 
 
+def test_validate_inputs_rejects_required_build_that_cannot_resolve(tmp_path: Path) -> None:
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    for build in stack["builds"]:
+        if build["name"] == "gpu":
+            build["required"] = True
+            break
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    issues, _ = validate_inputs(
+        profile_path=fixture_path("profiles", "example-linux", "profile.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+    assert any(
+        issue.code == "nodes_unmatched" and issue.path == "stack.builds.gpu" for issue in issues
+    )
+
+
 def stack_with_narrowing(build_name: str, axis: str, values: list[str]) -> dict:
     stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
     stack["per_system"]["example-cray"]["builds"][build_name][axis] = values

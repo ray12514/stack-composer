@@ -47,10 +47,13 @@ def validate_inputs(
 
     stack = merge_defaults(defaults, raw_stack)
     issues.extend(cross_check_profile_contract(profile, stack))
-    issues.extend(validate_builds_against_contract(stack, contract))
+    build_contract_issues = validate_builds_against_contract(stack, contract)
+    issues.extend(build_contract_issues)
     issues.extend(validate_package_sets(stack, package_sets_dir, contract))
     issues.extend(validate_package_repositories(stack, package_repos_dir))
     issues.extend(validate_per_system_narrowing(stack, profile, contract))
+    if not build_contract_issues:
+        issues.extend(validate_lane_plan(profile, stack, contract))
     spec_sources, spec_source_issues = load_spec_sources(stack, package_sets_dir, contract)
     issues.extend(spec_source_issues)
 
@@ -114,6 +117,15 @@ def validate_builds_against_contract(
             issues.append(
                 Issue("error", "unknown-node-selector", f"{location}.nodes", build.get("nodes", ""))
             )
+    return issues
+
+
+def validate_lane_plan(
+    profile: dict[str, Any], stack: dict[str, Any], contract: dict[str, Any]
+) -> list[Issue]:
+    from stack_composer.render.plan import plan_lanes
+
+    _, _, _, issues = plan_lanes(profile, stack, contract)
     return issues
 
 
