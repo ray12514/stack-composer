@@ -1,0 +1,1 @@
+Bootstrap placeholder. Regenerate from resolved wheels with scripts/generate-third-party.py.

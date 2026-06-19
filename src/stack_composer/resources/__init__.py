@@ -1,0 +1,1 @@
+"""Packaged non-schema resources."""
