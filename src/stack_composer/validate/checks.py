@@ -8,6 +8,7 @@ from stack_composer.model.contract import load_contract
 from stack_composer.model.package_set import load_package_set
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_stack, load_stack_defaults, merge_defaults
+from stack_composer.yaml_io import load_yaml
 
 
 def validate_inputs(
@@ -126,8 +127,20 @@ def validate_package_sets(
     }
     loaded: dict[str, dict[str, Any]] = {}
     for index, build in enumerate(stack.get("builds", [])):
+        required_kind = class_kinds.get(build.get("class"))
         package_set_name = build.get("package_set")
         if not package_set_name:
+            specs = build.get("specs")
+            if isinstance(specs, dict) and required_kind:
+                if required_kind not in specs and "any" not in specs:
+                    issues.append(
+                        Issue(
+                            "error",
+                            "inline-spec-kind-mismatch",
+                            f"stack.builds[{index}].specs",
+                            f"inline specs do not provide required kind {required_kind!r}",
+                        )
+                    )
             continue
         path = package_sets_dir / f"{package_set_name}.yaml"
         if not path.exists():
@@ -149,11 +162,19 @@ def validate_package_sets(
                         f"{package_set_name!r}",
                     )
                 )
+            if package_set.get("tier") != "canonical":
+                issues.append(
+                    Issue(
+                        "error",
+                        "noncanonical-package-set",
+                        str(path),
+                        f"package set {package_set_name!r} has tier {package_set.get('tier')!r}",
+                    )
+                )
             loaded[package_set_name] = package_set
         package_set = loaded.get(package_set_name)
         if not package_set:
             continue
-        required_kind = class_kinds.get(build.get("class"))
         if required_kind and required_kind not in package_set.get("kinds", []):
             issues.append(
                 Issue(
@@ -207,6 +228,7 @@ def load_spec_sources(
 
 def validate_package_repositories(stack: dict[str, Any], package_repos_dir: Path) -> list[Issue]:
     issues: list[Issue] = []
+    namespaces: dict[str, str] = {}
     for index, repo in enumerate(stack.get("package_repositories", []) or []):
         repo_path = Path(repo["path"])
         if not repo_path.is_absolute():
@@ -218,6 +240,51 @@ def validate_package_repositories(stack: dict[str, Any], package_repos_dir: Path
                     f"package repository from stack.package_repositories[{index}] does not exist",
                 )
             )
+            continue
+        if not repo_path.is_dir():
+            issues.append(
+                Issue(
+                    "error",
+                    "package-repo-not-directory",
+                    str(repo_path),
+                    "package repository from "
+                    f"stack.package_repositories[{index}] is not a directory",
+                )
+            )
+            continue
+        repo_yaml = repo_path / "repo.yaml"
+        if not repo_yaml.exists():
+            issues.append(
+                missing_file_issue(repo_yaml, "package repository must contain repo.yaml")
+            )
+            continue
+        try:
+            repo_metadata = load_yaml(repo_yaml)
+        except ValueError as exc:
+            issues.append(Issue("error", "invalid-repo-yaml", str(repo_yaml), str(exc)))
+            continue
+        declared_namespace = ((repo_metadata or {}).get("repo") or {}).get("namespace")
+        if declared_namespace != repo["namespace"]:
+            issues.append(
+                Issue(
+                    "error",
+                    "package-repo-namespace-mismatch",
+                    str(repo_yaml),
+                    "repo.yaml namespace "
+                    f"{declared_namespace!r} does not match stack namespace {repo['namespace']!r}",
+                )
+            )
+        if repo["namespace"] in namespaces:
+            issues.append(
+                Issue(
+                    "error",
+                    "duplicate-package-repo-namespace",
+                    f"stack.package_repositories[{index}].namespace",
+                    f"namespace {repo['namespace']!r} already used by "
+                    f"{namespaces[repo['namespace']]}",
+                )
+            )
+        namespaces[repo["namespace"]] = repo["name"]
     return issues
 
 
