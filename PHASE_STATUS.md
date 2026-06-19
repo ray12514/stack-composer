@@ -17,7 +17,7 @@ Tracks progress against `stack-planning/docs/stack_composer_design_v1.md`.
 - [x] Author `scripts/build-pyz.sh` release packaging.
 - [x] Implement deterministic render workspace writes for the initial fixture vocabulary.
 - [x] Make `render` byte-identical for fixed fixture inputs.
-- [ ] Expand `validate` to cover every v6 render invariant.
+- [x] Expand `validate` to cover every v6 render invariant.
 
 Current render coverage:
 
@@ -38,6 +38,17 @@ Current render coverage:
   compatibility with the selected build class.
 - Validates matching `per_system` narrowing axes against profile/contract
   resolved compiler, MPI, and GPU selector candidates.
+- Surfaces required-build-cannot-resolve as `nodes_unmatched` /
+  `requires_unsatisfied` (v6 invariants #10, #11) at validate time via
+  `validate_lane_plan`.
+- Emits `per_system_empty` when narrowing drops every lane of a required
+  build (v6 invariant #14).
+- Derives `platform_module_prereqs` per lane from profile facts and
+  fails render/validate when a lane's compiler, MPI flavor, or GPU
+  toolkit modules are not declared in the profile (v6 invariant #15).
+- Requires `package_repositories[*].priority` to be set explicitly in
+  stack source so shadow direction is recorded rather than defaulted
+  (v6 invariant #7c).
 - Builds `dist/stack-composer-<version>.tar.gz` with `stack-composer.pyz`,
   project license, third-party manifest, and third-party license files.
 - Regenerates third-party manifest/license texts from installed runtime

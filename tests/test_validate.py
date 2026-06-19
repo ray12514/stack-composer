@@ -102,6 +102,23 @@ def test_validate_inputs_rejects_duplicate_package_repo_namespace(tmp_path: Path
     assert any(issue.code == "duplicate-package-repo-namespace" for issue in issues)
 
 
+def test_validate_inputs_rejects_package_repo_without_explicit_priority(tmp_path: Path) -> None:
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    for repo in stack["package_repositories"]:
+        repo.pop("priority", None)
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    issues, _ = validate_inputs(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+    assert any(issue.code == "package-repo-priority-implicit" for issue in issues)
+
+
 def test_validate_inputs_rejects_inline_spec_kind_mismatch(tmp_path: Path) -> None:
     stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
     for build in stack["builds"]:

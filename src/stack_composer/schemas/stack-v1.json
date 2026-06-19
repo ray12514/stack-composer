@@ -450,8 +450,7 @@
         "priority": {
           "type": "string",
           "enum": ["before_builtin", "after_builtin"],
-          "default": "before_builtin",
-          "description": "Resolution priority relative to Spack's builtin repository."
+          "description": "Resolution priority relative to Spack's builtin repository. Required so shadow direction is recorded in stack source."
         }
       },
       "required": ["name", "namespace", "path"],
