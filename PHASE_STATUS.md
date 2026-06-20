@@ -58,7 +58,11 @@ Current render coverage:
 
 - [x] Implement `assess-profiles`.
 - [x] Implement `explain`.
-- [ ] Implement `validate-template-set` render-only mode.
+- [x] Implement `validate-template-set` render-only mode.
+
+`validate-template-set --concretize` (Spack-driven concretize per lane)
+remains deferred; the flag is wired but raises a clear "not implemented
+in this phase" error.
 
 ## Phase 3 - Scaffold And Publish
 
