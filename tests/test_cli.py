@@ -89,7 +89,7 @@ def test_scaffold_templates_command_writes_proposal(tmp_path) -> None:
     assert (tmp_path / "proposed" / "REVIEW.md").exists()
 
 
-def test_stub_command_returns_clear_error() -> None:
+def test_publish_manifest_missing_workspace_returns_clear_error() -> None:
     result = CliRunner().invoke(
         cli,
         [
@@ -109,4 +109,4 @@ def test_stub_command_returns_clear_error() -> None:
         ],
     )
     assert result.exit_code != 0
-    assert "not yet implemented" in result.output
+    assert "release-manifest.yaml" in result.output

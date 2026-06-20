@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from stack_composer.commands._stub import raise_not_implemented
+from pathlib import Path
+
+import click
+
+from stack_composer.manifest.finalize import finalize_manifest
 
 
 def run(
@@ -13,13 +17,16 @@ def run(
     verify_results: str,
     force: bool,
 ) -> None:
-    _ = (
-        workspace,
-        build_host,
-        lockfiles,
-        platform_module_prereqs,
-        buildcache_destinations,
-        verify_results,
-        force,
-    )
-    raise_not_implemented("publish-manifest")
+    try:
+        finalize_manifest(
+            workspace=Path(workspace),
+            build_host_name=build_host,
+            lockfiles_dir=Path(lockfiles),
+            platform_module_prereqs_path=Path(platform_module_prereqs),
+            buildcache_destinations_path=Path(buildcache_destinations),
+            verify_results_path=Path(verify_results),
+            force=force,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(str(Path(workspace) / "release-manifest.yaml"))

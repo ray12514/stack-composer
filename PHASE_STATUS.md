@@ -67,7 +67,7 @@ in this phase" error.
 ## Phase 3 - Scaffold And Publish
 
 - [x] Implement `scaffold-templates`.
-- [ ] Implement `publish-manifest`.
+- [x] Implement `publish-manifest`.
 - [ ] Implement the `spack-build` companion script.
 
 ## Phase 4 - Reference Fixture Acceptance
