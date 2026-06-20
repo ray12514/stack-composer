@@ -126,7 +126,10 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     ).read_text(encoding="utf-8")
     assert "../../../configs/gpu/amd-rocm" in gpu_env
     assert "../../../configs/vendor/linux" not in gpu_env
+    assert "kokkos+rocm amdgpu_target=gfx90a" in gpu_env
+    assert "raja+rocm amdgpu_target=gfx90a" in gpu_env
     assert "amdgpu_target=gfx90a" in gpu_env
+    assert "+gpu" not in gpu_env
 
 
 def test_rendered_generic_linux_workspace_contains_site_mpi_without_cray(
@@ -181,11 +184,11 @@ def test_rendered_cray_nvidia_workspace_uses_current_cpe_names(tmp_path: Path) -
         workspace / "environments" / "gcc" / "gpu-craympich-sm_80" / "spack.yaml"
     ).read_text(encoding="utf-8")
     assert "../../../configs/gpu/nvidia-cuda" in gpu_env
-    # `cuda_arch=` only fires on specs that already carry `+cuda`.
-    # The shared science-full package_set's `gpu` kind ships +rocm specs,
-    # so on an NVIDIA lane no spec triggers `cuda_arch=`. Phase 6 will
-    # introduce GPU-vendor-neutral specs in the package_set.
+    assert "kokkos+cuda cuda_arch=80" in gpu_env
+    assert "raja+cuda cuda_arch=80" in gpu_env
+    assert "cuda_arch=80" in gpu_env
     assert "amdgpu_target" not in gpu_env
+    assert "+gpu" not in gpu_env
     assert "PrgEnv-nvhpc" not in gpu_env
     vendor_cray_text = (
         workspace / "configs" / "vendor" / "cray" / "packages.yaml"
@@ -213,7 +216,9 @@ def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
     assert "../../../configs/vendor/linux" in amd_env
     assert "../../../configs/vendor/cray" not in amd_env
     assert "../../../configs/gpu/amd-rocm" in amd_env
+    assert "kokkos+rocm amdgpu_target=gfx90a" in amd_env
     assert "amdgpu_target=gfx90a" in amd_env
+    assert "+gpu" not in amd_env
 
     nvidia_env = (
         workspace / "environments" / "gcc" / "gpu-openmpi-sm_80" / "spack.yaml"
@@ -221,7 +226,9 @@ def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
     assert "../../../configs/vendor/linux" in nvidia_env
     assert "../../../configs/vendor/cray" not in nvidia_env
     assert "../../../configs/gpu/nvidia-cuda" in nvidia_env
-    # See note on cuda_arch in the Cray NVIDIA test above; same reason.
+    assert "kokkos+cuda cuda_arch=80" in nvidia_env
+    assert "cuda_arch=80" in nvidia_env
+    assert "+gpu" not in nvidia_env
 
 
 def fixture_context(profile_name: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:

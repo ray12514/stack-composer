@@ -6,6 +6,7 @@ from typing import Any
 from jinja2 import Environment
 
 from stack_composer.errors import ValidationFailed
+from stack_composer.model.package_set import expand_specs_for_lane
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 from stack_composer.render.scopes import scopes_for_lane
 
@@ -25,7 +26,7 @@ def render_lane_environment(
     lane_ctx.update(
         {
             "lane": lane,
-            "specs": expand_spec_source(ctx["spec_sources"][lane["source_build"]], lane),
+            "specs": expand_specs_for_lane(ctx["spec_sources"][lane["source_build"]], lane),
             "scopes": scopes_for_lane(lane, ctx["stack"], ctx["profile"]),
             "toolchain": toolchain_for_lane(ctx["profile"], lane),
             "view_root": lane["view_root"],
@@ -37,17 +38,6 @@ def render_lane_environment(
     dst.parent.mkdir(parents=True, exist_ok=True)
     template_name = src.relative_to(template_dir).as_posix()
     dst.write_text(env.get_template(template_name).render(lane_ctx), encoding="utf-8")
-
-
-def expand_spec_source(spec_source: dict[str, Any], lane: dict[str, Any]) -> list[str]:
-    specs = spec_source.get("specs", {})
-    if isinstance(specs, list):
-        return specs
-    expanded = []
-    expanded.extend(specs.get("any", []))
-    expanded.extend(specs.get(lane["kind"], []))
-    return expanded
-
 
 def toolchain_for_lane(profile: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any]:
     compiler = {"name": lane["compiler"], "version": None, "spec": "%" + lane["compiler"]}
