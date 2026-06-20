@@ -67,11 +67,55 @@ Current render coverage:
 remains deferred; the flag is wired but raises a clear "not implemented
 in this phase" error.
 
+Outstanding `assess-profiles` shape gap
+(`stack_composer_design_v1.md` §`assess-profiles` algorithm sketch,
+lines ~223-244):
+
+- [ ] Per-cell output today carries `{covered, build_classes,
+  toolchains, node_selectors, gpu_selectors, compilers,
+  mpi_providers, gpu_arches}` — a broader per-axis breakdown. The
+  design specifies `{covered: true, lane_count, lane_kinds}` for
+  covered cells and `{covered: false, missing_facts,
+  blocked_toolchains}` for uncovered cells. The current report is
+  informational but is not the shape downstream maintainer tools
+  agreed to. Need to add `lane_count` and `lane_kinds` (from a
+  dry-resolve via `plan_lanes`), surface `missing_facts` (which
+  profile keys would have to gain to flip an uncovered cell), and
+  decide whether to keep the wider per-axis breakdown alongside or
+  drop it.
+
+`explain` was audited against the design's algorithm sketch and
+matches: build_classes, toolchains (filter_resolvable), node_selectors,
+gpu_arches, compilers, mpi_providers, and per_system_narrowing menu
+when --stack is given.
+
 ## Phase 3 - Scaffold And Publish
 
 - [x] Implement `scaffold-templates`.
 - [x] Implement `publish-manifest`.
 - [x] Implement the `spack-build` companion script.
+
+Outstanding refinements in Phase 3:
+
+- [ ] `publish-manifest` provenance bucket (`manifest/provenance.py::provenance_bucket`)
+  is heuristic-driven: it classifies an external as `platform_backed`
+  vs `site_external` by hardcoded path prefixes
+  (`/opt/cray`, `/opt/rocm`, `/usr`). The design specifies the bucket
+  is "derived from the lockfile **plus contract**"
+  (`stack_composer_design_v1.md` line 654). Real-world site externals
+  at non-canonical paths (e.g., `/shared/site/openmpi-5.0.9`,
+  `/apps/cuda/12.4`) would misclassify today. Replace the path-prefix
+  heuristic with a contract-driven lookup (e.g., walk
+  `contract.toolchains[*]` / `profile.vendor_cray` /
+  `profile.gpu_toolkit_modules` for known platform-backed prefixes).
+- [ ] `spack-build` runs `spack verify manifest -a` which fails on
+  system externals (they have no Spack manifest). The build itself
+  succeeds; only the verify step trips. Filter externals from the
+  verify-manifest invocation. Surfaced by the Phase 5 smoke pipeline.
+- [ ] Scaffold-starter template-sets under
+  `src/stack_composer/scaffold/starters/{library,application}/configs/`
+  only ship `common/packages.yaml.j2` + `common/repos.yaml.j2`. Same
+  scope-buildout gap as the v6 fixture. Tracked under Phase 5.
 
 ## Phase 4 - Reference Fixture Acceptance
 
