@@ -444,3 +444,149 @@ Acceptance:
 - The inventory is current as of the latest release tag. A
   `git grep -l "cray" src/ tests/` cross-referenced against the
   inventory shows no missing entries.
+
+## Phase 7 - Adoption-blocking scopes (config.yaml, compilers.yaml, foundation lane)
+
+The 2026-06-20 design-vs-implementation coverage audit
+(`stack-planning/docs/design_implementation_coverage.md` §6) found
+five CRITICAL gaps that block the first real-system deployment.
+Phase 7 closes the three that touch config scopes; Phase 8 closes the
+foundation-pin work; Phase 9 closes front-door modules.
+
+- [ ] Render `configs/common/config.yaml` from
+  `profile.filesystem.install_tree_candidates`,
+  `profile.node_types[*].build_stage`,
+  `profile.filesystem.source_cache_candidate`, and
+  `profile.filesystem.buildcache_candidate`. Without this, Spack
+  installs to `/home/spack/spack/opt` (its default), not the
+  profile's declared install tree. Every real deployment hits this on
+  first install.
+- [ ] Verify whether Spack v1.1's compiler discovery from
+  `packages.yaml::extra_attributes.compilers` (Phase 5 work) is
+  sufficient or whether a separate `configs/common/compilers.yaml`
+  scope is still needed. If needed, render it from
+  `profile.vendor_cray.<compiler>` and `profile.compilers_external`.
+- [ ] Add `include_concrete:` references from each lane's
+  `spack.yaml` to its compiler's Core lane (v6 §"GPU lane Core
+  composition"). Today the GPU lane environment doesn't reference
+  `gcc/core` even though the design requires it.
+
+Acceptance:
+
+- A smoke pipeline run installs Spack-built packages into
+  `/shared/stack/spack/opt` (the example profile's install tree),
+  not Spack's default.
+- `spack -e <lane> compiler list` inside the rendered workspace
+  enumerates the profile's compilers without an additional
+  `spack compiler find` step.
+- The GPU lane's `spack.yaml` shows `include_concrete:` referencing
+  the matching `<compiler>/core` lane.
+
+## Phase 8 - Foundation pins + foundation lane
+
+- [ ] Render `configs/foundation/packages.yaml.j2` (or equivalent
+  scope) emitting `require: "@<version>"` for each
+  `stack.foundation_pins.*` entry (zlib, xz, zstd, plus any other
+  declared pins). v6 §"Foundation lane" is explicit that these are
+  load-bearing for cross-compiler binary compatibility; today they
+  are emitted nowhere.
+- [ ] Render the foundation lane environment (single lane, single
+  compiler, single target) and wire it into the Core composition so
+  every Core lane `include_concrete` references it.
+- [ ] Implement `contract.target_policies` so the foundation lane's
+  target is `foundation` / `baseline_target` (e.g., `x86_64_v3`) and
+  payload lanes' target is `lane.cpu.preferred` (e.g., `zen3`). v6
+  §"Target Policy" is explicit; renderer ignores the contract field
+  today.
+
+Acceptance:
+
+- Foundation lane renders for every reference profile and pins
+  declared foundation packages.
+- A Core lane's resolved zlib hash equals the foundation lane's
+  zlib hash (cross-compiler reproducibility).
+
+## Phase 9 - Front-door modulefile emission
+
+Covered in detail in agent memory `project_module_emission_gap.md`
+and in `stack-planning/docs/design_implementation_coverage.md`
+§4-5.
+
+- [ ] Add `templates/<set>/configs/common/modules.yaml.j2` rendering
+  hierarchy, projections, and prefix inspections from
+  `stack.modules.*`.
+- [ ] Add `templates/<set>/modules/<exposure>/front-door.tcl.j2`
+  (and optionally `.lua.j2` for `additional_formats: [lmod]`).
+  Per-lane modulefile, emits MODULEPATH prepend for the lane's
+  package module root, conflicts with sibling lanes, prereq lines
+  for `lane.platform_module_prereqs`, identity setenv (release,
+  lane, compiler, ...).
+- [ ] Walk `lane.platform_module_prereqs` into the rendered
+  modulefile (data is already in the render context; just needs a
+  template consumer).
+- [ ] Tests: rendered front-door modulefile for a Cray + ROCm lane
+  contains `prereq PrgEnv-gnu`, `prereq gcc-native/13`,
+  `prereq rocm/<v>`, `prereq cray-mpich/<v>` and declares conflict
+  with sibling GPU lanes.
+- [ ] Smoke verify: in the smoke container, `module load
+  ScienceStack/GCC/gpu-craympich-gfx90a` succeeds and sets the
+  expected MODULEPATH.
+
+Acceptance:
+
+- `stack.modules.exposure: front_door` produces a working
+  front-door modulefile per lane; `stack.modules.exposure: direct`
+  produces package modules without a front-door gate.
+
+## Phase 10 - Externals policy + buildcache mirrors
+
+- [ ] `stack.externals.{compilers,mpi,openssl,curl,fabric_userspace,gpu_toolkit}`
+  policy enforcement at render time. Today every Phase 5 scope
+  renders externals unconditionally as `buildable: false`. The
+  policy should gate which scopes get emitted (e.g.,
+  `gpu_toolkit: build_all` should suppress `configs/gpu/amd-rocm/`
+  so Spack builds ROCm).
+- [ ] Render `configs/common/mirrors.yaml` from
+  `stack.buildcache.{spack_generation, foundation_lane,
+  payload_lane}` format strings with `{os_id}`, `{glibc}`,
+  `{spack_version}`, `{package_repo_generation}`,
+  `{baseline_target}`, `{system}` substitutions per v6
+  §"Build-Cache Keying".
+- [ ] Render `configs/common/concretizer.yaml` with `unify: false`
+  for stack lanes per v6 §"Concretizer Posture".
+- [ ] Add `vendor_cray.libsci` rendering as a scope.
+- [ ] Render `profile.fabric.userspace` (libfabric, ucx) externals
+  as a scope.
+
+Acceptance:
+
+- Setting `stack.externals.gpu_toolkit: build_all` in the smoke
+  stack causes Spack to build ROCm from source.
+- The rendered `mirrors.yaml` has fully-expanded buildcache URLs
+  matching the design's keying scheme.
+
+## Phase 11 - Cleanup and advisory clarifications
+
+- [ ] Decide and document the behaviour of `stack.helpers.*`
+  advisory flags - either implement them or remove them from the
+  schema.
+- [ ] Read `gpu_selectors[*].vendor` and `.spack` from the contract
+  (currently inferred from arch prefix in Python).
+- [ ] Render `gpu_toolkit_modules.nvhpc` as a separate scope for
+  standalone NVHPC toolkit lanes.
+- [ ] Add new `configs/mpi/<provider>/packages.yaml.j2` scopes for
+  mpich, mvapich2, intel-mpi as profiles surface them.
+- [ ] Implement `stack.release.retain_previous` cleanup (publish
+  step deletes N-previous releases).
+- [ ] Implement `stack.release.promotion: gated_manual` promotion
+  gate in publish-manifest.
+
+## Cross-cutting: ongoing audit discipline
+
+After Phase 7-11 lands, run the audit again. The procedural lesson
+from Phase 4/5 (claimed done, fixture didn't match design) and
+Phase 5+ (entire stack.yaml blocks silently ignored) is the same:
+**every PHASE_STATUS box needs a design-doc reference.** Going
+forward, no box gets checked without citing the design section it
+implements; the design vs implementation coverage doc is the
+audit-trail artifact.
