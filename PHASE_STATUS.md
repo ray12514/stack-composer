@@ -56,7 +56,7 @@ Current render coverage:
 
 ## Phase 2 - Maintainer Commands
 
-- [ ] Implement `assess-profiles`.
+- [x] Implement `assess-profiles`.
 - [x] Implement `explain`.
 - [ ] Implement `validate-template-set` render-only mode.
 

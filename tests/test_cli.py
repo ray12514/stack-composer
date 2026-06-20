@@ -77,7 +77,11 @@ def test_render_command_writes_workspace(tmp_path) -> None:
 def test_stub_command_returns_clear_error() -> None:
     result = CliRunner().invoke(
         cli,
-        ["assess-profiles", "--profiles", "profile.yaml", "--templates", "templates"],
+        [
+            "scaffold-templates",
+            "--profile", "profile.yaml",
+            "--output", "out",
+        ],
     )
     assert result.exit_code != 0
     assert "not yet implemented" in result.output
