@@ -236,13 +236,204 @@ Work items
 
 Acceptance per v6 design
 
-- The rendered `configs/vendor/cray/packages.yaml` matches the design
-  example at §2115-2141 byte-for-byte (modulo profile-specific
-  versions/prefixes).
-- The rendered `configs/mpi/cray-mpich/packages.yaml` matches the
+- [x] The rendered `configs/vendor/cray/packages.yaml` matches the
+  design example at §2115-2141 (modulo profile-specific
+  versions/prefixes; small cosmetic differences: spec values quoted,
+  modules emitted block-style).
+- [x] The rendered `configs/mpi/cray-mpich/packages.yaml` matches the
   design example at §2148-2168.
-- Re-running the smoke pipeline (local-only Docker runtime; see
-  agent memory for the location) against a Cray-shaped profile
-  produces a lane whose `spack concretize` resolves `cray-mpich`,
-  `cce`, and ROCm components to externals rather than Spack-building
-  them.
+- [x] Re-running the smoke pipeline against a Cray-shaped profile
+  produces a workspace whose `spack concretize` loads and recognizes
+  `cray-mpich`, `cce`, and the ROCm components by name from the
+  rendered externals. Verified 2026-06-20: Spack's concretizer
+  identifies all declared externals before tripping on cross-arch
+  target compatibility (a smoke-environment quirk tracked under
+  Phase 6).
+
+## Phase 6 - Post-v6 polish and pre-CPE2 hardening
+
+Phase 5 closed the render-seam conformance with the v6 spec. This
+phase covers the follow-ups surfaced during Phase 5 (the smoke
+concretize loop revealed two real gaps), the triage findings from
+Phase 2 and Phase 3, and the pre-CPE2 hardening work from
+`stack-planning/docs/cray_pe_coupling_inventory.md`.
+
+These items are independent. An agent picking up this phase can take
+any one bullet without touching the others.
+
+### 6a - Package-set GPU-vendor neutrality
+
+The `science-full.yaml` package set's `gpu` kind hardcodes `+rocm`
+specs (`kokkos+rocm`, `raja+rocm`). A real production package set
+shared across AMD and NVIDIA GPU lanes should declare GPU-aware specs
+once, and the lane template should compose the right variant per the
+lane's `gpu_arch`.
+
+- [ ] Decide the schema shape. Options sketched in
+  `cray_pe_coupling_inventory.md` §"Recommended hardening work" but
+  not yet decided. Two candidates:
+  - Package set declares `kokkos` with `gpu_aware: true` (or similar
+    boolean flag). Template appends `+rocm amdgpu_target=...` or
+    `+cuda cuda_arch=...` based on `lane.gpu_arch`.
+  - Package set declares `kokkos+gpu` as a placeholder variant; the
+    template substitutes `+gpu` with `+rocm` or `+cuda` at render.
+- [ ] Implement the chosen shape in `model/package_set.py` and the
+  fixture `science-full.yaml`.
+- [ ] Update `tests/test_render_scopes.py` to assert that the NVIDIA
+  lane gets `cuda_arch=...` on GPU-aware specs (the assertion we
+  dropped to land Phase 5 because the fixture has no `+cuda` specs).
+- [ ] Smoke verify: a Cray + NVIDIA profile + the updated science-full
+  package set produces a GPU lane whose specs carry `+cuda
+  cuda_arch=<arch>` exactly where expected.
+
+Acceptance:
+
+- A single GPU-aware spec in the package set (`kokkos`) yields
+  `kokkos+rocm amdgpu_target=gfx90a` on a `gfx90a` lane and
+  `kokkos+cuda cuda_arch=80` on a `sm_80` lane, without duplicating
+  the spec in the package set.
+
+### 6b - Cross-architecture smoke concretize
+
+The Phase 5 smoke pipeline runs in a rocky9 container with whatever
+CPU the host happens to have. Rendering against a Cray `example-cray`
+profile produces a workspace whose `configs/target/zen3/packages.yaml`
+sets `target=zen3`. Spack's concretizer rejects that when the build
+host's CPU isn't zen3 ("target=zen3 is not compatible with this
+machine"). That is correct production behaviour - real Cray
+deployments concretize on zen3 hosts - but it blocks the smoke loop
+from going past concretize for cross-arch profiles.
+
+- [ ] Add a `--cross-arch` (or equivalent) flag to the smoke runner
+  that injects
+  `config:concretizer:targets:host_compatible:false` into a
+  `configs/common/concretizer.yaml.j2` (or equivalent overlay) when
+  set, so smoke concretize succeeds against Cray-shaped profiles on a
+  non-Cray host.
+- [ ] Alternatively, expose this as a render-time stack option (e.g.,
+  `stack.smoke.cross_arch: true`) so the renderer emits the override
+  in the workspace. This keeps the runner thin but couples the stack
+  source to a smoke concern. Decide one.
+- [ ] Run a full smoke loop end-to-end (`render` + `concretize` + at
+  least one lockfile inspection) against a Cray profile in the smoke
+  container.
+
+Acceptance:
+
+- The smoke runner's `pipeline` action against a Cray-shaped profile
+  exits 0 through concretize, and the resulting lockfile lists
+  `cray-mpich`, `cce`, and the ROCm components with `external: true`.
+
+### 6c - assess-profiles output shape conformance
+
+Surfaced during the Phase 2 triage (see Phase 2 section above).
+
+- [ ] Compute `lane_count` and `lane_kinds` per cell via a dry-resolve
+  against `plan_lanes`.
+- [ ] Compute `missing_facts` per uncovered cell: enumerate which
+  profile fields would need values for the cell to flip to covered.
+- [ ] Decide whether to keep the current wider per-axis breakdown
+  alongside the design-specified `{covered, lane_count, lane_kinds,
+  missing_facts, blocked_toolchains}` shape, or drop it.
+- [ ] Update `tests/test_assess_profiles.py` for the new shape.
+
+Acceptance:
+
+- `assess-profiles --output report.yaml` produces a report whose
+  per-cell structure matches `stack_composer_design_v1.md`
+  §`assess-profiles` algorithm sketch (lines ~223-244) exactly for
+  the covered and uncovered branches.
+
+### 6d - publish-manifest provenance from the contract
+
+Surfaced during the Phase 3 triage (see Phase 3 section above).
+
+- [ ] Replace the path-prefix heuristic in
+  `manifest/provenance.py::provenance_bucket` with a contract-driven
+  lookup. The contract already knows which externals come from
+  platform packages (`vendor_cray.*`, `gpu_toolkit_modules.*`) versus
+  site externals (`compilers_external`, `mpi[]`). Walk the contract
+  and the profile blocks the lockfile spec was resolved against,
+  classify by that, not by `/opt/cray` / `/opt/rocm` / `/usr`.
+- [ ] Add tests covering a site external at a non-canonical path
+  (e.g., `/shared/site/openmpi-5.0.9`) and confirm it classifies as
+  `site_external`, not `platform_backed`.
+
+Acceptance:
+
+- A lockfile whose `cray-mpich` external prefix is at an unusual path
+  (e.g., `/scratch/test-cray-pe/mpich`) still classifies as
+  `platform_backed` because the contract identifies `cray-mpich` as a
+  platform provider, not because of the path string.
+
+### 6e - spack-build verify-manifest external filter
+
+Surfaced during the Phase 3 triage and seen again in the Phase 5
+smoke loop.
+
+- [ ] `scripts/spack-build` runs `spack verify manifest -a` which
+  fails on system externals (gcc at `/usr` in the smoke container).
+  Filter externals from the verify-manifest invocation. Likely
+  approach: enumerate non-external installed specs via `spack -e
+  <env> find --json`, parse out externals (specs with `external` key
+  set), pass the remaining specs explicitly to `spack verify manifest
+  <spec>...`.
+- [ ] Smoke-verify: the Phase 5 smoke loop's verify-manifest step
+  passes against the example-cray workspace.
+
+Acceptance:
+
+- `spack-build --workspace <rendered>` exits 0 on a workspace with
+  externals; reports show `verify-manifest: passed` per lane.
+
+### 6f - Pre-CPE2 hardening (vendor selection, MPI generalization, compiler enumeration)
+
+From `stack-planning/docs/cray_pe_coupling_inventory.md`
+§"Recommended hardening work" - three changes that significantly
+reduce the eventual CPE2 migration sprint. Independent of each other
+and of 6a-6e.
+
+- [ ] **6f.1**: Lift vendor scope selection from
+  `render/scopes.py::vendor_scope` into the contract. Today it is
+  hardcoded: `if profile.vendor_cray: return "vendor/cray" else
+  "vendor/linux"`. After this change, a third or fourth vendor scope
+  (CPE2, IBM, Intel Aurora) is purely a template-set and contract
+  addition; no Python change needed. See coupling inventory for the
+  proposed contract schema field.
+- [ ] **6f.2**: Generalize `render/platform_modules.py::_mpi_modules`
+  out of its `if provider == "cray-mpich": ...` special case. Each
+  MPI provider should describe its own `modules:` and optional
+  `flavors:` block in `profile.mpi[]`. The renderer becomes
+  provider-agnostic. May require a profile-v2 schema migration for
+  the MPI block, depending on the chosen shape.
+- [ ] **6f.3**: Replace the hardcoded compiler-name tuple
+  `("gcc", "cce", "aocc", "intel", "nvhpc", "rocmcc")` in
+  `render/plan.py:141-149`, `scaffold/facts.py:9-10`, and
+  `commands/explain.py:87` with a schema-driven enumeration. Define
+  the non-compiler exclusion list (e.g., `pe_version`, `cray_mpich`,
+  `libsci`, `cce_extras`) in one place.
+
+Acceptance:
+
+- Adding a new vendor (call it `vendor_cpe2`) to the profile schema
+  requires:
+  - A new template-set scope `configs/vendor/cpe2/packages.yaml.j2`.
+  - A contract entry naming `vendor_cpe2` as a discriminator for the
+    `vendor/cpe2` scope.
+  - Zero Python edits in stack-composer's `render/` tree.
+
+### 6g - Coupling inventory upkeep
+
+- [ ] Each time a change touches a spot listed in
+  `stack-planning/docs/cray_pe_coupling_inventory.md`, the change
+  also updates the inventory's file:line references. Enforce in PR
+  review (a one-line CONTRIBUTING note or a pre-commit grep that
+  flags PRs touching listed files without updating the inventory).
+- [ ] Periodically (every release) audit the inventory for new spots
+  that drifted in.
+
+Acceptance:
+
+- The inventory is current as of the latest release tag. A
+  `git grep -l "cray" src/ tests/` cross-referenced against the
+  inventory shows no missing entries.
