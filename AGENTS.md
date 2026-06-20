@@ -96,9 +96,16 @@ time.
 2. If you changed render output, render at least one of the
    reference profiles end-to-end (`example-cray`, `example-linux`)
    and visually inspect a diff against expected design output.
-3. If you changed `PHASE_STATUS.md`, also update the design doc if
+3. If you changed the render seam, the lane planner, the manifest
+   shape, or anything `spack-build` consumes, also run the smoke
+   pipeline against a real Spack install. The smoke runtime is at
+   `~/Development/smoke-runtime/`; the orchestrator is on the same
+   host (see `~/Development/smoke-runtime/README.md` for the
+   actions and the orchestrator's location). The runtime is not
+   tracked in any repo on purpose.
+4. If you changed `PHASE_STATUS.md`, also update the design doc if
    the behavior changes the documented contract.
-4. If you added or removed a runtime dependency, refresh
+5. If you added or removed a runtime dependency, refresh
    `THIRD_PARTY.toml` with
    `python scripts/generate-third-party.py --refresh --sync-resources`.
 
