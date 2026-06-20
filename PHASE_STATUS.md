@@ -77,3 +77,109 @@ in this phase" error.
 
 - [x] Render every documented stack against every documented reference profile.
 - [x] Wire rendered workspace fixtures into CI validation.
+
+> Note: the Phase 4 acceptance covers that `validate-template-set` runs
+> cleanly against the reference fixture. It does **not** prove the
+> rendered configs are a v6-spec-conformant template set. Phase 5
+> tracks that gap.
+
+## Phase 5 - Render Seam Conformance With v6 Template-Set Spec
+
+The shipped fixture template-set, the scaffold-templates starters, and
+the scope-selection functions in `render/scopes.py` are all
+stub-shaped relative to the v6 design specification. Phase 1's
+"deterministic render workspace writes for the initial fixture
+vocabulary" is met for the *fixture*, not for the *design*.
+
+What the design requires
+(`spack_stack_generation_design_v6.md` §2115-2233):
+
+A v6-conformant template set must emit per-scope `packages.yaml` files
+with `externals:` + `buildable: false` entries derived from the
+profile:
+
+- `configs/vendor/cray/packages.yaml` — `cce`, `gcc`, `rocmcc`
+  externals with `prefix`, `modules`, and (for compilers)
+  `extra_attributes.compilers` from `profile.vendor_cray.<name>`.
+- `configs/vendor/linux/packages.yaml` — `gcc`/`aocc`/`intel`/`nvhpc`
+  externals from `profile.compilers_external`.
+- `configs/mpi/cray-mpich/packages.yaml` — per-compiler-flavor
+  `cray-mpich` externals from
+  `profile.vendor_cray.cray_mpich.flavors`, plus the `mpi: provides`
+  binding.
+- `configs/mpi/<provider>/packages.yaml` — site MPI external from
+  `profile.mpi[]`.
+- `configs/gpu/amd-rocm/packages.yaml` — every component listed in
+  `profile.gpu_toolkit_modules.rocm.spack_components` (`hip`,
+  `hsa-rocr-dev`, `comgr`, `rocblas`, `hipblas`, `hipsparse`,
+  `rocprim`, `llvm-amdgpu`, ...) as a `buildable: false` external.
+- `configs/gpu/{cuda,nvhpc}/packages.yaml` — corresponding NVIDIA
+  toolkit externals from `profile.gpu_toolkit_modules.cudatoolkit` /
+  `nvhpc`.
+- `configs/target/<arch>/packages.yaml` — `packages.all.require:
+  target=<arch>` per `lane.target`.
+- `configs/os/<os>/packages.yaml` — `openssl`, `curl`, etc. system
+  externals.
+
+And selects only the scopes a given lane needs:
+
+- `required_scopes(profile, rendered_lanes)` — design signature, line
+  2621. Current code: `required_scopes(template_dir)`. Returns every
+  subdir of `configs/` regardless of profile or lane.
+- `scopes_for_lane(lane, stack, profile)` — design signature, line
+  2637. Current code: `scopes_for_lane(rendered_scopes)`. Returns
+  every scope for every lane.
+
+Work items
+
+- [ ] Rewrite `render/scopes.py::required_scopes` to take
+  `(profile, rendered_lanes)` and select scopes by profile facts +
+  lane axes (compiler family, MPI provider, GPU vendor, target arch,
+  OS).
+- [ ] Rewrite `render/scopes.py::scopes_for_lane` to take
+  `(lane, stack, profile)` and emit lane-specific include ordering
+  per v6 §Lane Render Order (common → os → target → vendor → mpi →
+  gpu).
+- [ ] Build `tests/fixtures/template-sets/v6/configs/vendor/cray/packages.yaml.j2`
+  rendering `cce`, `gcc`, `rocmcc` externals from
+  `profile.vendor_cray.<compiler>` (`prefix`, `modules`,
+  `extra_attributes.compilers`).
+- [ ] Build `tests/fixtures/template-sets/v6/configs/vendor/linux/packages.yaml.j2`
+  rendering compiler externals from `profile.compilers_external`.
+- [ ] Build `tests/fixtures/template-sets/v6/configs/mpi/cray-mpich/packages.yaml.j2`
+  rendering per-compiler-flavor cray-mpich externals from
+  `profile.vendor_cray.cray_mpich.flavors`.
+- [ ] Build `tests/fixtures/template-sets/v6/configs/mpi/openmpi/packages.yaml.j2`
+  rendering site openmpi external from `profile.mpi[]`.
+- [ ] Build `tests/fixtures/template-sets/v6/configs/gpu/amd-rocm/packages.yaml.j2`
+  rendering every `profile.gpu_toolkit_modules.rocm.spack_components[*]`
+  as a `buildable: false` external with `prefix` and the toolkit
+  `module`.
+- [ ] Build `tests/fixtures/template-sets/v6/configs/gpu/cuda/packages.yaml.j2`
+  and `configs/gpu/nvhpc/packages.yaml.j2` for NVIDIA toolchains.
+- [ ] Build `tests/fixtures/template-sets/v6/configs/target/<arch>/packages.yaml.j2`
+  per documented architecture (zen3, zen4, x86_64_v3, ...).
+- [ ] Build `tests/fixtures/template-sets/v6/configs/os/<os>/packages.yaml.j2`
+  for the documented OS families.
+- [ ] Mirror the same scope buildout in the scaffold starters under
+  `src/stack_composer/scaffold/starters/{library,application}/`.
+- [ ] Add render tests asserting that:
+  - A Cray + AMD-GPU lane renders `cray-mpich` and ROCm components
+    with `buildable: false`.
+  - A generic-Linux lane renders site openmpi as `buildable: false`
+    and does not include `configs/vendor/cray/`.
+  - A lane includes only the scopes it consumes (no leaked
+    cross-vendor scope).
+
+Acceptance per v6 design
+
+- The rendered `configs/vendor/cray/packages.yaml` matches the design
+  example at §2115-2141 byte-for-byte (modulo profile-specific
+  versions/prefixes).
+- The rendered `configs/mpi/cray-mpich/packages.yaml` matches the
+  design example at §2148-2168.
+- Re-running the smoke pipeline (local-only Docker runtime; see
+  agent memory for the location) against a Cray-shaped profile
+  produces a lane whose `spack concretize` resolves `cray-mpich`,
+  `cce`, and ROCm components to externals rather than Spack-building
+  them.
