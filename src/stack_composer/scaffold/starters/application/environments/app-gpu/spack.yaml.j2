@@ -1,0 +1,12 @@
+# TODO(scaffold): Review application GPU target variants for AMD/NVIDIA.
+# Rendered by {{ renderer_identity.name }} {{ renderer_identity.version }}
+spack:
+  view: {{ view_root }}
+  include:
+{% for scope in scopes %}
+    - {{ scope }}
+{% endfor %}
+  specs:
+{% for spec in specs %}
+    - {{ spec }} amdgpu_target={{ lane.gpu_arch }}
+{% endfor %}

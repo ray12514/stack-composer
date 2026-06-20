@@ -35,6 +35,10 @@ stack-composer = "stack_composer.cli:main"
 [tool.setuptools.package-data]
 stack_composer = [
   "schemas/*.json",
+  "scaffold/starters/*/contract.yaml",
+  "scaffold/starters/*/stack-defaults.yaml",
+  "scaffold/starters/*/configs/*/*.j2",
+  "scaffold/starters/*/environments/*/*.j2",
   "resources/*.toml",
   "resources/THIRD_PARTY_LICENSES/*.txt",
 ]
