@@ -32,6 +32,9 @@ Current render coverage:
   and `per_gpu_arch`).
 - Renders both reference profiles in tests: Cray with GPU lanes and generic
   Linux with site MPI and a skipped non-required GPU build.
+- Runs Phase 4 reference fixture acceptance through `validate-template-set`,
+  covering every documented reference stack/profile pair and asserting the
+  rendered lane matrices plus schema-valid draft manifests.
 - Validates selected package repositories have `repo.yaml`, matching namespaces,
   and no duplicate namespaces.
 - Validates package-set tier/kind compatibility and inline spec kind
@@ -72,5 +75,5 @@ in this phase" error.
 
 ## Phase 4 - Reference Fixture Acceptance
 
-- [ ] Render every documented stack against every documented reference profile.
-- [ ] Wire rendered workspace fixtures into CI validation.
+- [x] Render every documented stack against every documented reference profile.
+- [x] Wire rendered workspace fixtures into CI validation.

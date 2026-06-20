@@ -65,6 +65,10 @@ builds:
 per_system:
   example-cray:
     builds:
+      core:
+        compilers: [gcc, cce]
+      serial:
+        compilers: [gcc, cce]
       mpi:
         compilers: [gcc, cce]
         mpi: [cray-mpich]

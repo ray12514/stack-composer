@@ -84,7 +84,10 @@ def lane_candidates_for_build(
     for compiler in compilers:
         for node_name, node in node_types:
             if build.get("expand") == "per_gpu_arch":
+                node_gpu_arch = (node.get("gpu") or {}).get("arch_target")
                 for gpu_selector_name, gpu_selector in gpu_selectors:
+                    if gpu_selector.get("arch_target") != node_gpu_arch:
+                        continue
                     lanes.append(
                         make_lane(
                             profile,
@@ -151,8 +154,8 @@ def compiler_candidates(profile: dict[str, Any], toolchain: dict[str, Any]) -> l
     policy = toolchain.get("compiler", "")
     if policy == "gnu_host_default" and "gcc" in candidates:
         return ["gcc"]
-    if "core" in policy and "gcc" in candidates:
-        return ["gcc"]
+    if policy.startswith("each_science_"):
+        return [name for name in candidates if name != "rocmcc"]
     return candidates
 
 
