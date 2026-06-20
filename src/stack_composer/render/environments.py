@@ -17,7 +17,6 @@ def render_lane_environment(
     env: Environment,
     ctx: dict[str, Any],
     lane: dict[str, Any],
-    rendered_scopes: list[str],
 ) -> None:
     prereqs, prereq_issues = platform_module_prereqs_for_lane(lane, ctx["profile"])
     if prereq_issues:
@@ -27,7 +26,7 @@ def render_lane_environment(
         {
             "lane": lane,
             "specs": expand_spec_source(ctx["spec_sources"][lane["source_build"]], lane),
-            "scopes": scopes_for_lane(rendered_scopes),
+            "scopes": scopes_for_lane(lane, ctx["stack"], ctx["profile"]),
             "toolchain": toolchain_for_lane(ctx["profile"], lane),
             "view_root": lane["view_root"],
             "platform_module_prereqs": prereqs,
@@ -64,12 +63,22 @@ def toolchain_for_lane(profile: dict[str, Any], lane: dict[str, Any]) -> dict[st
             "spec": "^cray-mpich",
         }
     gpu_toolkit = None
-    if lane.get("gpu_arch") and (profile.get("gpu_toolkit_modules") or {}).get("rocm"):
-        rocm = profile["gpu_toolkit_modules"]["rocm"]
+    arch = lane.get("gpu_arch")
+    toolkits = profile.get("gpu_toolkit_modules") or {}
+    if arch and arch.startswith("gfx") and toolkits.get("rocm"):
+        rocm = toolkits["rocm"]
         gpu_toolkit = {
             "name": "rocm",
             "version": rocm.get("version"),
             "prefix": rocm.get("prefix"),
             "spec": "+rocm",
+        }
+    elif arch and arch.startswith("sm_") and toolkits.get("cudatoolkit"):
+        cuda = toolkits["cudatoolkit"]
+        gpu_toolkit = {
+            "name": "cudatoolkit",
+            "version": cuda.get("version"),
+            "prefix": cuda.get("prefix"),
+            "spec": "+cuda",
         }
     return {"compiler": compiler, "mpi": mpi, "gpu_toolkit": gpu_toolkit}

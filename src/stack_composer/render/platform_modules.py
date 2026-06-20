@@ -116,10 +116,7 @@ def _gpu_toolkit_modules(
         )
         return []
     if arch.startswith("sm_"):
-        if lane.get("compiler") == "nvhpc":
-            module = (toolkits.get("nvhpc") or {}).get("module")
-        else:
-            module = (toolkits.get("cudatoolkit") or {}).get("module")
+        module = (toolkits.get("cudatoolkit") or {}).get("module")
         if module:
             return [module]
         issues.append(
@@ -127,7 +124,7 @@ def _gpu_toolkit_modules(
                 "error",
                 "unresolved-platform-module",
                 f"{lane_path}.gpu_arch",
-                f"NVIDIA lane gpu_arch={arch!r} has no cudatoolkit/nvhpc toolkit "
+                f"NVIDIA lane gpu_arch={arch!r} has no CUDA toolkit "
                 "module declared in profile.gpu_toolkit_modules",
             )
         )

@@ -50,6 +50,17 @@ def test_scaffold_templates_uses_bundled_starters(tmp_path: Path, stack_kind: st
     assert (output / "contract.yaml").exists()
     assert (output / "stack-defaults.yaml").exists()
     assert (output / "REVIEW.md").exists()
+    assert (output / "configs" / "vendor" / "cray" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "vendor" / "linux" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "mpi" / "cray-mpich" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "mpi" / "openmpi" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "gpu" / "amd-rocm" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "gpu" / "nvidia-cuda" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "target" / "zen3" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "target" / "zen4" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "target" / "x86_64_v3" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "os" / "rhel8" / "packages.yaml.j2").exists()
+    assert (output / "configs" / "os" / "rhel9" / "packages.yaml.j2").exists()
     assert_all_files_have_todo(output)
     assert validate_schema(
         "template-contract", load_yaml(output / "contract.yaml"), "contract"

@@ -142,7 +142,9 @@ A v6-conformant template set must emit per-scope `packages.yaml` files
 with `externals:` + `buildable: false` entries derived from the
 profile:
 
-- `configs/vendor/cray/packages.yaml` — `cce`, `gcc`, `rocmcc`
+- `configs/vendor/cray/packages.yaml` — `cce`, `gcc`, `rocmcc`, and
+  optional `nvhpc` (Spack/compiler identity for current CPE
+  `PrgEnv-nvidia` + `nvidia/<version>`)
   externals with `prefix`, `modules`, and (for compilers)
   `extra_attributes.compilers` from `profile.vendor_cray.<name>`.
 - `configs/vendor/linux/packages.yaml` — `gcc`/`aocc`/`intel`/`nvhpc`
@@ -157,9 +159,11 @@ profile:
   `profile.gpu_toolkit_modules.rocm.spack_components` (`hip`,
   `hsa-rocr-dev`, `comgr`, `rocblas`, `hipblas`, `hipsparse`,
   `rocprim`, `llvm-amdgpu`, ...) as a `buildable: false` external.
-- `configs/gpu/{cuda,nvhpc}/packages.yaml` — corresponding NVIDIA
-  toolkit externals from `profile.gpu_toolkit_modules.cudatoolkit` /
-  `nvhpc`.
+- `configs/gpu/nvidia-cuda/packages.yaml` — CUDA toolkit externals
+  from `profile.gpu_toolkit_modules.cudatoolkit`. Current Cray CPE
+  uses `cuda/<version>` module naming; legacy `PrgEnv-nvhpc` is out of
+  v1 scope unless a target site requires a future compatibility
+  extension.
 - `configs/target/<arch>/packages.yaml` — `packages.all.require:
   target=<arch>` per `lane.target`.
 - `configs/os/<os>/packages.yaml` — `openssl`, `curl`, etc. system
@@ -176,44 +180,59 @@ And selects only the scopes a given lane needs:
 
 Work items
 
-- [ ] Rewrite `render/scopes.py::required_scopes` to take
+- [x] Rewrite `render/scopes.py::required_scopes` to take
   `(profile, rendered_lanes)` and select scopes by profile facts +
   lane axes (compiler family, MPI provider, GPU vendor, target arch,
   OS).
-- [ ] Rewrite `render/scopes.py::scopes_for_lane` to take
+- [x] Keep GPU toolkit scope selection independent from host compiler:
+  general-purpose Cray PE hosts (`PrgEnv-gnu`, `PrgEnv-cray`,
+  `PrgEnv-aocc`, or another site-verified general host) can compose
+  with ROCm/CUDA toolkit scopes when the profile and template contract
+  allow them.
+  `PrgEnv-amd`/`PrgEnv-nvidia` remain explicit ROCmCC/NVHPC exception
+  lanes, not defaults.
+- [x] Rewrite `render/scopes.py::scopes_for_lane` to take
   `(lane, stack, profile)` and emit lane-specific include ordering
   per v6 §Lane Render Order (common → os → target → vendor → mpi →
   gpu).
-- [ ] Build `tests/fixtures/template-sets/v6/configs/vendor/cray/packages.yaml.j2`
+- [x] Build `tests/fixtures/template-sets/v6/configs/vendor/cray/packages.yaml.j2`
   rendering `cce`, `gcc`, `rocmcc` externals from
   `profile.vendor_cray.<compiler>` (`prefix`, `modules`,
   `extra_attributes.compilers`).
-- [ ] Build `tests/fixtures/template-sets/v6/configs/vendor/linux/packages.yaml.j2`
+- [x] Build `tests/fixtures/template-sets/v6/configs/vendor/linux/packages.yaml.j2`
   rendering compiler externals from `profile.compilers_external`.
-- [ ] Build `tests/fixtures/template-sets/v6/configs/mpi/cray-mpich/packages.yaml.j2`
+- [x] Build `tests/fixtures/template-sets/v6/configs/mpi/cray-mpich/packages.yaml.j2`
   rendering per-compiler-flavor cray-mpich externals from
   `profile.vendor_cray.cray_mpich.flavors`.
-- [ ] Build `tests/fixtures/template-sets/v6/configs/mpi/openmpi/packages.yaml.j2`
+- [x] Build `tests/fixtures/template-sets/v6/configs/mpi/openmpi/packages.yaml.j2`
   rendering site openmpi external from `profile.mpi[]`.
-- [ ] Build `tests/fixtures/template-sets/v6/configs/gpu/amd-rocm/packages.yaml.j2`
+- [x] Build `tests/fixtures/template-sets/v6/configs/gpu/amd-rocm/packages.yaml.j2`
   rendering every `profile.gpu_toolkit_modules.rocm.spack_components[*]`
   as a `buildable: false` external with `prefix` and the toolkit
   `module`.
-- [ ] Build `tests/fixtures/template-sets/v6/configs/gpu/cuda/packages.yaml.j2`
-  and `configs/gpu/nvhpc/packages.yaml.j2` for NVIDIA toolchains.
-- [ ] Build `tests/fixtures/template-sets/v6/configs/target/<arch>/packages.yaml.j2`
+- [x] Build `tests/fixtures/template-sets/v6/configs/gpu/nvidia-cuda/packages.yaml.j2`
+  for NVIDIA CUDA toolkit externals. Keep NVHPC as compiler identity
+  in vendor scopes / exception lanes, not as a second default GPU
+  toolkit scope.
+- [x] Build `tests/fixtures/template-sets/v6/configs/target/<arch>/packages.yaml.j2`
   per documented architecture (zen3, zen4, x86_64_v3, ...).
-- [ ] Build `tests/fixtures/template-sets/v6/configs/os/<os>/packages.yaml.j2`
+- [x] Build `tests/fixtures/template-sets/v6/configs/os/<os>/packages.yaml.j2`
   for the documented OS families.
-- [ ] Mirror the same scope buildout in the scaffold starters under
+- [x] Mirror the same scope buildout in the scaffold starters under
   `src/stack_composer/scaffold/starters/{library,application}/`.
-- [ ] Add render tests asserting that:
-  - A Cray + AMD-GPU lane renders `cray-mpich` and ROCm components
-    with `buildable: false`.
-  - A generic-Linux lane renders site openmpi as `buildable: false`
-    and does not include `configs/vendor/cray/`.
-  - A lane includes only the scopes it consumes (no leaked
-    cross-vendor scope).
+- [x] Add render tests asserting the existing fixture coverage: Cray + AMD GPU
+  renders `cray-mpich` and ROCm component externals with `buildable: false`,
+  generic Linux renders site OpenMPI with `buildable: false`, and lanes include
+  only the scopes they consume.
+- [x] Add remaining render tests asserting that:
+  - A Cray + NVIDIA-GPU lane uses current CPE naming
+    (`PrgEnv-nvidia`, `nvidia/<version>`, `cuda/<version>`) and not
+    legacy `PrgEnv-nvhpc`.
+  - Cray GPU lanes using GNU/CCE/AOCC or another site-verified general
+    host compiler still select the same ROCm/CUDA toolkit scopes;
+    GPU-aware ROCmCC/NVHPC lanes are explicit exceptions.
+  - Generic Linux AMD/NVIDIA GPU lanes select GPU toolkit scopes
+    independently from Cray platform scopes.
 
 Acceptance per v6 design
 

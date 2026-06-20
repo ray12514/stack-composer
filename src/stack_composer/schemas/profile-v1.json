@@ -466,7 +466,7 @@
         "module": {
           "type": "string",
           "minLength": 1,
-          "description": "Module name (e.g., cudatoolkit/12.4)."
+          "description": "Module name (e.g., cuda/12.4)."
         },
         "prefix": {
           "type": "string",
@@ -479,7 +479,7 @@
     },
     "nvhpc_toolkit_module": {
       "type": "object",
-      "description": "NVHPC as a standalone toolkit module (no PrgEnv switch).",
+      "description": "NVHPC module for explicit NVHPC compiler/toolkit exception lanes.",
       "properties": {
         "version": {
           "type": "string",
