@@ -8,5 +8,5 @@ spack:
 {% endfor %}
   specs:
 {% for spec in specs %}
-    - {{ spec }}{% if lane.gpu_arch.startswith("gfx") %} amdgpu_target={{ lane.gpu_arch }}{% elif lane.gpu_arch.startswith("sm_") %} cuda_arch={{ lane.gpu_arch[3:] }}{% endif %}
+    - {{ spec }}
 {% endfor %}

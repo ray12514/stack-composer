@@ -263,28 +263,35 @@ any one bullet without touching the others.
 
 ### 6a - Package-set GPU-vendor neutrality
 
-The `science-full.yaml` package set's `gpu` kind hardcodes `+rocm`
-specs (`kokkos+rocm`, `raja+rocm`). A real production package set
-shared across AMD and NVIDIA GPU lanes should declare GPU-aware specs
-once, and the lane template should compose the right variant per the
-lane's `gpu_arch`.
+The `science-full.yaml` package set's `gpu` kind used to hardcode
+`+rocm` specs (`kokkos+rocm`, `raja+rocm`). A real production package
+set shared across AMD and NVIDIA GPU lanes should declare GPU-aware
+specs once, and render should compose the right variant per the lane's
+`gpu_arch`.
 
-- [ ] Decide the schema shape. Options sketched in
+- [x] Decide the schema shape. Options sketched in
   `cray_pe_coupling_inventory.md` §"Recommended hardening work" but
-  not yet decided. Two candidates:
-  - Package set declares `kokkos` with `gpu_aware: true` (or similar
-    boolean flag). Template appends `+rocm amdgpu_target=...` or
-    `+cuda cuda_arch=...` based on `lane.gpu_arch`.
-  - Package set declares `kokkos+gpu` as a placeholder variant; the
-    template substitutes `+gpu` with `+rocm` or `+cuda` at render.
-- [ ] Implement the chosen shape in `model/package_set.py` and the
+  not yet decided. Chosen shape: package sets declare `+gpu` as a
+  placeholder variant; render expands it to `+rocm` or `+cuda` plus
+  the lane architecture flag based on `lane.gpu_arch`.
+- [x] Implement the chosen shape in `model/package_set.py` and the
   fixture `science-full.yaml`.
-- [ ] Update `tests/test_render_scopes.py` to assert that the NVIDIA
+- [x] Update `tests/test_render_scopes.py` to assert that the NVIDIA
   lane gets `cuda_arch=...` on GPU-aware specs (the assertion we
   dropped to land Phase 5 because the fixture has no `+cuda` specs).
-- [ ] Smoke verify: a Cray + NVIDIA profile + the updated science-full
+- [x] Smoke verify: a Cray + NVIDIA profile + the updated science-full
   package set produces a GPU lane whose specs carry `+cuda
-  cuda_arch=<arch>` exactly where expected.
+  cuda_arch=<arch>` exactly where expected. Verified 2026-06-20:
+  rendered AMD lane in the smoke container shows
+  `kokkos+rocm amdgpu_target=gfx90a` and
+  `raja+rocm amdgpu_target=gfx90a` with non-GPU specs (gsl, hdf5,
+  netcdf-c, parallel-netcdf, tau+mpi) emitted unchanged; the parallel
+  NVIDIA case is exercised by
+  `tests/test_render_scopes.py::test_rendered_cray_nvidia_workspace_uses_current_cpe_names`
+  asserting `kokkos+cuda cuda_arch=80`. Spack concretize against the
+  AMD lane recognizes all rendered externals by name (hip,
+  hsa-rocr-dev, llvm-amdgpu, rocprim, cray-mpich, cce, gcc) before
+  tripping on cross-arch target compatibility — the Phase 6b gap.
 
 Acceptance:
 

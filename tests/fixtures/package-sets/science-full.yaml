@@ -35,8 +35,8 @@ specs:
     - netcdf-c@4.9.0+mpi
     - parallel-netcdf@1.13.0
     - tau+mpi
-    - kokkos+rocm
-    - raja+rocm
+    - kokkos+gpu
+    - raja+gpu
 
 provenance_hints:
   cray-mpich: Platform-backed
