@@ -19,7 +19,7 @@ mkdir -p dist/wheelhouse
 "${PYTHON}" -m build --wheel --no-isolation
 "${PYTHON}" -m pip wheel --no-deps --wheel-dir dist/wheelhouse dist/stack_composer-*.whl
 "${PYTHON}" -m pip wheel --no-deps --only-binary=:all: --wheel-dir dist/wheelhouse \
-  'click>=8.1,<9' \
+  'click>=8.1,<8.2' \
   'fastjsonschema>=2.20,<3' \
   'Jinja2>=3.1,<4'
 CC=/usr/bin/false "${PYTHON}" -m pip wheel \
