@@ -9,10 +9,19 @@ Current implementation decisions:
 - Runtime validation: packaged JSON Schemas plus `fastjsonschema`.
 - Typed model strategy: plain dictionaries at the schema boundary, with small
   model loader modules per durable input. Pydantic v2 is intentionally avoided
-  so the eventual shiv artifact can stay platform-neutral.
+  so the shiv artifact stays platform-neutral.
 
-The GitLab migration should be handled through remotes and future CI files, not
-through hardcoded repository URLs in the implementation.
+The implementation does not depend on GitHub-specific URLs or remote names.
+Repository hosting changes should be handled through remotes and CI files, not
+through code paths.
+
+## Local Checks
+
+```bash
+.venv/bin/ruff check .
+.venv/bin/pytest
+git diff --check
+```
 
 ## Release Build
 
@@ -23,3 +32,10 @@ third-party license files.
 The third-party script refreshes exact dependency versions and license texts
 from installed runtime distributions, enforces manifest consistency, and syncs
 packaged resources.
+
+Smoke-check the built artifact with:
+
+```bash
+dist/stack-composer.pyz --help
+dist/stack-composer.pyz --licenses
+```
