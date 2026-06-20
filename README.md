@@ -9,16 +9,23 @@ make package intent decisions outside `stack.yaml` and template contracts.
 
 ## Status
 
-Phase 1 foundation is in progress:
+The v1 implementation phases are complete through reference-fixture acceptance:
 
-- Python package scaffold and CLI are present.
 - Canonical schemas are packaged under `stack_composer/schemas/`.
-- `validate` performs schema and initial render preflight checks.
-- `render` writes a deterministic draft workspace for the reference fixture
-  vocabulary, including rendered config scopes, lane environments, package repos,
-  and `release-manifest.yaml`.
-- Release packaging and third-party license enforcement are present.
-- Full v6 resolver coverage is still in progress.
+- `validate` performs schema checks and render preflight checks.
+- `render` writes deterministic draft workspaces with rendered config scopes,
+  lane environments, package repos, and `release-manifest.yaml`.
+- Maintainer commands are implemented: `assess-profiles`, `explain`,
+  `validate-template-set`, `scaffold-templates`, and `publish-manifest`.
+- `scripts/spack-build` is shipped in the release tarball as the local build
+  companion script.
+- Reference fixture acceptance renders the documented ScienceStack stack against
+  the documented Cray and generic Linux profiles in tests.
+- Release packaging, platform-neutral `.pyz` enforcement, and third-party
+  license enforcement are present.
+
+`validate-template-set --concretize` remains intentionally deferred; the flag is
+wired and exits with a clear not-implemented error.
 
 ## Development
 
@@ -38,5 +45,5 @@ PYTHON=.venv/bin/python scripts/build-pyz.sh
 ## GitLab Note
 
 The implementation does not hardcode GitHub-specific URLs or remote names.
-Moving the repository to GitLab should only affect git remotes and future CI
+Moving the repository to GitLab should only affect git remotes and hosting/CI
 configuration.
