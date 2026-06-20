@@ -77,14 +77,38 @@ def validate_template_set(
 @click.option("--profile", required=True, help="profile.yaml path.")
 @click.option("--templates", required=True, help="Root directory containing template sets.")
 @click.option(
+    "--stack",
+    "stack_path",
+    default=None,
+    help="Optional stack.yaml. When set, output adds per_system_narrowing menu per build.",
+)
+@click.option(
+    "--template-set",
+    "template_set_name",
+    default=None,
+    help="Template-set directory name under --templates. Required when --stack is omitted.",
+)
+@click.option(
     "--format",
     "output_format",
     type=click.Choice(["human", "yaml", "json"]),
     default="human",
 )
 @command_error_handler
-def explain(profile: str, templates: str, output_format: str) -> None:
-    explain_command.run(profile=profile, templates=templates, output_format=output_format)
+def explain(
+    profile: str,
+    templates: str,
+    stack_path: str | None,
+    template_set_name: str | None,
+    output_format: str,
+) -> None:
+    explain_command.run(
+        profile=profile,
+        templates=templates,
+        stack_path=stack_path,
+        template_set_name=template_set_name,
+        output_format=output_format,
+    )
 
 
 @cli.command("render")
