@@ -57,7 +57,7 @@ Current render coverage:
 ## Phase 2 - Maintainer Commands
 
 - [ ] Implement `assess-profiles`.
-- [ ] Implement `explain`.
+- [x] Implement `explain`.
 - [ ] Implement `validate-template-set` render-only mode.
 
 ## Phase 3 - Scaffold And Publish
