@@ -62,7 +62,11 @@ def scaffold_templates(profile: str, seed: str | None, output: str, stack_kind: 
 @cli.command("validate-template-set")
 @click.option("--templates", required=True, help="Single template set directory under test.")
 @click.option("--profiles", multiple=True, required=True, help="Profile glob; may be repeated.")
-@click.option("--smoke-stack", required=True, help="Smoke stack.yaml exercising the template set's lane kinds.")
+@click.option(
+    "--smoke-stack",
+    required=True,
+    help="Smoke stack.yaml exercising the template set's lane kinds.",
+)
 @click.option("--package-sets-dir", required=True, help="Package sets root directory.")
 @click.option("--package-repos-dir", required=True, help="Package repositories root directory.")
 @click.option("--output", required=True, help="Report directory.")
