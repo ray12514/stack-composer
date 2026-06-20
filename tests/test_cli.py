@@ -74,13 +74,38 @@ def test_render_command_writes_workspace(tmp_path) -> None:
     assert (workspace / "release-manifest.yaml").exists()
 
 
-def test_stub_command_returns_clear_error() -> None:
+def test_scaffold_templates_command_writes_proposal(tmp_path) -> None:
     result = CliRunner().invoke(
         cli,
         [
             "scaffold-templates",
-            "--profile", "profile.yaml",
-            "--output", "out",
+            "--profile",
+            str(fixture_path("profiles", "example-linux", "profile.yaml")),
+            "--output",
+            str(tmp_path / "proposed"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "proposed" / "REVIEW.md").exists()
+
+
+def test_stub_command_returns_clear_error() -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "publish-manifest",
+            "--workspace",
+            "workspace",
+            "--build-host",
+            "host",
+            "--lockfiles",
+            "locks",
+            "--platform-module-prereqs",
+            "prereqs.yaml",
+            "--buildcache-destinations",
+            "buildcache.yaml",
+            "--verify-results",
+            "verify.yaml",
         ],
     )
     assert result.exit_code != 0

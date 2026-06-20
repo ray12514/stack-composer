@@ -1,0 +1,5 @@
+# TODO(scaffold): Review application repository ordering.
+repos:
+{% for repo in package_repos %}
+  - {{ path_join('..', '..', 'package-repos', repo.name) }}
+{% endfor %}

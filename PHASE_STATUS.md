@@ -66,7 +66,7 @@ in this phase" error.
 
 ## Phase 3 - Scaffold And Publish
 
-- [ ] Implement `scaffold-templates`.
+- [x] Implement `scaffold-templates`.
 - [ ] Implement `publish-manifest`.
 - [ ] Implement the `spack-build` companion script.
 
