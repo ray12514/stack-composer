@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import shutil
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
 from jinja2 import UndefinedError
-
-from copy import deepcopy
 
 from stack_composer.errors import ValidationFailed
 from stack_composer.model.contract import load_contract

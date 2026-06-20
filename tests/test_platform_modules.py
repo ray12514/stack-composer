@@ -4,7 +4,12 @@ from stack_composer.render.platform_modules import platform_module_prereqs_for_l
 
 
 def test_returns_compiler_mpi_and_gpu_modules_for_cray_amd_lane() -> None:
-    lane = {"name": "gcc-gpu", "compiler": "gcc", "mpi_provider": "cray-mpich", "gpu_arch": "gfx90a"}
+    lane = {
+        "name": "gcc-gpu",
+        "compiler": "gcc",
+        "mpi_provider": "cray-mpich",
+        "gpu_arch": "gfx90a",
+    }
     profile = {
         "vendor_cray": {
             "gcc": {"modules": ["PrgEnv-gnu", "gcc-native/13"]},
@@ -44,7 +49,12 @@ def test_empty_modules_lists_are_not_errors() -> None:
 
 
 def test_missing_cray_mpich_flavor_raises_unresolved() -> None:
-    lane = {"name": "rocmcc-mpi", "compiler": "rocmcc", "mpi_provider": "cray-mpich", "gpu_arch": None}
+    lane = {
+        "name": "rocmcc-mpi",
+        "compiler": "rocmcc",
+        "mpi_provider": "cray-mpich",
+        "gpu_arch": None,
+    }
     profile = {
         "vendor_cray": {
             "rocmcc": {"modules": ["PrgEnv-amd"]},

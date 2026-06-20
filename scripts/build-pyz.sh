@@ -17,7 +17,35 @@ rm -rf \
 mkdir -p dist/wheelhouse
 
 "${PYTHON}" -m build --wheel --no-isolation
-"${PYTHON}" -m pip wheel --wheel-dir dist/wheelhouse dist/stack_composer-*.whl
+"${PYTHON}" -m pip wheel --no-deps --wheel-dir dist/wheelhouse dist/stack_composer-*.whl
+"${PYTHON}" -m pip wheel --no-deps --only-binary=:all: --wheel-dir dist/wheelhouse \
+  'click>=8.1,<9' \
+  'fastjsonschema>=2.20,<3' \
+  'Jinja2>=3.1,<4'
+CC=/usr/bin/false "${PYTHON}" -m pip wheel \
+  --no-cache-dir \
+  --no-deps \
+  --no-binary=MarkupSafe \
+  --wheel-dir dist/wheelhouse \
+  'MarkupSafe>=2.1,<3'
+PYYAML_FORCE_LIBYAML=0 "${PYTHON}" -m pip wheel \
+  --no-cache-dir \
+  --no-deps \
+  --no-binary=PyYAML \
+  --wheel-dir dist/wheelhouse \
+  'PyYAML>=6.0,<7'
+"${PYTHON}" - <<'PY'
+from pathlib import Path
+
+bad = []
+for wheel in sorted(Path("dist/wheelhouse").glob("*.whl")):
+    parts = wheel.name.removesuffix(".whl").split("-")
+    python_tag, abi_tag, platform_tag = parts[-3:]
+    if "py3" not in python_tag or abi_tag != "none" or platform_tag != "any":
+        bad.append(wheel.name)
+if bad:
+    raise SystemExit("platform-specific wheels are not allowed in pyz wheelhouse: " + ", ".join(bad))
+PY
 
 VERSION=$("${PYTHON}" - <<'PY'
 from pathlib import Path

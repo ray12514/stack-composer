@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import sys
 from pathlib import Path
-from typing import Any, IO
+from typing import IO, Any
 
 import click
 import yaml
@@ -13,7 +13,6 @@ from stack_composer.errors import ValidationFailed
 from stack_composer.model.profile import load_profile
 from stack_composer.render.engine import render_workspace
 from stack_composer.render.release import ReleaseVars, SourceRepo
-
 
 SMOKE_RELEASE_TAG = "validate"
 SMOKE_RENDERED_AT = "1970-01-01T00:00:00Z"
