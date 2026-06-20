@@ -90,26 +90,26 @@ def test_amd_lane_without_rocm_toolkit_raises_unresolved() -> None:
     )
 
 
-def test_nvidia_lane_picks_nvhpc_for_nvhpc_compiler() -> None:
+def test_nvidia_lane_uses_cuda_toolkit_for_nvhpc_compiler() -> None:
     lane = {"name": "nv", "compiler": "nvhpc", "mpi_provider": None, "gpu_arch": "sm_80"}
     profile = {
-        "compilers_external": [{"name": "nvhpc", "modules": ["nvhpc/24.3"]}],
+        "vendor_cray": {"nvhpc": {"modules": ["PrgEnv-nvidia", "nvidia/25.3"]}},
         "gpu_toolkit_modules": {
-            "cudatoolkit": {"module": "cudatoolkit/12.4"},
+            "cudatoolkit": {"module": "cuda/12.4"},
             "nvhpc": {"module": "nvhpc/24.3"},
         },
     }
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
     assert issues == []
-    assert modules == ["nvhpc/24.3"]
+    assert modules == ["PrgEnv-nvidia", "nvidia/25.3", "cuda/12.4"]
 
 
-def test_nvidia_lane_picks_cudatoolkit_for_non_nvhpc_compiler() -> None:
+def test_nvidia_lane_picks_cuda_toolkit_for_non_nvhpc_compiler() -> None:
     lane = {"name": "gcc-gpu", "compiler": "gcc", "mpi_provider": None, "gpu_arch": "sm_90"}
     profile = {
         "compilers_external": [{"name": "gcc", "modules": []}],
-        "gpu_toolkit_modules": {"cudatoolkit": {"module": "cudatoolkit/12.4"}},
+        "gpu_toolkit_modules": {"cudatoolkit": {"module": "cuda/12.4"}},
     }
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
     assert issues == []
-    assert modules == ["cudatoolkit/12.4"]
+    assert modules == ["cuda/12.4"]

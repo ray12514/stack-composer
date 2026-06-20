@@ -74,7 +74,7 @@ def render_workspace(
         pending.mkdir(parents=True)
         jinja_env = make_jinja_environment(template_set)
         context_dict = dict(render_context)
-        rendered_scopes = required_scopes(template_set)
+        rendered_scopes = required_scopes(profile, rendered_lanes)
         for scope in rendered_scopes:
             render_template_tree(
                 template_set / "configs" / scope,
@@ -90,7 +90,6 @@ def render_workspace(
                 env=jinja_env,
                 ctx=context_dict,
                 lane=lane,
-                rendered_scopes=rendered_scopes,
             )
         manifest = draft_manifest(
             profile_path=profile_path,

@@ -14,6 +14,8 @@ def make_jinja_environment(template_dir: Path) -> Environment:
         loader=FileSystemLoader(str(template_dir)),
         undefined=StrictUndefined,
         autoescape=False,
+        trim_blocks=True,
+        lstrip_blocks=True,
         keep_trailing_newline=True,
     )
     env.filters["to_yaml"] = to_yaml
@@ -41,15 +43,11 @@ def spack_spec(parts: dict[str, Any]) -> str:
     return spec
 
 
-def required_scopes(template_dir: Path) -> list[str]:
-    configs = template_dir / "configs"
-    if not configs.exists():
-        return []
-    scopes = set()
-    for path in configs.rglob("*"):
-        if path.is_file():
-            scopes.add(path.parent.relative_to(configs).as_posix())
-    return sorted(scopes)
+def required_scopes(profile: dict[str, Any], rendered_lanes: list[dict[str, Any]]) -> list[str]:
+    scopes: set[str] = set()
+    for lane in rendered_lanes:
+        scopes.update(scope_names_for_lane(lane, profile))
+    return sorted(scopes, key=scope_sort_key)
 
 
 def render_template_tree(src: Path, dst: Path, env: Environment, ctx: dict[str, Any]) -> None:
@@ -66,5 +64,61 @@ def render_template_tree(src: Path, dst: Path, env: Environment, ctx: dict[str, 
         output_path.write_text(rendered, encoding="utf-8")
 
 
-def scopes_for_lane(rendered_scopes: list[str]) -> list[str]:
-    return ["../../../configs/" + scope for scope in rendered_scopes]
+def scopes_for_lane(
+    lane: dict[str, Any], stack: dict[str, Any], profile: dict[str, Any]
+) -> list[str]:
+    del stack
+    return ["../../../configs/" + scope for scope in scope_names_for_lane(lane, profile)]
+
+
+def scope_names_for_lane(lane: dict[str, Any], profile: dict[str, Any]) -> list[str]:
+    scopes = ["common", os_scope(profile), "target/" + lane["target"], vendor_scope(profile)]
+    mpi_scope_name = mpi_scope(lane)
+    if mpi_scope_name:
+        scopes.append(mpi_scope_name)
+    gpu_scope_name = gpu_scope(lane)
+    if gpu_scope_name:
+        scopes.append(gpu_scope_name)
+    return scopes
+
+
+def os_scope(profile: dict[str, Any]) -> str:
+    os_data = profile["os"]
+    return f"os/{os_data['name']}{os_data['major']}"
+
+
+def vendor_scope(profile: dict[str, Any]) -> str:
+    if profile.get("vendor_cray"):
+        return "vendor/cray"
+    return "vendor/linux"
+
+
+def mpi_scope(lane: dict[str, Any]) -> str | None:
+    provider = lane.get("mpi_provider")
+    if not provider:
+        return None
+    return "mpi/" + provider
+
+
+def gpu_scope(lane: dict[str, Any]) -> str | None:
+    arch = lane.get("gpu_arch")
+    if not arch:
+        return None
+    if arch.startswith("gfx"):
+        return "gpu/amd-rocm"
+    if arch.startswith("sm_"):
+        return "gpu/nvidia-cuda"
+    return None
+
+
+def scope_sort_key(scope: str) -> tuple[int, str]:
+    order = {
+        "common": 0,
+        "os": 1,
+        "target": 2,
+        "vendor": 3,
+        "mpi": 4,
+        "gpu": 5,
+    }
+    head = scope.split("/", 1)[0]
+    return (order.get(head, 99), scope)

@@ -15,9 +15,16 @@ implement.
    - §Render Step — Specification (`render()` pseudo-code, context
      keys, render-step invariants, failure modes).
    - §Template Render Context — the dict templates receive.
-   - §Cray Toolchain / §Cray MPICH Externals — canonical
-     `packages.yaml` examples (lines ~2115-2168).
-   - §Generic Linux HPC — canonical site-MPI external example.
+    - §Cray Toolchain / §Cray MPICH Externals — canonical
+      `packages.yaml` examples (lines ~2115-2168).
+    - §Host-Compiler Policy For GPU Lanes / §Cray PE + GPU lane
+      assembly — default GPU lanes use a general host compiler plus
+      standalone toolkit. `PrgEnv-gnu`, `PrgEnv-cray`, `PrgEnv-aocc`,
+      and other site-verified, contract-approved general hosts are the
+      default family; ROCmCC/NVHPC are narrow exception lanes. For Cray
+      NVIDIA, v1 supports current CPE naming only:
+      `PrgEnv-nvidia`, `nvidia/<version>`, and `cuda/<version>`.
+    - §Generic Linux HPC — canonical site-MPI external example.
    - §Stack Defaults Merge Rules — how `stack.yaml` + `stack-defaults`
      compose.
 3. `PHASE_STATUS.md` in this repo — what is *claimed* done, what is

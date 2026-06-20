@@ -1,0 +1,18 @@
+# Rendered for {{ profile.system.name }} / generic Linux compiler externals
+packages:
+{% for compiler in profile.compilers_external or [] %}
+  {{ compiler.name }}:
+    buildable: false
+    externals:
+      - spec: "{{ compiler.name }}@{{ compiler.version }} languages='{{ (compiler.languages or []) | join(',') }}'"
+        prefix: {{ compiler.prefix }}
+{% set modules = compiler.get("modules") or [] %}
+{% if modules %}
+        modules:
+{% for module in modules %}
+          - {{ module }}
+{% endfor %}
+{% else %}
+        modules: []
+{% endif %}
+{% endfor %}
