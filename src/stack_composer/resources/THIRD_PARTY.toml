@@ -5,7 +5,7 @@ status = "generated from installed runtime distributions"
 
 [[dependency]]
 name = "click"
-version = "8.4.1"
+version = "8.1.8"
 license_spdx = "BSD-3-Clause"
 project_url = "https://palletsprojects.com/p/click/"
 source_url = "https://github.com/pallets/click"
