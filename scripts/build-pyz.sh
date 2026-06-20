@@ -72,6 +72,7 @@ RELEASE_DIR="dist/stack-composer-${VERSION}"
 rm -rf "${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}"
 cp dist/stack-composer.pyz "${RELEASE_DIR}/stack-composer.pyz"
+cp scripts/spack-build "${RELEASE_DIR}/spack-build"
 cp README.md LICENSE THIRD_PARTY.toml "${RELEASE_DIR}/"
 cp -R THIRD_PARTY_LICENSES "${RELEASE_DIR}/THIRD_PARTY_LICENSES"
 

@@ -1,0 +1,284 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: spack-build --workspace DIR [options]
+
+Options:
+  --workspace DIR        Rendered workspace directory. Required.
+  --spack-root DIR       Optional Spack checkout to source before running.
+  --lanes GLOB           Lane glob relative to environments/, default '*/*'.
+  --reports DIR          Report directory, default '<workspace>/reports'.
+  --jobs N               spack install parallelism, default half local CPUs.
+  --buildcache NAME=URL  Buildcache mirror to push after each lane; repeatable.
+  --skip-push            Skip buildcache push steps.
+  --fail-fast            Stop on first lane failure.
+  -h, --help             Show this help.
+EOF
+}
+
+die() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+WORKSPACE=""
+SPACK_ROOT=""
+LANES_GLOB="*/*"
+REPORTS=""
+JOBS=""
+SKIP_PUSH=0
+FAIL_FAST=0
+BUILDCACHE_NAMES=()
+BUILDCACHE_URLS=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --workspace)
+      WORKSPACE=${2:-}
+      shift 2
+      ;;
+    --spack-root)
+      SPACK_ROOT=${2:-}
+      shift 2
+      ;;
+    --lanes)
+      LANES_GLOB=${2:-}
+      shift 2
+      ;;
+    --reports)
+      REPORTS=${2:-}
+      shift 2
+      ;;
+    --jobs)
+      JOBS=${2:-}
+      shift 2
+      ;;
+    --buildcache)
+      entry=${2:-}
+      [[ $entry == *=* ]] || die "--buildcache expects NAME=URL"
+      BUILDCACHE_NAMES+=("${entry%%=*}")
+      BUILDCACHE_URLS+=("${entry#*=}")
+      shift 2
+      ;;
+    --skip-push)
+      SKIP_PUSH=1
+      shift
+      ;;
+    --fail-fast)
+      FAIL_FAST=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      die "unknown argument: $1"
+      ;;
+  esac
+done
+
+[[ -n $WORKSPACE ]] || die "--workspace is required"
+[[ -d $WORKSPACE ]] || die "workspace does not exist: $WORKSPACE"
+[[ -d "$WORKSPACE/environments" ]] || die "workspace has no environments directory"
+
+if [[ -n $SPACK_ROOT ]]; then
+  setup="$SPACK_ROOT/share/spack/setup-env.sh"
+  [[ -f $setup ]] || die "spack setup script not found: $setup"
+  # shellcheck source=/dev/null
+  source "$setup"
+fi
+
+command -v spack >/dev/null 2>&1 || die "spack is not on PATH"
+
+if [[ -z $REPORTS ]]; then
+  REPORTS="$WORKSPACE/reports"
+fi
+mkdir -p "$REPORTS"
+
+if [[ -z $JOBS ]]; then
+  cpus=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '2')
+  [[ $cpus =~ ^[0-9]+$ ]] || cpus=2
+  if [[ $cpus -gt 1 ]]; then
+    JOBS=$((cpus / 2))
+  else
+    JOBS=1
+  fi
+fi
+
+yaml_escape() {
+  value=${1//\\/\\\\}
+  value=${value//"/\\"}
+  printf '%s' "$value"
+}
+
+first_version() {
+  while IFS= read -r token; do
+    for part in $token; do
+      if [[ $part =~ ^[0-9]+(\.[0-9]+)+ ]]; then
+        printf '%s\n' "$part"
+        return 0
+      fi
+    done
+  done
+  printf 'unknown\n'
+}
+
+spack_version=$(spack --version 2>/dev/null | first_version)
+
+host_name=$(hostname 2>/dev/null || printf 'unknown')
+os_id=$(uname -s 2>/dev/null || printf 'unknown')
+os_major=0
+if [[ -r /etc/os-release ]]; then
+  os_id=$(while IFS='=' read -r key value; do
+    if [[ $key == ID ]]; then
+      value=${value%\"}
+      value=${value#\"}
+      printf '%s' "$value"
+      break
+    fi
+  done < /etc/os-release)
+  version_id=$(while IFS='=' read -r key value; do
+    if [[ $key == VERSION_ID ]]; then
+      value=${value%\"}
+      value=${value#\"}
+      printf '%s' "$value"
+      break
+    fi
+  done < /etc/os-release)
+  os_major=${version_id%%.*}
+  [[ $os_major =~ ^[0-9]+$ ]] || os_major=0
+fi
+glibc=$(getconf GNU_LIBC_VERSION 2>/dev/null | while read -r _ version; do printf '%s' "$version"; done)
+[[ $glibc =~ ^[0-9]+\.[0-9]+ ]] || glibc="0.0"
+cpu=$(uname -m 2>/dev/null || printf 'unknown')
+
+LANES=()
+while IFS= read -r spack_yaml; do
+  env_dir=${spack_yaml%/spack.yaml}
+  rel=${env_dir#"$WORKSPACE/environments/"}
+  if [[ $rel == $LANES_GLOB ]]; then
+    LANES+=("$rel")
+  fi
+done < <(find "$WORKSPACE/environments" -mindepth 3 -maxdepth 3 -name spack.yaml | sort)
+
+[[ ${#LANES[@]} -gt 0 ]] || die "no lanes matched $LANES_GLOB"
+
+lane_roots="$REPORTS/.lane-roots.tmp"
+: > "$lane_roots"
+failure_count=0
+libraries_status=passed
+manifest_status=passed
+smoke_status=skipped
+
+run_step() {
+  lane=$1
+  step=$2
+  shift 2
+  lane_report_dir="$REPORTS/$lane"
+  mkdir -p "$lane_report_dir"
+  log="$lane_report_dir/$step.log"
+  if "$@" >"$log" 2>&1; then
+    printf 'passed' > "$lane_report_dir/$step.status"
+    return 0
+  fi
+  printf 'failed' > "$lane_report_dir/$step.status"
+  failure_count=$((failure_count + 1))
+  if [[ $FAIL_FAST -eq 1 ]]; then
+    die "lane $lane failed at $step; see $log"
+  fi
+  return 1
+}
+
+for lane in "${LANES[@]}"; do
+  env_path="$WORKSPACE/environments/$lane"
+  lane_name=${lane//\//-}
+  lane_failed=0
+  run_step "$lane" concretize spack -e "$env_path" concretize --force || lane_failed=1
+  run_step "$lane" fetch spack -e "$env_path" fetch -D || lane_failed=1
+  run_step "$lane" install spack -e "$env_path" install -j "$JOBS" || lane_failed=1
+  install_root=$(spack -e "$env_path" find --format '{prefix}' 2>/dev/null | while IFS= read -r line; do
+    if [[ -n $line ]]; then
+      printf '%s' "$line"
+      break
+    fi
+  done)
+  if [[ -n $install_root ]]; then
+    printf '%s|%s\n' "$lane_name" "$install_root" >> "$lane_roots"
+  fi
+  run_step "$lane" view-regenerate spack -e "$env_path" env view regenerate || lane_failed=1
+  run_step "$lane" verify-libraries spack -e "$env_path" verify libraries || {
+    lane_failed=1
+    libraries_status=failed
+  }
+  run_step "$lane" verify-manifest spack -e "$env_path" verify manifest -a || {
+    lane_failed=1
+    manifest_status=failed
+  }
+  if [[ $SKIP_PUSH -eq 0 && ${#BUILDCACHE_NAMES[@]} -gt 0 && $lane_failed -eq 0 ]]; then
+    for i in "${!BUILDCACHE_NAMES[@]}"; do
+      run_step "$lane" "buildcache-${BUILDCACHE_NAMES[$i]}" \
+        spack -e "$env_path" buildcache push --update-index "${BUILDCACHE_URLS[$i]}" || lane_failed=1
+    done
+  fi
+done
+
+{
+  printf 'spack:\n'
+  printf '  version: "%s"\n' "$(yaml_escape "$spack_version")"
+  printf '  commit: null\n'
+  printf 'build_host:\n'
+  printf '  hostname: "%s"\n' "$(yaml_escape "$host_name")"
+  printf '  os: "%s"\n' "$(yaml_escape "$os_id")"
+  printf '  os_major: %s\n' "$os_major"
+  printf '  glibc: "%s"\n' "$(yaml_escape "$glibc")"
+  printf '  cpu: "%s"\n' "$(yaml_escape "$cpu")"
+  printf 'verification:\n'
+  printf '  spack_verify_libraries: %s\n' "$libraries_status"
+  printf '  spack_verify_manifest: %s\n' "$manifest_status"
+  printf '  site_smoke_tests: %s\n' "$smoke_status"
+  printf '  notes: "generated by spack-build"\n'
+  printf 'lanes:\n'
+  if [[ -s $lane_roots ]]; then
+    while IFS='|' read -r lane_name install_root; do
+      printf '  %s:\n' "$lane_name"
+      printf '    install_root: "%s"\n' "$(yaml_escape "$install_root")"
+    done < "$lane_roots"
+  else
+    printf '  {}\n'
+  fi
+} > "$REPORTS/verify-results.yaml"
+
+{
+  if [[ $SKIP_PUSH -eq 1 || ${#BUILDCACHE_NAMES[@]} -eq 0 ]]; then
+    printf 'push_destinations: []\n'
+  else
+    printf 'push_destinations:\n'
+    for i in "${!BUILDCACHE_NAMES[@]}"; do
+      printf '  - name: "%s"\n' "$(yaml_escape "${BUILDCACHE_NAMES[$i]}")"
+      printf '    url: "%s"\n' "$(yaml_escape "${BUILDCACHE_URLS[$i]}")"
+      printf '    lanes_pushed:\n'
+      for lane in "${LANES[@]}"; do
+        printf '      - "%s"\n' "$(yaml_escape "${lane//\//-}")"
+      done
+    done
+  fi
+} > "$REPORTS/buildcache-destinations.yaml"
+
+{
+  printf 'lanes:\n'
+  for lane in "${LANES[@]}"; do
+    printf '  %s: []\n' "${lane//\//-}"
+  done
+} > "$REPORTS/platform-module-prereqs.yaml"
+
+rm -f "$lane_roots"
+
+if [[ $failure_count -gt 0 ]]; then
+  printf 'spack-build: %s failed step(s); reports in %s\n' "$failure_count" "$REPORTS" >&2
+  exit 1
+fi
+
+printf '%s\n' "$REPORTS"
