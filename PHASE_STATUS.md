@@ -506,37 +506,97 @@ Acceptance:
 - A Core lane's resolved zlib hash equals the foundation lane's
   zlib hash (cross-compiler reproducibility).
 
-## Phase 9 - Front-door modulefile emission
+## Phase 9 - Module emission (init, front-door, direct, package)
 
 Covered in detail in agent memory `project_module_emission_gap.md`
 and in `stack-planning/docs/design_implementation_coverage.md`
 §4-5.
 
+The v6 design (§1475-1485 and §4380-4480) names **exactly two
+exposure scenarios**, both rendered by stack-composer:
+
+**Scenario A - `front_door` (e.g., ScienceStack):**
+
+- `modules.init_module` is the bootstrap surface (e.g.,
+  `science-stack-init`). User runs `module load science-stack-init`
+  once; it sets `MODULEPATH` to point at this release's modules
+  directory. Required when the site doesn't already have the
+  release's modules in its global MODULEPATH.
+- `modules.module_root` is the lane namespace exposed after the
+  bootstrap (e.g., `ScienceStack/GCC/mpi-craympich-gfx90a`). One
+  front-door modulefile per rendered lane.
+- User flow: `module load <init_module>` ->
+  `module load <module_root>/<COMPILER>/<lane>` ->
+  `module load <package>`.
+
+**Scenario B - `direct` (e.g., fun3d):**
+
+- `modules.init_module` is null. No bootstrap module is rendered.
+- `modules.publish_root` is an existing site MODULEPATH root the
+  site already has wired in (e.g., `/opt/site/modulefiles`).
+- Per-package modules render directly into `publish_root` (e.g.,
+  `fun3d/14.2-gpu-gfx90a`), carrying their lane's provenance,
+  conflict, and prereq lines themselves (since there is no separate
+  front-door gate).
+- User flow: `module load fun3d/14.2-gpu-gfx90a`.
+
+Both scenarios are entirely inside stack-composer. There is no
+separate site-authored outer module to wire in - the documented
+`init_module` IS the gateway for Scenario A, and the site's existing
+`publish_root` IS the gateway for Scenario B.
+
+Work items:
+
 - [ ] Add `templates/<set>/configs/common/modules.yaml.j2` rendering
-  hierarchy, projections, and prefix inspections from
-  `stack.modules.*`.
-- [ ] Add `templates/<set>/modules/<exposure>/front-door.tcl.j2`
-  (and optionally `.lua.j2` for `additional_formats: [lmod]`).
-  Per-lane modulefile, emits MODULEPATH prepend for the lane's
-  package module root, conflicts with sibling lanes, prereq lines
-  for `lane.platform_module_prereqs`, identity setenv (release,
-  lane, compiler, ...).
+  hierarchy, projections, prefix inspections, and exclusion lists
+  from `stack.modules.{hierarchy_style, expose_provenance,
+  platform_module_policy}` so `spack module tcl refresh` projects
+  package modules at the expected paths.
+- [ ] Add `templates/<set>/modules/init/<format>.j2` for Scenario A:
+  one per-release init modulefile that prepends the release's
+  modules directory to MODULEPATH. Renders only when
+  `modules.init_module` is non-null and `modules.exposure:
+  front_door`.
+- [ ] Add `templates/<set>/modules/front_door/<format>.j2` for
+  Scenario A: per-lane front-door modulefile under
+  `<module_root>/<COMPILER>/<lane>`. Emits MODULEPATH prepend for
+  the lane's package module root, conflicts with sibling lanes,
+  prereq lines for `lane.platform_module_prereqs` (driven by
+  `modules.platform_module_policy`), identity setenv (release,
+  lane, compiler, view path).
+- [ ] Add `templates/<set>/modules/direct/<format>.j2` for Scenario
+  B: per-public-package application modulefile under
+  `publish_root/<package>/<version>`. Carries the same conflict,
+  prereq, and provenance lines that the front-door would otherwise
+  carry, since there's no separate gate.
 - [ ] Walk `lane.platform_module_prereqs` into the rendered
-  modulefile (data is already in the render context; just needs a
+  modulefiles (data is already in the render context; just needs a
   template consumer).
-- [ ] Tests: rendered front-door modulefile for a Cray + ROCm lane
-  contains `prereq PrgEnv-gnu`, `prereq gcc-native/13`,
-  `prereq rocm/<v>`, `prereq cray-mpich/<v>` and declares conflict
-  with sibling GPU lanes.
-- [ ] Smoke verify: in the smoke container, `module load
-  ScienceStack/GCC/gpu-craympich-gfx90a` succeeds and sets the
-  expected MODULEPATH.
+- [ ] Tests:
+  - Rendered Scenario A front-door modulefile for a Cray + ROCm
+    lane contains `prereq PrgEnv-gnu`, `prereq gcc-native/13`,
+    `prereq rocm/<v>`, `prereq cray-mpich/<v>` and declares
+    conflict with sibling GPU lanes.
+  - Rendered Scenario A init modulefile sets MODULEPATH to the
+    release's modules dir.
+  - Rendered Scenario B direct modulefile for fun3d carries the
+    same prereq and identity lines but no front-door gate.
+- [ ] Smoke verify: in the smoke container,
+  `module load <init_module>` followed by
+  `module load <module_root>/GCC/gpu-craympich-gfx90a` succeeds and
+  sets the expected MODULEPATH (Scenario A); separately, render the
+  fun3d application example and assert the direct modulefile is in
+  the expected location with the expected contents (Scenario B).
 
 Acceptance:
 
-- `stack.modules.exposure: front_door` produces a working
-  front-door modulefile per lane; `stack.modules.exposure: direct`
-  produces package modules without a front-door gate.
+- `modules.exposure: front_door` produces a working init module +
+  per-lane front-door modulefiles (Scenario A).
+- `modules.exposure: direct` produces working per-package direct
+  modulefiles in `publish_root` with no init or front-door
+  (Scenario B).
+- A stack switching `modules.exposure` from `front_door` to
+  `direct` re-renders cleanly with no carry-over.
 
 ## Phase 10 - Externals policy + buildcache mirrors
 
