@@ -445,7 +445,7 @@ Acceptance:
   `git grep -l "cray" src/ tests/` cross-referenced against the
   inventory shows no missing entries.
 
-## Phase 7 - Adoption-blocking scopes (config.yaml, compilers.yaml, foundation lane)
+## Phase 7 - Adoption-blocking scopes (config.yaml and compiler discovery)
 
 The 2026-06-20 design-vs-implementation coverage audit
 (`stack-planning/docs/design_implementation_coverage.md` §6) found
@@ -466,10 +466,6 @@ foundation-pin work; Phase 9 closes front-door modules.
   sufficient or whether a separate `configs/common/compilers.yaml`
   scope is still needed. If needed, render it from
   `profile.vendor_cray.<compiler>` and `profile.compilers_external`.
-- [ ] Add `include_concrete:` references from each lane's
-  `spack.yaml` to its compiler's Core lane (v6 §"GPU lane Core
-  composition"). Today the GPU lane environment doesn't reference
-  `gcc/core` even though the design requires it.
 
 Acceptance:
 
@@ -479,32 +475,36 @@ Acceptance:
 - `spack -e <lane> compiler list` inside the rendered workspace
   enumerates the profile's compilers without an additional
   `spack compiler find` step.
-- The GPU lane's `spack.yaml` shows `include_concrete:` referencing
-  the matching `<compiler>/core` lane.
 
-## Phase 8 - Foundation pins + foundation lane
+## Phase 8 - Foundation pins + per-compiler Core reuse
 
 - [ ] Render `configs/foundation/packages.yaml.j2` (or equivalent
   scope) emitting `require: "@<version>"` for each
   `stack.foundation_pins.*` entry (zlib, xz, zstd, plus any other
-  declared pins). v6 §"Foundation lane" is explicit that these are
-  load-bearing for cross-compiler binary compatibility; today they
-  are emitted nowhere.
-- [ ] Render the foundation lane environment (single lane, single
-  compiler, single target) and wire it into the Core composition so
-  every Core lane `include_concrete` references it.
-- [ ] Implement `contract.target_policies` so the foundation lane's
-  target is `foundation` / `baseline_target` (e.g., `x86_64_v3`) and
+  declared pins). These enforce one reviewed foundation version policy
+  across independently concretized compiler Cores; today they are
+  emitted nowhere.
+- [ ] Keep the committed per-compiler Core model: each compiler's Core
+  is a normal, independently concretized environment. Build and push
+  Core lanes before payload lanes to the profile-compatible foundation
+  buildcache; payload lanes reuse matching binaries through configured
+  mirrors and `concretizer:reuse: true`. Do not compose Core/payload
+  environments through another lane's lockfile in v1.
+- [ ] Implement `contract.target_policies` so each Core lane's target
+  is `foundation` / `baseline_target` (e.g., `x86_64_v3`) and
   payload lanes' target is `lane.cpu.preferred` (e.g., `zen3`). v6
   §"Target Policy" is explicit; renderer ignores the contract field
   today.
 
 Acceptance:
 
-- Foundation lane renders for every reference profile and pins
-  declared foundation packages.
-- A Core lane's resolved zlib hash equals the foundation lane's
-  zlib hash (cross-compiler reproducibility).
+- Every compiler's Core lane pins the declared foundation package
+  versions and uses the baseline target policy.
+- Each compiler's Core lane remains independently concretizable, and a
+  payload-lane smoke run reuses compatible Core artifacts from the
+  foundation buildcache without a lockfile include.
+- Payload lanes reuse the matching compiler's Core hashes; Cores built
+  with different compilers are not required to have equal hashes.
 
 ## Phase 9 - Module emission (init, front-door, direct, package)
 
