@@ -74,6 +74,10 @@ def emit_contract_stub(facts: dict[str, Any]) -> dict[str, Any]:
             "gpu": {"match": "runtime_with_gpu"},
         },
         "gpu_selectors": gpu_selectors,
+        "vendor_scope_selectors": {
+            "cray": {"profile_key": "vendor_cray", "scope": "vendor/cray"},
+            "linux": {"default": True, "scope": "vendor/linux"},
+        },
         "target_policies": {
             "foundation": {"resolve": "baseline_x86_64_v3", "hard_require": False},
             "payload_default": {"resolve": "runtime_preferred", "hard_require": False},

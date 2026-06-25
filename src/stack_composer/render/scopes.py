@@ -72,7 +72,12 @@ def scopes_for_lane(
 
 
 def scope_names_for_lane(lane: dict[str, Any], profile: dict[str, Any]) -> list[str]:
-    scopes = ["common", os_scope(profile), "target/" + lane["target"], vendor_scope(profile)]
+    scopes = [
+        "common",
+        os_scope(profile),
+        "target/" + lane["target"],
+        lane["vendor_scope"],
+    ]
     mpi_scope_name = mpi_scope(lane)
     if mpi_scope_name:
         scopes.append(mpi_scope_name)
@@ -85,12 +90,6 @@ def scope_names_for_lane(lane: dict[str, Any], profile: dict[str, Any]) -> list[
 def os_scope(profile: dict[str, Any]) -> str:
     os_data = profile["os"]
     return f"os/{os_data['name']}{os_data['major']}"
-
-
-def vendor_scope(profile: dict[str, Any]) -> str:
-    if profile.get("vendor_cray"):
-        return "vendor/cray"
-    return "vendor/linux"
 
 
 def mpi_scope(lane: dict[str, Any]) -> str | None:
