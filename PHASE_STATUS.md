@@ -161,7 +161,7 @@ profile:
   `rocprim`, `llvm-amdgpu`, ...) as a `buildable: false` external.
 - `configs/gpu/nvidia-cuda/packages.yaml` — CUDA toolkit externals
   from `profile.gpu_toolkit_modules.cudatoolkit`. Current Cray CPE
-  uses `cuda/<version>` module naming; legacy `PrgEnv-nvhpc` is out of
+  uses `cuda/<version>` module naming; older `PrgEnv-nvhpc` naming is out of
   v1 scope unless a target site requires a future compatibility
   extension.
 - `configs/target/<arch>/packages.yaml` — `packages.all.require:
@@ -227,7 +227,7 @@ Work items
 - [x] Add remaining render tests asserting that:
   - A Cray + NVIDIA-GPU lane uses current CPE naming
     (`PrgEnv-nvidia`, `nvidia/<version>`, `cuda/<version>`) and not
-    legacy `PrgEnv-nvhpc`.
+    older `PrgEnv-nvhpc`.
   - Cray GPU lanes using GNU/CCE/AOCC or another site-verified general
     host compiler still select the same ROCm/CUDA toolkit scopes;
     GPU-aware ROCmCC/NVHPC lanes are explicit exceptions.
@@ -397,22 +397,59 @@ Acceptance:
 
 From `stack-planning/docs/cray_pe_coupling_inventory.md`
 §"Recommended hardening work" - three changes that significantly
-reduce the eventual CPE2 migration sprint. Independent of each other
-and of 6a-6e.
+reduce the eventual CPE2 migration sprint. Also covers the MPI
+provider-policy gap recorded in
+`stack-planning/docs/design_implementation_coverage.md` §6 item 11
+and
+`stack-planning/docs/non_cray_mpi_provider_lanes_hardening_note_v1.md`
+§"Desired provider policy". Independent of 6a-6e.
 
-- [ ] **6f.1**: Lift vendor scope selection from
-  `render/scopes.py::vendor_scope` into the contract. Today it is
-  hardcoded: `if profile.vendor_cray: return "vendor/cray" else
-  "vendor/linux"`. After this change, a third or fourth vendor scope
+- [x] **6f.1**: Lift vendor scope selection from hardcoded Python into
+  the contract. Previously this was effectively hardcoded as
+  `if profile.vendor_cray: return "vendor/cray" else "vendor/linux"`.
+  After this change, a third or fourth vendor scope
   (CPE2, IBM, Intel Aurora) is purely a template-set and contract
   addition; no Python change needed. See coupling inventory for the
   proposed contract schema field.
-- [ ] **6f.2**: Generalize `render/platform_modules.py::_mpi_modules`
-  out of its `if provider == "cray-mpich": ...` special case. Each
-  MPI provider should describe its own `modules:` and optional
-  `flavors:` block in `profile.mpi[]`. The renderer becomes
-  provider-agnostic. May require a profile-v2 schema migration for
-  the MPI block, depending on the chosen shape.
+  - Implemented with required `contract.vendor_scope_selectors`.
+    Planned lanes now carry `vendor_scope`, and scope rendering uses
+    that lane value. There is no implicit Cray/Linux selector path.
+  - Updated the v6 fixture contract, scaffold starter contracts, and
+    contract schema. Added a render-scope regression proving a Cray
+    profile can select a non-`vendor/cray` scope by contract change
+    alone.
+- [ ] **6f.2**: Generalize MPI provider resolution out of Cray-specific
+  and provider-name-only code paths.
+  - Replace `render/plan.py::mpi_provider_for` with lane-specific MPI
+    resolution. The resolver receives the lane compiler and contract
+    policy, then returns selected provider metadata for that lane.
+  - Support contract-facing `mpi.mode` with default `auto` when omitted:
+    use a compiler-compatible external if profile facts prove one
+    exists; otherwise let Spack build the named MPI provider for that
+    lane.
+  - Add stricter modes for power users / compatibility lanes:
+    `external` (require compatible external), `spack` (always
+    Spack-built), `platform` (platform-required provider such as Cray
+    MPICH), and an explicitly named bespoke/site resolver if the
+    template contract defines one.
+  - Never silently reuse an external MPI built with a different
+    compiler. If a generic `profile.mpi[]` entry lacks `compiler`, it
+    is usable for all compilers only when the contract or profile makes
+    that safe; otherwise `auto` falls back to Spack-built MPI and
+    `external` fails render.
+  - Generalize `render/platform_modules.py::_mpi_modules` out of its
+    `if provider == "cray-mpich": ...` special case. Each MPI provider
+    should describe its own `modules:` and optional `flavors:` block in
+    profile facts or the selected provider metadata. The renderer
+    becomes provider-agnostic.
+  - Keep Cray MPICH as the default production Cray MPI provider and
+    platform-required (`buildable: false`) unless the contract
+    explicitly selects another provider for a compatibility lane. This
+    preserves current Cray behavior while allowing future
+    contract-approved providers such as Intel MPI or an officially
+    supported OpenMPI/MPICH provider on Slingshot/CPE.
+  - This may require a profile-v2 schema migration for the MPI block,
+    depending on the chosen shape.
 - [ ] **6f.3**: Replace the hardcoded compiler-name tuple
   `("gcc", "cce", "aocc", "intel", "nvhpc", "rocmcc")` in
   `render/plan.py:141-149`, `scaffold/facts.py:9-10`, and
@@ -428,6 +465,18 @@ Acceptance:
   - A contract entry naming `vendor_cpe2` as a discriminator for the
     `vendor/cpe2` scope.
   - Zero Python edits in stack-composer's `render/` tree.
+- Adding a new MPI provider to an existing vendor requires:
+  - A profile/provider fact block with prefix/modules/flavors/compiler
+    preconditions as needed.
+  - A template-set scope for that MPI provider when it renders Spack
+    externals.
+  - A contract/toolchain entry selecting the provider and optional
+    `mpi.mode`.
+  - No hardcoded provider branch in `render/plan.py` or
+    `render/platform_modules.py`.
+- A generic Linux `mpi: {provider: openmpi}` contract defaults to
+  `mode: auto`: compatible external if proven for the lane compiler,
+  otherwise Spack-built OpenMPI.
 
 ### 6g - Coupling inventory upkeep
 
@@ -454,13 +503,15 @@ Phase 7 closes the three that touch config scopes; Phase 8 closes the
 foundation-pin work; Phase 9 closes front-door modules.
 
 - [ ] Render `configs/common/config.yaml` from
+  a site/stack/deployment-selected install tree validated against
   `profile.filesystem.install_tree_candidates`,
   `profile.node_types[*].build_stage`,
   `profile.filesystem.source_cache_candidate`, and
   `profile.filesystem.buildcache_candidate`. Without this, Spack
   installs to `/home/spack/spack/opt` (its default), not the
-  profile's declared install tree. Every real deployment hits this on
-  first install.
+  install tree chosen by the software owner. The profile supplies
+  candidate filesystem facts; it should not be the final install-tree
+  policy owner. Every real deployment hits this on first install.
 - [ ] Verify whether Spack v1.1's compiler discovery from
   `packages.yaml::extra_attributes.compilers` (Phase 5 work) is
   sufficient or whether a separate `configs/common/compilers.yaml`
@@ -469,9 +520,8 @@ foundation-pin work; Phase 9 closes front-door modules.
 
 Acceptance:
 
-- A smoke pipeline run installs Spack-built packages into
-  `/shared/stack/spack/opt` (the example profile's install tree),
-  not Spack's default.
+- A smoke pipeline run installs Spack-built packages into the selected
+  shared install tree, not Spack's default.
 - `spack -e <lane> compiler list` inside the rendered workspace
   enumerates the profile's compilers without an additional
   `spack compiler find` step.

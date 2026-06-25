@@ -53,6 +53,16 @@
       },
       "additionalProperties": false
     },
+    "vendor_scope_selectors": {
+      "type": "object",
+      "description": "Map of vendor scope selector name → profile discriminator and template scope. This keeps platform/vendor scope selection in the template contract instead of hardcoded renderer branches.",
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]*$": {
+          "$ref": "#/$defs/vendor_scope_selector"
+        }
+      },
+      "additionalProperties": false
+    },
     "target_policies": {
       "type": "object",
       "description": "Map of policy name → target resolution rule. Each policy is referenced from build_classes[*].default_target.",
@@ -70,6 +80,7 @@
     "build_classes",
     "toolchains",
     "node_selectors",
+    "vendor_scope_selectors",
     "target_policies"
   ],
   "additionalProperties": false,
@@ -174,6 +185,28 @@
         }
       },
       "required": ["vendor", "arch_target"],
+      "additionalProperties": false
+    },
+    "vendor_scope_selector": {
+      "type": "object",
+      "properties": {
+        "scope": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]*/[a-z][a-z0-9_-]*$",
+          "description": "Template config scope path relative to configs/, such as vendor/cray or vendor/linux."
+        },
+        "profile_key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Top-level profile key whose truthy value selects this vendor scope, such as vendor_cray."
+        },
+        "default": {
+          "type": "boolean",
+          "default": false,
+          "description": "Fallback selector used when no profile_key selector matches."
+        }
+      },
+      "required": ["scope"],
       "additionalProperties": false
     },
     "target_policy": {

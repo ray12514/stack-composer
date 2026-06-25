@@ -60,10 +60,29 @@ def test_scope_selection_keeps_generic_linux_out_of_cray_scopes() -> None:
     assert not any(scope.startswith("gpu/") for scope in scopes)
 
 
+def test_vendor_scope_selection_comes_from_contract() -> None:
+    profile, stack, contract = fixture_context("example-cray")
+    contract = deepcopy(contract)
+    contract["vendor_scope_selectors"]["cray"]["scope"] = "vendor/current-cpe"
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack, contract)
+    assert issues == []
+
+    core_lane = lane_by_name(lanes, "gcc-core")
+    assert core_lane["vendor_scope"] == "vendor/current-cpe"
+    assert scopes_for_lane(core_lane, stack, profile) == [
+        "../../../configs/common",
+        "../../../configs/os/rhel8",
+        "../../../configs/target/x86_64_v3",
+        "../../../configs/vendor/current-cpe",
+    ]
+
+
 def test_gpu_toolkit_scope_selection_is_independent_of_host_compiler() -> None:
     profile, stack, _contract = fixture_context("example-cray")
     lane = {
         "target": "zen3",
+        "vendor_scope": "vendor/cray",
         "mpi_provider": "cray-mpich",
         "gpu_arch": "gfx90a",
     }

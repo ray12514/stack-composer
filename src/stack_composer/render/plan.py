@@ -71,6 +71,7 @@ def lane_candidates_for_build(
     if not compilers:
         return [], "requires_unsatisfied", f"no compiler candidate for {build['toolchain']!r}"
 
+    vendor_scope = vendor_scope_for(profile, contract)
     mpi_provider = mpi_provider_for(profile, toolchain, build_class)
     gpu_selectors = gpu_selectors_for(profile, contract, node_types, build)
     if (
@@ -95,6 +96,7 @@ def lane_candidates_for_build(
                             build,
                             build_class,
                             compiler,
+                            vendor_scope,
                             mpi_provider,
                             node_name,
                             node,
@@ -110,6 +112,7 @@ def lane_candidates_for_build(
                     build,
                     build_class,
                     compiler,
+                    vendor_scope,
                     mpi_provider,
                     node_name,
                     node,
@@ -159,6 +162,21 @@ def compiler_candidates(profile: dict[str, Any], toolchain: dict[str, Any]) -> l
     return candidates
 
 
+def vendor_scope_for(profile: dict[str, Any], contract: dict[str, Any]) -> str:
+    selectors = contract["vendor_scope_selectors"]
+    default_scope: str | None = None
+    for selector in selectors.values():
+        scope = selector["scope"]
+        if selector.get("default"):
+            default_scope = scope
+        profile_key = selector.get("profile_key")
+        if profile_key and profile.get(profile_key):
+            return scope
+    if default_scope:
+        return default_scope
+    raise ValueError("contract.vendor_scope_selectors must include a default selector")
+
+
 def mpi_provider_for(
     profile: dict[str, Any], toolchain: dict[str, Any], build_class: dict[str, Any]
 ) -> str | None:
@@ -197,6 +215,7 @@ def make_lane(
     build: dict[str, Any],
     build_class: dict[str, Any],
     compiler: str,
+    vendor_scope: str,
     mpi_provider: str | None,
     node_name: str,
     node: dict[str, Any],
@@ -221,6 +240,7 @@ def make_lane(
         "name": name,
         "source_build": build["name"],
         "compiler": compiler,
+        "vendor_scope": vendor_scope,
         "lane": lane_suffix,
         "kind": kind,
         "package_set": build.get("package_set"),

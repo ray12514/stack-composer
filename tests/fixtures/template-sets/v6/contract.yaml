@@ -73,6 +73,14 @@ gpu_selectors:
     spack:
       cuda_arch: "80"
 
+vendor_scope_selectors:
+  cray:
+    profile_key: vendor_cray
+    scope: vendor/cray
+  linux:
+    default: true
+    scope: vendor/linux
+
 target_policies:
   foundation:
     resolve: baseline_x86_64_v3

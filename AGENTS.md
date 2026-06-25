@@ -44,6 +44,16 @@ test suite passing. They are **not** a v6-conformant reference
 template-set. Treat them as test scaffolding, not as the canonical
 output shape.
 
+## Pre-v1 policy
+
+No stack release has been deployed or tagged as v1 yet. Do not add
+compatibility paths for previous contract shapes, schema fields,
+template behavior, or generated layouts. If the design changes before
+the first deployed/tagged v1, update the current model directly and
+make missing required fields fail fast. Compatibility/migration code is
+only appropriate after a behavior has existed in a tagged, deployed
+release.
+
 ## Render seam invariants (`render()`)
 
 - Reads only its arguments and the named files in the workspace tree

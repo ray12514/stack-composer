@@ -50,6 +50,14 @@ gpu_selectors:
     spack:
       cuda_arch: "80"
 
+vendor_scope_selectors:
+  cray:
+    profile_key: vendor_cray
+    scope: vendor/cray
+  linux:
+    default: true
+    scope: vendor/linux
+
 target_policies:
   payload_default:
     resolve: runtime_preferred
