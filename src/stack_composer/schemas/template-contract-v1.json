@@ -73,6 +73,16 @@
         }
       },
       "additionalProperties": false
+    },
+    "kind_defaults": {
+      "type": "object",
+      "description": "Optional. Maps a stack.yaml build `kind` (cpu/mpi/gpu) to the contract class/toolchain/node-selector/expand used when a spec-native build omits them. Lets package managers author builds as just name + specs (+ optional kind); explicit build fields still win.",
+      "properties": {
+        "cpu": { "$ref": "#/$defs/kind_default" },
+        "mpi": { "$ref": "#/$defs/kind_default" },
+        "gpu": { "$ref": "#/$defs/kind_default" }
+      },
+      "additionalProperties": false
     }
   },
   "required": [
@@ -224,6 +234,22 @@
         }
       },
       "required": ["resolve"],
+      "additionalProperties": false
+    },
+    "kind_default": {
+      "type": "object",
+      "description": "Default contract names for a build kind. class/toolchain/nodes are required; expand is inferred per-kind when omitted.",
+      "properties": {
+        "class": { "type": "string", "minLength": 1, "description": "build_classes key." },
+        "toolchain": { "type": "string", "minLength": 1, "description": "toolchains key." },
+        "nodes": { "type": "string", "minLength": 1, "description": "node_selectors key." },
+        "expand": {
+          "type": "string",
+          "enum": ["one", "per_node_type", "per_cpu_target", "per_gpu_arch"],
+          "description": "Expansion rule; inferred per-kind when omitted."
+        }
+      },
+      "required": ["class", "toolchain", "nodes"],
       "additionalProperties": false
     }
   }
