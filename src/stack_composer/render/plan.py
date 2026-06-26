@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from stack_composer.errors import Issue
+from stack_composer.resolve.build_kind import normalize_builds
 
 
 def plan_lanes(
@@ -12,6 +13,7 @@ def plan_lanes(
     lanes: list[dict[str, Any]] = []
     skipped: list[dict[str, str]] = []
     applied_narrowing = None
+    stack = normalize_builds(stack, contract)
     system_name = profile["system"]["name"]
     narrowing = ((stack.get("per_system") or {}).get(system_name) or {}).get("builds") or {}
 

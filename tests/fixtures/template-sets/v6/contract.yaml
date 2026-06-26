@@ -89,3 +89,20 @@ target_policies:
   payload_default:
     resolve: runtime_preferred
     hard_require: false
+
+kind_defaults:
+  cpu:
+    class: serial
+    toolchain: science-serial-default
+    nodes: cpu
+    expand: one
+  mpi:
+    class: mpi
+    toolchain: science-mpi-default
+    nodes: cpu
+    expand: one
+  gpu:
+    class: gpu
+    toolchain: science-gpu-default
+    nodes: gpu
+    expand: per_gpu_arch

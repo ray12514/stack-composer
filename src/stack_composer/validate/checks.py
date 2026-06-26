@@ -8,6 +8,7 @@ from stack_composer.model.contract import load_contract
 from stack_composer.model.package_set import load_package_set
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_stack, load_stack_defaults, merge_defaults
+from stack_composer.resolve.build_kind import normalize_builds
 from stack_composer.yaml_io import load_yaml
 
 
@@ -46,6 +47,7 @@ def validate_inputs(
         return issues, {}
 
     stack = merge_defaults(defaults, raw_stack)
+    stack = normalize_builds(stack, contract)
     issues.extend(cross_check_profile_contract(profile, stack))
     build_contract_issues = validate_builds_against_contract(stack, contract)
     issues.extend(build_contract_issues)

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://stack-composer.example/schemas/stack-v1.json",
   "title": "Spack stack intent (v1)",
-  "description": "Stack intent file. Platform-portable — names build classes, toolchains, and node selectors that the selected template contract resolves against the profile. Mirrors docs/spack_stack_generation_design_v6.md § stack.yaml.",
+  "description": "Stack intent file. Platform-portable — the minimal build is a name plus Spack specs (or a package_set); build class, toolchain, and node-selector fields are optional/advanced and inferred from the spec and kind when omitted. Mirrors docs/spack_stack_generation_design_v6.md § stack.yaml.",
   "type": "object",
   "properties": {
     "schema_version": {
@@ -180,10 +180,15 @@
           "minLength": 1,
           "description": "Request name. Appears as source_build in generated lane manifests."
         },
+        "kind": {
+          "type": "string",
+          "enum": ["cpu", "mpi", "gpu"],
+          "description": "Optional build kind. Disambiguates when the spec is not obviously CPU/MPI/GPU; inferred from spec variants when omitted (+mpi -> mpi; +cuda/+rocm/cuda_arch/amdgpu_target -> gpu; otherwise cpu). Resolves to a contract build-class default."
+        },
         "class": {
           "type": "string",
           "minLength": 1,
-          "description": "Key into templates/<set>/contract.yaml build_classes."
+          "description": "Optional/advanced. Key into templates/<set>/contract.yaml build_classes. Inferred from kind when omitted."
         },
         "package_set": {
           "type": "string",
@@ -217,20 +222,41 @@
           ],
           "description": "Inline Spack root specs. Either a flat list, or a map keyed by spec kind. Mutually exclusive with package_set. May be null when package_set is set."
         },
+        "compilers": {
+          "type": "array",
+          "description": "Optional. Restrict this build to these compiler IDs (a subset of the profile/contract-resolved compilers). Portable across systems; per_system narrows further.",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "mpi": {
+          "type": "array",
+          "description": "Optional. Restrict this build to these MPI provider names (list semantics, matching per_system.builds[*].mpi).",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "gpu_selectors": {
+          "type": "array",
+          "description": "Optional. Restrict this build to these friendly GPU selector names from the contract, such as a100 or mi250x.",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
         "toolchain": {
           "type": "string",
           "minLength": 1,
-          "description": "Key into templates/<set>/contract.yaml toolchains."
+          "description": "Optional/advanced. Key into templates/<set>/contract.yaml toolchains. Inferred from kind plus contract defaults when omitted; power users may pin it for large cross-products."
         },
         "nodes": {
           "type": "string",
           "minLength": 1,
-          "description": "Key into templates/<set>/contract.yaml node_selectors."
+          "description": "Optional/advanced. Key into templates/<set>/contract.yaml node_selectors. Inferred from kind when omitted (gpu -> GPU nodes, otherwise CPU nodes)."
         },
         "expand": {
           "type": "string",
           "enum": ["one", "per_node_type", "per_cpu_target", "per_gpu_arch"],
-          "description": "Expansion rule when multiple matched node types are eligible."
+          "description": "Optional/advanced. Expansion rule when multiple matched node types are eligible. Inferred from kind when omitted (gpu -> per_gpu_arch, otherwise one)."
         },
         "publish": {
           "type": "boolean",
@@ -243,7 +269,7 @@
           "description": "When true, an unsatisfied request fails render instead of being skipped."
         }
       },
-      "required": ["name", "class", "toolchain", "nodes", "expand"],
+      "required": ["name"],
       "additionalProperties": false,
       "oneOf": [
         {
