@@ -22,6 +22,9 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     workspace = render_fixture(tmp_path / "out-a")
 
     assert (workspace / "configs" / "common" / "packages.yaml").exists()
+    config = load_yaml(workspace / "configs" / "common" / "config.yaml")
+    assert config["config"]["install_tree"]["root"] == "/shared/stack/spack/opt"
+    assert config["config"]["source_cache"] == "/shared/stack/spack/source-cache"
     assert (workspace / "configs" / "common" / "repos.yaml").exists()
     assert (workspace / "package-repos" / "science").is_dir()
     manifest = load_yaml(workspace / "release-manifest.yaml")
@@ -114,6 +117,7 @@ def render_fixture(
 ) -> Path:
     return render_workspace(
         profile_path=fixture_path("profiles", profile_name, "profile.yaml"),
+        deployment_path=fixture_path("deployments", profile_name + ".yaml"),
         stack_path=fixture_path("stacks", "science-stack", "stack.yaml"),
         templates_root=templates_root or fixture_path("template-sets"),
         release_vars=ReleaseVars(

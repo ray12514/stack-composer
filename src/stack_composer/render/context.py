@@ -19,6 +19,7 @@ def build_render_context(
     context = {
         "profile": profile,
         "stack": base_context["stack"],
+        "deployment": base_context["deployment"],
         "defaults": base_context["defaults"],
         "package_repos": base_context["package_repos"],
         "spec_sources": base_context["spec_sources"],

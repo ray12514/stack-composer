@@ -13,6 +13,7 @@ from stack_composer.yaml_io import dump_yaml
 def run(
     *,
     profile: str,
+    deployment: str | None,
     stack: str,
     templates: str,
     package_sets: str | None,
@@ -26,6 +27,7 @@ def run(
     issues, _ = validate_inputs(
         profile_path=Path(profile),
         stack_path=stack_path,
+        deployment_path=Path(deployment) if deployment else None,
         templates_root=Path(templates),
         package_sets_dir=package_sets_dir,
         package_repos_dir=package_repos_dir,

@@ -7,6 +7,7 @@ from stack_composer import __version__
 from stack_composer.errors import Issue, ValidationFailed
 from stack_composer.manifest.draft import draft_manifest
 from stack_composer.render.context import build_render_context
+from stack_composer.render.deployment import materialize_lane_paths
 from stack_composer.render.environments import render_lane_environment
 from stack_composer.render.plan import plan_lanes
 from stack_composer.render.release import ReleaseVars
@@ -24,6 +25,7 @@ def render_workspace(
     *,
     profile_path: Path,
     stack_path: Path,
+    deployment_path: Path,
     templates_root: Path,
     release_vars: ReleaseVars,
     package_sets_dir: Path,
@@ -32,6 +34,7 @@ def render_workspace(
     issues, context = validate_inputs(
         profile_path=profile_path,
         stack_path=stack_path,
+        deployment_path=deployment_path,
         templates_root=templates_root,
         package_sets_dir=package_sets_dir,
         package_repos_dir=package_repos_dir,
@@ -39,12 +42,20 @@ def render_workspace(
     if issues:
         raise ValidationFailed(issues)
     profile = context["profile"]
+    deployment = context["deployment"]
     stack = context["stack"]
     stack["_release_tag"] = release_vars.release_tag
     template_set = Path(context["template_set"])
     rendered_lanes, skipped_builds, applied_narrowing, plan_issues = plan_lanes(profile, stack)
     if plan_issues:
         raise ValidationFailed(plan_issues)
+    rendered_lanes = materialize_lane_paths(
+        rendered_lanes,
+        profile=profile,
+        stack=stack,
+        deployment=deployment,
+        release_tag=release_vars.release_tag,
+    )
     render_context = build_render_context(
         base_context=context,
         rendered_lanes=rendered_lanes,

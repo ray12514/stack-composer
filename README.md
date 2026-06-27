@@ -17,6 +17,9 @@ Current implementation status:
 - `validate` performs schema checks and render preflight checks.
 - `render` writes deterministic draft workspaces with rendered config scopes,
   lane environments, package repos, and `release-manifest.yaml`.
+- `render` requires `deployment.yaml` and emits installer-owned install/cache
+  paths into `configs/common/config.yaml`; profile filesystem entries are only
+  candidates.
 - Maintainer/operator commands are implemented: `show`, `validate-template-set`,
   and `publish-manifest`.
 - `scripts/spack-build` is shipped in the release tarball as the local build

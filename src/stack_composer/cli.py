@@ -92,6 +92,7 @@ def validate_template_set(
 
 @cli.command("render")
 @click.option("--profile", required=True, help="profile.yaml path.")
+@click.option("--deployment", required=True, help="deployment.yaml path.")
 @click.option("--stack", required=True, help="stack.yaml path.")
 @click.option("--templates", required=True, help="Root directory containing template sets.")
 @click.option("--output-root", required=True, help="Rendered workspace output root.")
@@ -107,6 +108,7 @@ def validate_template_set(
 )
 def render(
     profile: str,
+    deployment: str,
     stack: str,
     templates: str,
     output_root: str,
@@ -121,6 +123,7 @@ def render(
 ) -> None:
     render_command.run(
         profile=profile,
+        deployment=deployment,
         stack=stack,
         templates=templates,
         output_root=output_root,
@@ -137,6 +140,7 @@ def render(
 
 @cli.command("validate")
 @click.option("--profile", required=True, help="profile.yaml path.")
+@click.option("--deployment", help="Optional deployment.yaml path.")
 @click.option("--stack", required=True, help="stack.yaml path.")
 @click.option("--templates", required=True, help="Root directory containing template sets.")
 @click.option("--package-sets", help="Package-set directory; defaults next to stack source.")
@@ -146,6 +150,7 @@ def render(
 @click.option("--report", help="Optional YAML report path.")
 def validate(
     profile: str,
+    deployment: str | None,
     stack: str,
     templates: str,
     package_sets: str | None,
@@ -155,6 +160,7 @@ def validate(
     try:
         validate_command.run(
             profile=profile,
+            deployment=deployment,
             stack=stack,
             templates=templates,
             package_sets=package_sets,

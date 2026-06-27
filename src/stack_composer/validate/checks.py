@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from stack_composer.errors import Issue
+from stack_composer.model.deployment import load_deployment, validate_deployment_for_profile
 from stack_composer.model.package_set import load_package_set
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
@@ -18,14 +19,23 @@ def validate_inputs(
     templates_root: Path,
     package_sets_dir: Path,
     package_repos_dir: Path,
+    deployment_path: Path | None = None,
 ) -> tuple[list[Issue], dict[str, Any]]:
     issues: list[Issue] = []
     profile, profile_issues = load_profile(profile_path)
     raw_stack, stack_issues = load_stack(stack_path)
+    deployment: dict[str, Any] | None = None
     issues.extend(profile_issues)
     issues.extend(stack_issues)
     if issues:
         return issues, {}
+    if deployment_path is not None:
+        deployment, deployment_issues = load_deployment(deployment_path)
+        issues.extend(deployment_issues)
+        if not deployment_issues:
+            issues.extend(validate_deployment_for_profile(deployment, profile, deployment_path))
+        if issues:
+            return issues, {}
 
     template_set_name = raw_stack["templates"]["set"]
     template_set = templates_root / template_set_name
@@ -51,6 +61,7 @@ def validate_inputs(
 
     context = {
         "profile": profile,
+        "deployment": deployment,
         "stack": stack,
         "raw_stack": raw_stack,
         "defaults": defaults,

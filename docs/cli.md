@@ -18,8 +18,10 @@ Top-level options:
 Command status:
 
 - `validate` checks schemas and render preflight invariants without writing a
-  workspace.
+  workspace. Pass `--deployment` when checking a full render input set.
 - `render` writes a deterministic draft workspace and `release-manifest.yaml`.
+  It requires `--deployment`; install tree, build stage, caches, view roots, and
+  module roots are installer-owned deployment inputs, not profile guesses.
 - `show` prints the buildable menu from a profile plus optional defaults/stack:
   compilers, MPI providers, GPU arches, and lanes under the current defaults.
 - `validate-template-set` renders a smoke stack for each supplied profile and
@@ -38,6 +40,7 @@ fields do not come from ambient git state or the wall clock:
 ```bash
 stack-composer render \
   --profile systems/example-cray/profile.yaml \
+  --deployment systems/example-cray/deployment.yaml \
   --stack stacks/science-stack/stack.yaml \
   --templates templates \
   --package-sets package-sets \

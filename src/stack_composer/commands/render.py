@@ -12,6 +12,7 @@ from stack_composer.render.release import ReleaseVars, SourceRepo
 def run(
     *,
     profile: str,
+    deployment: str,
     stack: str,
     templates: str,
     output_root: str,
@@ -32,6 +33,7 @@ def run(
         workspace = render_workspace(
             profile_path=Path(profile),
             stack_path=stack_path,
+            deployment_path=Path(deployment),
             templates_root=Path(templates),
             release_vars=ReleaseVars(
                 release_tag=release,

@@ -301,10 +301,6 @@ def make_lane(
     if gpu_arch:
         lane_suffix += "-" + gpu_arch
     name = f"{compiler}-{lane_suffix}"
-    release_tag = stack.get("_release_tag", "validate")
-    system_name = profile["system"]["name"]
-    stack_name = stack["name"]
-    release_root = f"/shared/stack/releases/{release_tag}/{system_name}/{stack_name}"
     return {
         "name": name,
         "source_build": build["name"],
@@ -321,8 +317,6 @@ def make_lane(
         "mpi_source": mpi_source,
         "env_path": f"environments/{compiler}/{lane_suffix}",
         "spec_source": spec_source_id(build),
-        "view_root": f"{release_root}/views/{compiler}/{lane_suffix}",
-        "package_module_root": f"{release_root}/modules/{compiler}/{lane_suffix}",
     }
 
 
