@@ -145,6 +145,19 @@ def test_gpu_toolkit_scope_selection_is_independent_of_host_compiler() -> None:
 def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> None:
     workspace = render_fixture(tmp_path / "out", "example-cray")
 
+    common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
+    assert common["packages"]["openssl"]["buildable"] is False
+    assert common["packages"]["openssl"]["externals"][0] == {
+        "spec": "openssl@3.0.7 +shared",
+        "prefix": "/usr",
+        "modules": [],
+    }
+    assert common["packages"]["curl"]["externals"][0] == {
+        "spec": "curl@7.76.1",
+        "prefix": "/usr",
+        "modules": [],
+    }
+
     vendor_cray = load_yaml(workspace / "configs" / "vendor" / "cray" / "packages.yaml")
     assert vendor_cray["packages"]["gcc"]["buildable"] is False
     assert vendor_cray["packages"]["gcc"]["externals"][0]["prefix"] == (

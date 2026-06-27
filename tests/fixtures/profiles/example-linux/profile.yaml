@@ -25,6 +25,22 @@ fabric:
 modules_system:
   tool: lmod
   version: '8.7'
+system_externals:
+- name: openssl
+  version: 3.0.7
+  prefix: /usr
+  provider_family: system
+  variants: +shared
+  detection:
+    confidence: probed
+    source: rpm
+- name: curl
+  version: 8.7.1
+  prefix: /usr
+  provider_family: system
+  detection:
+    confidence: probed
+    source: rpm
 filesystem:
   install_tree_candidates:
   - path: /shared/stack/spack/opt
