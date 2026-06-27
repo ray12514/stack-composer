@@ -37,8 +37,9 @@ def test_show_command_prints_provider_families_and_module_chains() -> None:
     )
 
     assert result.exit_code == 0, result.output
-    assert "provider families: cray-pe" in result.output
-    assert "family=cray-pe" in result.output
+    assert "provider families: platform" in result.output
+    assert "platform families: cray-pe" in result.output
+    assert "family=platform/cray-pe" in result.output
     assert "modules=PrgEnv-gnu, gcc-native/13" in result.output
     assert "gcc      modules=cray-mpich/8.1.29" in result.output
     assert "components=8: hip, hsa-rocr-dev, comgr" in result.output

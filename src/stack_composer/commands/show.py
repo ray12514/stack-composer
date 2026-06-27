@@ -97,6 +97,9 @@ def render_menu(
     families = provider_families(profile)
     family_label = ", ".join(families) if families else "none"
     lines.append(f"{system} · {os_label} · provider families: {family_label}")
+    platform_families = provider_platform_families(profile)
+    if platform_families:
+        lines.append(f"platform families: {', '.join(platform_families)}")
     lines.append(f"targets: {targets}")
     lines.append("")
 
@@ -104,9 +107,13 @@ def render_menu(
     lines.append(f"compilers ({len(compilers)} available)")
     for compiler in compilers:
         modules = _fmt_modules(compiler.get("modules") or [])
+        family = compiler.get("provider_family", "?")
+        platform_family = compiler.get("platform_family")
+        if platform_family:
+            family = f"{family}/{platform_family}"
         lines.append(
             f"  {compiler.get('name', '?'):<8} {compiler.get('version') or '(version n/a)':<12} "
-            f"family={compiler.get('provider_family', '?'):<8} modules={modules}"
+            f"family={family:<16} modules={modules}"
         )
     lines.append("")
 
@@ -162,6 +169,16 @@ def provider_families(profile: dict[str, Any]) -> list[str]:
         for provider in (profile.get("compiler_providers") or [])
         + (profile.get("mpi_providers") or [])
         if provider.get("provider_family")
+    }
+    return sorted(families)
+
+
+def provider_platform_families(profile: dict[str, Any]) -> list[str]:
+    families = {
+        provider.get("platform_family")
+        for provider in (profile.get("compiler_providers") or [])
+        + (profile.get("mpi_providers") or [])
+        if provider.get("platform_family")
     }
     return sorted(families)
 

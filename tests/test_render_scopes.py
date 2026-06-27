@@ -158,23 +158,23 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
         "modules": [],
     }
 
-    vendor_cray = load_yaml(workspace / "configs" / "vendor" / "cray" / "packages.yaml")
-    assert vendor_cray["packages"]["gcc"]["buildable"] is False
-    assert vendor_cray["packages"]["gcc"]["externals"][0]["prefix"] == (
+    platform_scope = load_yaml(workspace / "configs" / "vendor" / "cray" / "packages.yaml")
+    assert platform_scope["packages"]["gcc"]["buildable"] is False
+    assert platform_scope["packages"]["gcc"]["externals"][0]["prefix"] == (
         "/opt/cray/pe/gcc-native/13"
     )
-    assert vendor_cray["packages"]["gcc"]["externals"][0]["modules"] == [
+    assert platform_scope["packages"]["gcc"]["externals"][0]["modules"] == [
         "PrgEnv-gnu",
         "gcc-native/13",
     ]
-    assert vendor_cray["packages"]["cce"]["externals"][0]["extra_attributes"][
+    assert platform_scope["packages"]["cce"]["externals"][0]["extra_attributes"][
         "compilers"
     ] == {
         "c": "/opt/cray/pe/cce/17.0.1/bin/craycc",
         "cxx": "/opt/cray/pe/cce/17.0.1/bin/craycxx",
         "fortran": "/opt/cray/pe/cce/17.0.1/bin/crayftn",
     }
-    assert vendor_cray["packages"]["rocmcc"]["buildable"] is False
+    assert platform_scope["packages"]["rocmcc"]["buildable"] is False
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     assert cray_mpich["packages"]["mpi"] == {
@@ -240,8 +240,8 @@ def test_rendered_cray_nvidia_workspace_uses_current_cpe_names(tmp_path: Path) -
 
     workspace = render_profile(tmp_path / "out", profile_path)
 
-    vendor_cray = load_yaml(workspace / "configs" / "vendor" / "cray" / "packages.yaml")
-    assert vendor_cray["packages"]["nvhpc"]["externals"][0]["modules"] == [
+    platform_scope = load_yaml(workspace / "configs" / "vendor" / "cray" / "packages.yaml")
+    assert platform_scope["packages"]["nvhpc"]["externals"][0]["modules"] == [
         "PrgEnv-nvidia",
         "nvidia/25.3",
     ]
@@ -263,10 +263,10 @@ def test_rendered_cray_nvidia_workspace_uses_current_cpe_names(tmp_path: Path) -
     assert "amdgpu_target" not in gpu_env
     assert "+gpu" not in gpu_env
     assert "PrgEnv-nvhpc" not in gpu_env
-    vendor_cray_text = (
+    platform_scope_text = (
         workspace / "configs" / "vendor" / "cray" / "packages.yaml"
     ).read_text(encoding="utf-8")
-    assert "PrgEnv-nvhpc" not in vendor_cray_text
+    assert "PrgEnv-nvhpc" not in platform_scope_text
 
 
 def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
@@ -389,7 +389,8 @@ def cray_nvidia_profile(profile: dict[str, Any]) -> dict[str, Any]:
             "name": "nvhpc",
             "version": "25.3",
             "prefix": "/opt/nvidia/hpc_sdk/Linux_x86_64/25.3/compilers",
-            "provider_family": "cray-pe",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
             "languages": ["c", "c++", "fortran"],
             "modules": ["PrgEnv-nvidia", "nvidia/25.3"],
         }

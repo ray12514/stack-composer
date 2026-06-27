@@ -210,11 +210,11 @@ def mpi_compatible_compilers(profile: dict[str, Any], provider_name: str) -> set
     return set()
 
 
-def compiler_provider_family(profile: dict[str, Any], compiler_name: str) -> str | None:
+def compiler_provider_metadata(profile: dict[str, Any], compiler_name: str) -> dict[str, Any]:
     for provider in profile.get("compiler_providers") or []:
         if provider.get("name") == compiler_name:
-            return provider.get("provider_family")
-    return None
+            return provider
+    return {}
 
 
 def vendor_scope_for(profile: dict[str, Any], stack: dict[str, Any], compiler_name: str) -> str:
@@ -226,10 +226,18 @@ def vendor_scope_for(profile: dict[str, Any], stack: dict[str, Any], compiler_na
     """
     scope_policy = (stack.get("provider_scopes") or {}).get("compiler") or {}
     default_scope = scope_policy.get("default", "vendor/linux")
-    family = compiler_provider_family(profile, compiler_name)
-    if not family:
+    provider = compiler_provider_metadata(profile, compiler_name)
+    if not provider:
         return default_scope
-    return (scope_policy.get("families") or {}).get(family, default_scope)
+    platform_family = provider.get("platform_family")
+    if platform_family:
+        platform_scope = (scope_policy.get("platform_families") or {}).get(platform_family)
+        if platform_scope:
+            return platform_scope
+    family = provider.get("provider_family")
+    if family:
+        return (scope_policy.get("families") or {}).get(family, default_scope)
+    return default_scope
 
 
 def resolve_mpi(

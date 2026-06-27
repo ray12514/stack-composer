@@ -94,6 +94,17 @@
                 }
               },
               "additionalProperties": false
+            },
+            "platform_families": {
+              "type": "object",
+              "description": "Optional scope mappings for provider_family=platform detail values such as cray-pe.",
+              "patternProperties": {
+                "^[a-z0-9._-]+$": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9._-]+(/[a-z0-9._-]+)*$"
+                }
+              },
+              "additionalProperties": false
             }
           },
           "additionalProperties": false

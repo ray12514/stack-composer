@@ -146,7 +146,8 @@ compiler_providers:
 - name: cce
   version: 17.0.1
   prefix: /opt/cray/pe/cce/17.0.1
-  provider_family: cray-pe
+  provider_family: platform
+  platform_family: cray-pe
   languages:
   - c
   - c++
@@ -157,7 +158,8 @@ compiler_providers:
 - name: gcc
   version: 13.3.0
   prefix: /opt/cray/pe/gcc-native/13
-  provider_family: cray-pe
+  provider_family: platform
+  platform_family: cray-pe
   languages:
   - c
   - c++
@@ -168,7 +170,8 @@ compiler_providers:
 - name: rocmcc
   version: 6.0.0
   prefix: /opt/rocm-6.0.0
-  provider_family: cray-pe
+  provider_family: platform
+  platform_family: cray-pe
   languages:
   - c
   - c++
@@ -179,7 +182,8 @@ compiler_providers:
 mpi_providers:
 - name: cray-mpich
   version: 8.1.29
-  provider_family: cray-pe
+  provider_family: platform
+  platform_family: cray-pe
   compatibility:
     compilers:
     - cce
