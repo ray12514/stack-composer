@@ -192,6 +192,32 @@ run_step() {
   return 1
 }
 
+verify_non_external_manifests() {
+  env_path=$1
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/spack-build-verify.XXXXXX")
+  all_hashes="$scratch/all"
+  external_hashes="$scratch/external"
+  local_hashes="$scratch/local"
+
+  spack -e "$env_path" find -H | sort > "$all_hashes"
+  spack -e "$env_path" find -e -H | sort > "$external_hashes"
+  comm -23 "$all_hashes" "$external_hashes" > "$local_hashes"
+
+  hashes=()
+  while IFS= read -r hash; do
+    [[ -n $hash ]] || continue
+    hashes+=("$hash")
+  done < "$local_hashes"
+
+  rm -rf "$scratch"
+
+  if [[ ${#hashes[@]} -eq 0 ]]; then
+    printf 'no non-external Spack installs found to verify\n'
+    return 0
+  fi
+  spack -e "$env_path" verify manifest "${hashes[@]}"
+}
+
 for lane in "${LANES[@]}"; do
   env_path="$WORKSPACE/environments/$lane"
   lane_name=${lane//\//-}
@@ -199,7 +225,7 @@ for lane in "${LANES[@]}"; do
   run_step "$lane" concretize spack -e "$env_path" concretize --force || lane_failed=1
   run_step "$lane" fetch spack -e "$env_path" fetch -D || lane_failed=1
   run_step "$lane" install spack -e "$env_path" install -j "$JOBS" || lane_failed=1
-  install_root=$(spack -e "$env_path" find --format '{prefix}' 2>/dev/null | while IFS= read -r line; do
+  install_root=$(spack -e "$env_path" find --explicit --format '{prefix}' 2>/dev/null | while IFS= read -r line; do
     if [[ -n $line ]]; then
       printf '%s' "$line"
       break
@@ -213,7 +239,7 @@ for lane in "${LANES[@]}"; do
     lane_failed=1
     libraries_status=failed
   }
-  run_step "$lane" verify-manifest spack -e "$env_path" verify manifest -a || {
+  run_step "$lane" verify-manifest verify_non_external_manifests "$env_path" || {
     lane_failed=1
     manifest_status=failed
   }
