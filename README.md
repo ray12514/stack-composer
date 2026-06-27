@@ -21,7 +21,9 @@ Current implementation status:
   paths into `configs/common/config.yaml`; profile filesystem entries are only
   candidates.
 - Maintainer/operator commands are implemented: `show`, `validate-template-set`,
-  and `publish-manifest`.
+  and `publish-manifest`. `show` is the profile browser: it reports provider
+  families, compiler/MPI/GPU module facts, and resolved lane module prerequisites
+  from `profile.yaml` plus the selected defaults/stack.
 - `scripts/spack-build` is shipped in the release tarball as the local build
   companion script.
 - Reference fixture acceptance renders the smoke stack against Cray and generic

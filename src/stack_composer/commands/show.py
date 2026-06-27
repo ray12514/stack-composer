@@ -17,6 +17,7 @@ import click
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
 from stack_composer.render.plan import _BASELINE_TARGET, plan_lanes, runtime_nodes
+from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
 _BUILTIN_DEFAULTS = {
     "schema_version": 1,
@@ -93,20 +94,31 @@ def render_menu(
     native = _native_target(profile)
     targets = f"{native} (native)" if native else "(no cpu node)"
     targets += f", {_BASELINE_TARGET} (baseline)"
-    lines.append(f"{system} · {os_label} · targets: {targets}")
+    families = provider_families(profile)
+    family_label = ", ".join(families) if families else "none"
+    lines.append(f"{system} · {os_label} · provider families: {family_label}")
+    lines.append(f"targets: {targets}")
     lines.append("")
 
-    compilers = compiler_versions(profile)
+    compilers = compiler_entries(profile)
     lines.append(f"compilers ({len(compilers)} available)")
-    for name, versions in compilers.items():
-        lines.append(f"  {name:<8} {', '.join(versions) if versions else '(version n/a)'}")
+    for compiler in compilers:
+        modules = _fmt_modules(compiler.get("modules") or [])
+        lines.append(
+            f"  {compiler.get('name', '?'):<8} {compiler.get('version') or '(version n/a)':<12} "
+            f"family={compiler.get('provider_family', '?'):<8} modules={modules}"
+        )
     lines.append("")
 
     lines.extend(mpi_lines(profile))
     lines.append("")
 
     gpu = gpu_arches(profile)
-    lines.append(f"gpu   {', '.join(gpu) if gpu else 'none'}")
+    toolkits = gpu_toolkit_lines(profile)
+    lines.append(f"gpu arches   {', '.join(gpu) if gpu else 'none'}")
+    if toolkits:
+        lines.append("gpu toolkits")
+        lines.extend(f"  {line}" for line in toolkits)
     lines.append("")
 
     lines.append(
@@ -121,34 +133,69 @@ def render_menu(
     for kind, lane_compilers in by_kind.items():
         detail = " · ".join(sorted(set(lane_compilers))) if lane_compilers else ""
         lines.append(f"  {kind} → {len(lane_compilers)} lanes    {detail}".rstrip())
+    if lanes:
+        lines.append("")
+        lines.append("resolved lanes")
+        for lane in sorted(lanes, key=lambda item: item["name"]):
+            modules, issues = platform_module_prereqs_for_lane(lane, profile)
+            module_text = _fmt_modules(modules)
+            issue_text = f"  unresolved={len(issues)}" if issues else ""
+            mpi = lane.get("mpi_provider") or "none"
+            lines.append(
+                f"  {lane['name']:<28} kind={lane['kind']:<3} compiler={lane['compiler']:<8} "
+                f"mpi={mpi:<10} scope={lane['vendor_scope']} modules={module_text}{issue_text}"
+            )
     return "\n".join(lines)
 
 
-def compiler_versions(profile: dict[str, Any]) -> OrderedDict[str, list[str]]:
-    versions: OrderedDict[str, list[str]] = OrderedDict()
+def provider_families(profile: dict[str, Any]) -> list[str]:
+    families = {
+        provider.get("provider_family")
+        for provider in (profile.get("compiler_providers") or [])
+        + (profile.get("mpi_providers") or [])
+        if provider.get("provider_family")
+    }
+    return sorted(families)
+
+
+def compiler_entries(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    entries: OrderedDict[str, dict[str, Any]] = OrderedDict()
     for provider in profile.get("compiler_providers") or []:
         name = provider.get("name")
         if not name:
             continue
-        versions.setdefault(name, [])
-        if provider.get("version"):
-            versions[name].append(provider["version"])
-    return versions
+        entries[name] = provider
+    return list(entries.values())
 
 
 def mpi_lines(profile: dict[str, Any]) -> list[str]:
-    providers: OrderedDict[str, dict[str, set]] = OrderedDict()
+    providers: OrderedDict[str, dict[str, Any]] = OrderedDict()
     for entry in profile.get("mpi_providers") or []:
         name = entry.get("name")
         if not name:
             continue
-        slot = providers.setdefault(name, {"versions": set(), "compilers": set()})
+        slot = providers.setdefault(
+            name,
+            {
+                "versions": set(),
+                "families": set(),
+                "compilers": set(),
+                "modules": [],
+                "flavor_modules": OrderedDict(),
+            },
+        )
         if entry.get("version"):
             slot["versions"].add(entry["version"])
+        if entry.get("provider_family"):
+            slot["families"].add(entry["provider_family"])
+        for module in entry.get("modules") or []:
+            if module not in slot["modules"]:
+                slot["modules"].append(module)
         for compiler in (entry.get("compatibility") or {}).get("compilers") or []:
             slot["compilers"].add(compiler)
-        for compiler in (entry.get("flavors") or {}):
+        for compiler, flavor in (entry.get("flavors") or {}).items():
             slot["compilers"].add(compiler)
+            slot["flavor_modules"][compiler] = list(flavor.get("modules") or [])
         if entry.get("compiler"):
             slot["compilers"].add(entry["compiler"])
 
@@ -157,10 +204,18 @@ def mpi_lines(profile: dict[str, Any]) -> list[str]:
     lines = [f"mpi ({len(providers)} providers)"]
     for name, slot in providers.items():
         versions = ", ".join(sorted(slot["versions"])) or "(n/a)"
+        families = ", ".join(sorted(slot["families"])) or "?"
         compilers = (
             f"compilers: {', '.join(sorted(slot['compilers']))}" if slot["compilers"] else ""
         )
-        lines.append(f"  {name:<10} {versions:<20} {compilers}".rstrip() + "   [platform]")
+        modules = _fmt_modules(slot["modules"])
+        lines.append(
+            f"  {name:<10} {versions:<12} family={families:<8} {compilers} "
+            f"modules={modules}".rstrip()
+            + "   [platform]"
+        )
+        for compiler, modules_for_flavor in slot["flavor_modules"].items():
+            lines.append(f"    {compiler:<8} modules={_fmt_modules(modules_for_flavor)}")
     return lines
 
 
@@ -171,6 +226,23 @@ def gpu_arches(profile: dict[str, Any]) -> list[str]:
         if (node.get("gpu") or {}).get("arch_target")
     }
     return sorted(a for a in arches if a)
+
+
+def gpu_toolkit_lines(profile: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    for name, toolkit in sorted((profile.get("gpu_toolkit_modules") or {}).items()):
+        if not isinstance(toolkit, dict):
+            continue
+        version = toolkit.get("version") or "(version n/a)"
+        module = toolkit.get("module")
+        prefix = toolkit.get("prefix")
+        details = [f"{name} {version}"]
+        if module:
+            details.append(f"module={module}")
+        if prefix:
+            details.append(f"prefix={prefix}")
+        lines.append(" ".join(details))
+    return lines
 
 
 def _native_target(profile: dict[str, Any]) -> str | None:
@@ -189,3 +261,7 @@ def _fmt_sel(value: Any) -> str:
     if isinstance(value, list):
         return "[" + ", ".join(value) + "]"
     return str(value)
+
+
+def _fmt_modules(modules: list[str]) -> str:
+    return ", ".join(modules) if modules else "none"
