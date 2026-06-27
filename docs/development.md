@@ -1,6 +1,8 @@
 # Development
 
-`stack-composer` follows `stack-planning/docs/stack_composer_design_v1.md`.
+`stack-composer` follows the current stack-planning model in
+`docs/stack_generation_structure_v1.md`, `docs/end_to_end_map_v1.md`, and
+`docs/stack_build_handoff_note_v1.md`.
 
 Current implementation decisions:
 

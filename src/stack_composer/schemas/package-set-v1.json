@@ -27,7 +27,7 @@
     },
     "kinds": {
       "type": "array",
-      "description": "Package-set kinds this set can satisfy. Open vocabulary; the contract resolver matches these against build_classes[*].package_set_kind. Large science stacks commonly use serial/mpi/gpu/core.",
+      "description": "Package-set kinds this set can satisfy. Open vocabulary matched against build kinds such as cpu/mpi/gpu/core.",
       "items": {
         "type": "string",
         "minLength": 1

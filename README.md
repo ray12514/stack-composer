@@ -1,26 +1,28 @@
 # stack-composer
 
-`stack-composer` is the Python implementation described by
-`stack-planning/docs/stack_composer_design_v1.md`.
+`stack-composer` is the Python renderer/validator described by the current
+stack-planning notes, especially
+`stack-planning/docs/stack_generation_structure_v1.md`.
 
 It consumes stack repository content and produces Spack-consumable rendered
 workspaces. It does not probe hosts, run Spack during `render`, deploy files, or
-make package intent decisions outside `stack.yaml` and template contracts.
+make package intent decisions outside `stack.yaml`, `defaults.yaml`, and
+templates.
 
 ## Status
 
-The v1 implementation phases are complete through reference-fixture acceptance:
+Current implementation status:
 
 - Canonical schemas are packaged under `stack_composer/schemas/`.
 - `validate` performs schema checks and render preflight checks.
 - `render` writes deterministic draft workspaces with rendered config scopes,
   lane environments, package repos, and `release-manifest.yaml`.
-- Maintainer commands are implemented: `assess-profiles`, `explain`,
-  `validate-template-set`, `scaffold-templates`, and `publish-manifest`.
+- Maintainer/operator commands are implemented: `show`, `validate-template-set`,
+  and `publish-manifest`.
 - `scripts/spack-build` is shipped in the release tarball as the local build
   companion script.
-- Reference fixture acceptance renders the documented ScienceStack stack against
-  the documented Cray and generic Linux profiles in tests.
+- Reference fixture acceptance renders the smoke stack against Cray and generic
+  Linux profiles in tests.
 - Release packaging, platform-neutral `.pyz` enforcement, and third-party
   license enforcement are present.
 
