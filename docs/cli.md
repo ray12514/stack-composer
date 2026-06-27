@@ -2,10 +2,8 @@
 
 Implemented command surface:
 
-- `stack-composer assess-profiles`
-- `stack-composer scaffold-templates`
 - `stack-composer validate-template-set`
-- `stack-composer explain`
+- `stack-composer show`
 - `stack-composer render`
 - `stack-composer validate`
 - `stack-composer publish-manifest`
@@ -22,14 +20,11 @@ Command status:
 - `validate` checks schemas and render preflight invariants without writing a
   workspace.
 - `render` writes a deterministic draft workspace and `release-manifest.yaml`.
-- `assess-profiles` reports which template sets are resolvable for a profile
-  corpus.
-- `explain` shows profile-resolvable toolchains, node selectors, and GPU
-  selectors for a stack/template/profile combination.
+- `show` prints the buildable menu from a profile plus optional defaults/stack:
+  compilers, MPI providers, GPU arches, and lanes under the current defaults.
 - `validate-template-set` renders a smoke stack for each supplied profile and
   writes per-profile reports. `--concretize` is intentionally deferred and exits
   with a clear not-implemented error.
-- `scaffold-templates` writes review-marked starter template proposals.
 - `publish-manifest` finalizes a rendered draft manifest after build/verify
   inputs are available.
 
