@@ -297,15 +297,23 @@ def cray_nvidia_profile(profile: dict[str, Any]) -> dict[str, Any]:
     profile = deepcopy(profile)
     profile["system"]["name"] = "example-cray-nvidia"
     profile["system"]["description"] = "Cray EX, NVIDIA A100"
-    profile["vendor_cray"]["nvhpc"] = {
-        "version": "25.3",
-        "prefix": "/opt/nvidia/hpc_sdk/Linux_x86_64/25.3/compilers",
-        "modules": ["PrgEnv-nvidia", "nvidia/25.3"],
-    }
-    profile["vendor_cray"]["cray_mpich"]["flavors"]["nvhpc"] = {
-        "prefix": "/opt/cray/pe/mpich/8.1.29/ofi/nvidia/25.3",
-        "modules": ["cray-mpich/8.1.29"],
-    }
+    profile["compiler_providers"].append(
+        {
+            "name": "nvhpc",
+            "version": "25.3",
+            "prefix": "/opt/nvidia/hpc_sdk/Linux_x86_64/25.3/compilers",
+            "provider_family": "cray-pe",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["PrgEnv-nvidia", "nvidia/25.3"],
+        }
+    )
+    for mpi in profile["mpi_providers"]:
+        if mpi["name"] == "cray-mpich":
+            mpi["flavors"]["nvhpc"] = {
+                "prefix": "/opt/cray/pe/mpich/8.1.29/ofi/nvidia/25.3",
+                "modules": ["cray-mpich/8.1.29"],
+            }
+            mpi.setdefault("compatibility", {}).setdefault("compilers", []).append("nvhpc")
     profile["gpu_toolkit_modules"] = {
         "cudatoolkit": {
             "version": "12.4.1",

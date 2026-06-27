@@ -108,25 +108,18 @@
       "required": ["tool"],
       "additionalProperties": false
     },
-    "vendor_cray": {
-      "oneOf": [
-        { "type": "null" },
-        { "$ref": "#/$defs/vendor_cray_block" }
-      ],
-      "description": "Present only on Cray-family systems; explicit null otherwise."
-    },
-    "compilers_external": {
+    "compiler_providers": {
       "type": "array",
-      "description": "Generic site or system compilers as externals. Excludes Cray PE compilers (those live under vendor_cray).",
+      "description": "Every compiler available on the system as an external, each tagged with the provider family it comes from. Generic: Cray PE compilers are provider_family=cray-pe entries, not a special block.",
       "items": {
-        "$ref": "#/$defs/compiler_external"
+        "$ref": "#/$defs/compiler_provider"
       }
     },
-    "mpi": {
+    "mpi_providers": {
       "type": "array",
-      "description": "Generic MPI implementations available on the system. Excludes cray-mpich (lives under vendor_cray).",
+      "description": "Every MPI implementation available on the system, each tagged with provider family. A provider is single-prefix or carries per-compiler flavors (e.g. cray-mpich). Generic across Cray PE, other vendor PEs, site builds, and OS packages.",
       "items": {
-        "$ref": "#/$defs/mpi_external"
+        "$ref": "#/$defs/mpi_provider"
       }
     },
     "gpu_toolkit_modules": {
@@ -233,14 +226,19 @@
       "required": ["name", "version", "prefix"],
       "additionalProperties": false
     },
-    "compiler_external": {
+    "provider_family": {
+      "type": "string",
+      "enum": ["cray-pe", "platform", "site", "system"],
+      "description": "Where a provider comes from: cray-pe (Cray PE / a future CPE), platform (another vendor PE), site (site-built/module), system (OS package)."
+    },
+    "compiler_provider": {
       "type": "object",
-      "description": "A generic site or system compiler external.",
+      "description": "One compiler available as an external, tagged with its provider family.",
       "properties": {
         "name": {
           "type": "string",
           "minLength": 1,
-          "description": "Compiler name (gcc, aocc, intel, oneapi, nvhpc, etc.)."
+          "description": "Compiler name (gcc, cce, aocc, intel, nvhpc, ...)."
         },
         "version": {
           "type": "string",
@@ -252,135 +250,80 @@
           "pattern": "^/",
           "description": "Absolute compiler install prefix."
         },
-        "modules": {
-          "type": "array",
-          "description": "Modules to load to expose this compiler. Omit for prefix-only externals.",
-          "items": { "type": "string" }
-        },
+        "provider_family": { "$ref": "#/$defs/provider_family" },
         "languages": {
           "type": "array",
           "description": "Languages the compiler provides drivers for.",
-          "items": {
-            "type": "string",
-            "enum": ["c", "c++", "fortran"]
-          },
+          "items": { "type": "string", "enum": ["c", "c++", "fortran"] },
           "uniqueItems": true,
           "minItems": 1
+        },
+        "modules": {
+          "type": "array",
+          "description": "Modules to load to expose this compiler (e.g. [PrgEnv-cray, cce/17.0.1]). Omit for prefix-only externals.",
+          "items": { "type": "string" }
+        },
+        "compilers": {
+          "type": "object",
+          "description": "Optional explicit driver paths. Derived from prefix/bin + the template command map when omitted.",
+          "properties": {
+            "c": { "type": "string", "minLength": 1 },
+            "cxx": { "type": "string", "minLength": 1 },
+            "fortran": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
         }
       },
-      "required": ["name", "version", "prefix", "languages"],
+      "required": ["name", "version", "prefix", "provider_family", "languages"],
       "additionalProperties": false
     },
-    "mpi_external": {
+    "mpi_provider": {
       "type": "object",
-      "description": "A generic MPI implementation external. Excludes cray-mpich.",
+      "description": "One MPI implementation available as an external, tagged with provider family. Either single-prefix or per-compiler flavors.",
       "properties": {
         "name": {
           "type": "string",
           "minLength": 1,
-          "description": "MPI provider (openmpi, mpich, mvapich, intel-mpi, etc.)."
-        },
-        "provenance": {
-          "type": "string",
-          "enum": ["site", "system", "vendor_bundled", "absent"],
-          "description": "Where the MPI install came from."
+          "description": "MPI provider (cray-mpich, openmpi, mpich, mvapich2, intel-mpi, ...)."
         },
         "version": {
           "type": "string",
           "minLength": 1,
           "description": "Exact MPI version."
         },
+        "provider_family": { "$ref": "#/$defs/provider_family" },
         "prefix": {
           "type": "string",
           "pattern": "^/",
-          "description": "Absolute MPI install prefix."
-        },
-        "compiler": {
-          "type": "string",
-          "description": "Compiler spec the site MPI was built with (e.g., aocc@4.2.0)."
+          "description": "Absolute MPI install prefix (single-flavor providers)."
         },
         "modules": {
           "type": "array",
           "description": "Modules to load to expose this MPI. Omit when prefix is sufficient.",
           "items": { "type": "string" }
-        }
-      },
-      "required": ["name", "provenance", "version", "prefix"],
-      "additionalProperties": false
-    },
-    "vendor_cray_block": {
-      "type": "object",
-      "description": "Cray PE facts. Each optional compiler sub-block (cce, gcc, aocc, intel, rocmcc, nvhpc) is present only when that compiler is exposed on the system.",
-      "properties": {
-        "pe_version": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Cray PE release this profile is pinned to."
         },
-        "cce": { "$ref": "#/$defs/cray_compiler_block" },
-        "gcc": { "$ref": "#/$defs/cray_compiler_block" },
-        "aocc": { "$ref": "#/$defs/cray_compiler_block" },
-        "intel": { "$ref": "#/$defs/cray_compiler_block" },
-        "rocmcc": { "$ref": "#/$defs/cray_compiler_block" },
-        "nvhpc": { "$ref": "#/$defs/cray_compiler_block" },
-        "cray_mpich": { "$ref": "#/$defs/cray_mpich_block" },
-        "libsci": { "$ref": "#/$defs/cray_libsci_block" }
-      },
-      "required": ["pe_version"],
-      "additionalProperties": false
-    },
-    "cray_compiler_block": {
-      "type": "object",
-      "description": "A Cray-exposed compiler (CCE, Cray-native GCC, AOCC, Intel, ROCmCC, NVHPC).",
-      "properties": {
-        "version": {
+        "compiler": {
           "type": "string",
-          "minLength": 1,
-          "description": "Compiler version."
+          "description": "Compiler this MPI was built with, for single-flavor site MPI (e.g. aocc@4.2.0)."
         },
-        "prefix": {
-          "type": "string",
-          "pattern": "^/",
-          "description": "Absolute compiler install prefix."
-        },
-        "modules": {
-          "type": "array",
-          "description": "Module list the external loads at build time (e.g., [PrgEnv-cray, cce/17.0.1]).",
-          "items": { "type": "string" },
-          "minItems": 1
-        }
-      },
-      "required": ["version", "prefix", "modules"],
-      "additionalProperties": false
-    },
-    "cray_mpich_block": {
-      "type": "object",
-      "description": "cray-mpich with per-compiler flavor prefixes.",
-      "properties": {
-        "version": {
-          "type": "string",
-          "minLength": 1,
-          "description": "cray-mpich version."
+        "compatibility": {
+          "type": "object",
+          "description": "Which compilers this MPI supports.",
+          "properties": {
+            "compilers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          },
+          "additionalProperties": false
         },
         "flavors": {
           "type": "object",
-          "description": "Compiler-flavored builds at distinct prefixes. Keys are compiler names (cce, gcc, aocc, intel, rocmcc, nvhpc).",
+          "description": "Per-compiler builds at distinct prefixes (e.g. cray-mpich). Keys are compiler names.",
           "minProperties": 1,
           "patternProperties": {
             "^[a-z][a-z0-9_]*$": {
               "type": "object",
               "properties": {
-                "prefix": {
-                  "type": "string",
-                  "pattern": "^/",
-                  "description": "Absolute prefix for this compiler-flavored build."
-                },
-                "modules": {
-                  "type": "array",
-                  "description": "Modules to load to expose this flavor.",
-                  "items": { "type": "string" },
-                  "minItems": 1
-                }
+                "prefix": { "type": "string", "pattern": "^/" },
+                "modules": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
               },
               "required": ["prefix", "modules"],
               "additionalProperties": false
@@ -389,24 +332,7 @@
           "additionalProperties": false
         }
       },
-      "required": ["version", "flavors"],
-      "additionalProperties": false
-    },
-    "cray_libsci_block": {
-      "type": "object",
-      "description": "cray-libsci facts.",
-      "properties": {
-        "version": {
-          "type": "string",
-          "minLength": 1,
-          "description": "libsci version."
-        },
-        "prefix": {
-          "type": "string",
-          "pattern": "^/",
-          "description": "Absolute libsci install prefix."
-        }
-      },
+      "required": ["name", "version", "provider_family"],
       "additionalProperties": false
     },
     "rocm_toolkit_module": {

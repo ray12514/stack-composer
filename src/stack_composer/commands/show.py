@@ -16,12 +16,7 @@ import click
 
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
-from stack_composer.render.plan import (
-    _BASELINE_TARGET,
-    plan_lanes,
-    profile_compilers,
-    runtime_nodes,
-)
+from stack_composer.render.plan import _BASELINE_TARGET, plan_lanes, runtime_nodes
 
 _BUILTIN_DEFAULTS = {
     "schema_version": 1,
@@ -131,41 +126,35 @@ def render_menu(
 
 def compiler_versions(profile: dict[str, Any]) -> OrderedDict[str, list[str]]:
     versions: OrderedDict[str, list[str]] = OrderedDict()
-    for name in profile_compilers(profile):
-        versions[name] = []
-    vendor_cray = profile.get("vendor_cray") or {}
-    for name in versions:
-        if vendor_cray.get(name) and vendor_cray[name].get("version"):
-            versions[name].append(vendor_cray[name]["version"])
-    for compiler in profile.get("compilers_external") or []:
-        name = compiler.get("name")
-        if name in versions and compiler.get("version"):
-            versions[name].append(compiler["version"])
+    for provider in profile.get("compiler_providers") or []:
+        name = provider.get("name")
+        if not name:
+            continue
+        versions.setdefault(name, [])
+        if provider.get("version"):
+            versions[name].append(provider["version"])
     return versions
 
 
 def mpi_lines(profile: dict[str, Any]) -> list[str]:
     providers: OrderedDict[str, dict[str, set]] = OrderedDict()
-    for entry in profile.get("mpi") or []:
+    for entry in profile.get("mpi_providers") or []:
         name = entry.get("name")
         if not name:
             continue
         slot = providers.setdefault(name, {"versions": set(), "compilers": set()})
         if entry.get("version"):
             slot["versions"].add(entry["version"])
+        for compiler in (entry.get("compatibility") or {}).get("compilers") or []:
+            slot["compilers"].add(compiler)
+        for compiler in (entry.get("flavors") or {}):
+            slot["compilers"].add(compiler)
         if entry.get("compiler"):
             slot["compilers"].add(entry["compiler"])
-    vendor_cray = profile.get("vendor_cray") or {}
-    if vendor_cray.get("cray_mpich"):
-        slot = providers.setdefault("cray-mpich", {"versions": set(), "compilers": set()})
-        if vendor_cray["cray_mpich"].get("version"):
-            slot["versions"].add(vendor_cray["cray_mpich"]["version"])
 
     if not providers:
         return ["mpi   none on system — built from source per defaults"]
-    total = sum(1 for _ in profile.get("mpi") or [])
-    head = f"mpi ({total} module variants → {len(providers)} providers)" if total else "mpi"
-    lines = [head]
+    lines = [f"mpi ({len(providers)} providers)"]
     for name, slot in providers.items():
         versions = ", ".join(sorted(slot["versions"])) or "(n/a)"
         compilers = (

@@ -1,5 +1,0 @@
-# TODO(scaffold): Review repository ordering and shadow policy.
-repos:
-{% for repo in package_repos %}
-  - {{ path_join('..', '..', 'package-repos', repo.name) }}
-{% endfor %}
