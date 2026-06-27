@@ -20,6 +20,10 @@
       "$ref": "#/$defs/mpi_selection",
       "description": "MPI provider + whether to build it or use the platform external. Used for mpi/gpu kinds."
     },
+    "provider_scopes": {
+      "$ref": "#/$defs/provider_scopes",
+      "description": "Template scope routing keyed by generic provider metadata. Keeps vendor-specific templates as data-selected adapters."
+    },
     "gpu": {
       "$ref": "#/$defs/gpu_selection",
       "description": "Which GPU arches to fan out (Spack's own names), for gpu kind."
@@ -64,7 +68,36 @@
       "type": "object",
       "properties": {
         "provider": { "type": "string", "minLength": 1 },
-        "source": { "type": "string", "enum": ["auto", "build", "platform"] }
+        "source": { "type": "string", "enum": ["auto", "build", "platform"] },
+        "provider_family_priority": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "description": "Optional platform-MPI provider-family preference. If omitted, profile order wins."
+        }
+      },
+      "additionalProperties": false
+    },
+    "provider_scopes": {
+      "type": "object",
+      "properties": {
+        "compiler": {
+          "type": "object",
+          "properties": {
+            "default": { "type": "string", "pattern": "^[a-z0-9._-]+(/[a-z0-9._-]+)*$" },
+            "families": {
+              "type": "object",
+              "patternProperties": {
+                "^[a-z0-9._-]+$": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9._-]+(/[a-z0-9._-]+)*$"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
       },
       "additionalProperties": false
     },

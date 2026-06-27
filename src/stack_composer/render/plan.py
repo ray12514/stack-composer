@@ -85,8 +85,6 @@ def lane_candidates_for_build(
     if not compilers:
         return [], "compiler_unavailable", "profile reports no compilers to build with"
 
-    vendor_scope = vendor_scope_for(profile)
-
     mpi_provider, mpi_source = (None, None)
     if kind in ("mpi", "gpu"):
         mpi_provider, mpi_source = resolve_mpi(profile, stack, build)
@@ -131,7 +129,7 @@ def lane_candidates_for_build(
                     continue
                 lanes.append(
                     make_lane(
-                        profile, stack, build, kind, compiler, vendor_scope,
+                        profile, stack, build, kind, compiler,
                         mpi_provider, mpi_source, target_for(target_policy, node),
                         node_name, arch,
                     )
@@ -142,7 +140,7 @@ def lane_candidates_for_build(
         for compiler in compilers:
             lanes.append(
                 make_lane(
-                    profile, stack, build, kind, compiler, vendor_scope,
+                    profile, stack, build, kind, compiler,
                     mpi_provider, mpi_source, target, node_name, None,
                 )
             )
@@ -212,11 +210,26 @@ def mpi_compatible_compilers(profile: dict[str, Any], provider_name: str) -> set
     return set()
 
 
-def vendor_scope_for(profile: dict[str, Any]) -> str:
-    """Automatic, by provider family: a cray-pe compiler present → vendor/cray,
-    else vendor/linux."""
-    families = {p.get("provider_family") for p in profile.get("compiler_providers") or []}
-    return "vendor/cray" if "cray-pe" in families else "vendor/linux"
+def compiler_provider_family(profile: dict[str, Any], compiler_name: str) -> str | None:
+    for provider in profile.get("compiler_providers") or []:
+        if provider.get("name") == compiler_name:
+            return provider.get("provider_family")
+    return None
+
+
+def vendor_scope_for(profile: dict[str, Any], stack: dict[str, Any], compiler_name: str) -> str:
+    """Choose the compiler externals scope from provider metadata.
+
+    The template defaults own provider-family-to-scope policy. This keeps
+    provider-specific scopes as data-driven adapters instead of hardcoded vendor
+    branches in the lane planner.
+    """
+    scope_policy = (stack.get("provider_scopes") or {}).get("compiler") or {}
+    default_scope = scope_policy.get("default", "vendor/linux")
+    family = compiler_provider_family(profile, compiler_name)
+    if not family:
+        return default_scope
+    return (scope_policy.get("families") or {}).get(family, default_scope)
 
 
 def resolve_mpi(
@@ -233,12 +246,19 @@ def resolve_mpi(
         mpi = {}
     requested = mpi.get("provider")
     source = mpi.get("source", "auto")
-    # Platform MPI = an mpi_provider the profile reports; prefer a cray-pe one.
+    # Platform MPI = an mpi_provider the profile reports. Profile order is the
+    # default priority; templates may supply a provider-family priority list.
     providers = profile.get("mpi_providers") or []
     platform_provider = None
     if providers:
-        cray = [p for p in providers if p.get("provider_family") == "cray-pe"]
-        platform_provider = (cray[0] if cray else providers[0]).get("name")
+        priority = mpi.get("provider_family_priority") or []
+        prioritized = [
+            provider
+            for family in priority
+            for provider in providers
+            if provider.get("provider_family") == family
+        ]
+        platform_provider = (prioritized[0] if prioritized else providers[0]).get("name")
     if source == "build":
         return requested, "build"
     if source == "platform":
@@ -286,7 +306,6 @@ def make_lane(
     build: dict[str, Any],
     kind: str,
     compiler: str,
-    vendor_scope: str,
     mpi_provider: str | None,
     mpi_source: str | None,
     target: str,
@@ -305,7 +324,7 @@ def make_lane(
         "name": name,
         "source_build": build["name"],
         "compiler": compiler,
-        "vendor_scope": vendor_scope,
+        "vendor_scope": vendor_scope_for(profile, stack, compiler),
         "lane": lane_suffix,
         "kind": kind,
         "package_set": build.get("package_set"),

@@ -74,6 +74,50 @@ def test_vendor_scope_is_automatic_from_profile() -> None:
     ]
 
 
+def test_vendor_scope_is_per_compiler_provider_family() -> None:
+    profile, stack = fixture_context("example-cray")
+    profile["compiler_providers"].append(
+        {
+            "name": "aocc",
+            "version": "4.2.0",
+            "prefix": "/opt/site/aocc/4.2.0",
+            "provider_family": "site",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["aocc/4.2.0"],
+        }
+    )
+    stack["builds"] = [{"name": "core", "kind": "cpu", "specs": ["zlib"], "compilers": "all"}]
+    stack["per_system"] = {}
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    assert issues == []
+    assert lane_by_name(lanes, "cce-core")["vendor_scope"] == "vendor/cray"
+    assert lane_by_name(lanes, "aocc-core")["vendor_scope"] == "vendor/linux"
+
+
+def test_mpi_auto_uses_profile_order_without_cray_special_case() -> None:
+    profile, stack = fixture_context("example-cray")
+    profile["mpi_providers"].insert(
+        0,
+        {
+            "name": "openmpi",
+            "version": "5.0.6",
+            "provider_family": "site",
+            "compatibility": {"compilers": ["gcc"]},
+            "prefix": "/opt/site/openmpi/5.0.6-gcc",
+            "modules": ["openmpi/5.0.6"],
+        },
+    )
+    stack["builds"] = [{"name": "mpi", "kind": "mpi", "specs": ["hdf5+mpi"]}]
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    assert issues == []
+    assert {lane["mpi_provider"] for lane in lanes} == {"openmpi"}
+    assert {lane["mpi_source"] for lane in lanes} == {"platform"}
+
+
 def test_gpu_toolkit_scope_selection_is_independent_of_host_compiler() -> None:
     profile, stack = fixture_context("example-cray")
     lane = {
