@@ -9,8 +9,8 @@ def platform_module_prereqs_for_lane(
     lane: dict[str, Any], profile: dict[str, Any]
 ) -> tuple[list[str], list[Issue]]:
     """Modules a lane will need at runtime because it consumes site-external
-    providers. Derives from the profile's vendor_cray / compilers_external /
-    mpi / gpu_toolkit_modules blocks per v6 § Template Render Context.
+    providers. Derives from the profile's compiler_providers / mpi_providers /
+    gpu_toolkit_modules blocks.
 
     Returns (modules, issues). Issues are emitted when a lane's resolved
     compiler/MPI/GPU-toolkit axis has no corresponding profile facts — i.e.,
@@ -40,20 +40,15 @@ def _compiler_modules(
     compiler = lane.get("compiler")
     if not compiler:
         return []
-    vendor_cray = profile.get("vendor_cray") or {}
-    cray_block = vendor_cray.get(compiler)
-    if isinstance(cray_block, dict):
-        return list(cray_block.get("modules") or [])
-    for external in profile.get("compilers_external") or []:
-        if external.get("name") == compiler:
-            return list(external.get("modules") or [])
+    for provider in profile.get("compiler_providers") or []:
+        if provider.get("name") == compiler:
+            return list(provider.get("modules") or [])
     issues.append(
         Issue(
             "error",
             "unresolved-platform-module",
             f"{lane_path}.compiler",
-            f"compiler {compiler!r} is not declared in profile.vendor_cray "
-            "or profile.compilers_external",
+            f"compiler {compiler!r} is not declared in profile.compiler_providers",
         )
     )
     return []
@@ -69,8 +64,21 @@ def _mpi_modules(
     # Spack and pinned as the provider preference in the common scope.
     if lane.get("mpi_source") != "platform":
         return []
-    if provider == "cray-mpich":
-        flavors = ((profile.get("vendor_cray") or {}).get("cray_mpich") or {}).get("flavors") or {}
+    entry = next(
+        (p for p in profile.get("mpi_providers") or [] if p.get("name") == provider), None
+    )
+    if entry is None:
+        issues.append(
+            Issue(
+                "error",
+                "unresolved-platform-module",
+                f"{lane_path}.mpi_provider",
+                f"mpi provider {provider!r} is not declared in profile.mpi_providers",
+            )
+        )
+        return []
+    flavors = entry.get("flavors")
+    if isinstance(flavors, dict):
         flavor = flavors.get(lane.get("compiler", ""))
         if isinstance(flavor, dict):
             return list(flavor.get("modules") or [])
@@ -79,23 +87,12 @@ def _mpi_modules(
                 "error",
                 "unresolved-platform-module",
                 f"{lane_path}.mpi_provider",
-                f"cray-mpich flavor for compiler {lane.get('compiler')!r} is missing "
-                "from profile.vendor_cray.cray_mpich.flavors",
+                f"{provider} flavor for compiler {lane.get('compiler')!r} is missing "
+                "from profile.mpi_providers[].flavors",
             )
         )
         return []
-    for entry in profile.get("mpi") or []:
-        if entry.get("name") == provider:
-            return list(entry.get("modules") or [])
-    issues.append(
-        Issue(
-            "error",
-            "unresolved-platform-module",
-            f"{lane_path}.mpi_provider",
-            f"mpi provider {provider!r} is not declared in profile.mpi",
-        )
-    )
-    return []
+    return list(entry.get("modules") or [])
 
 
 def _gpu_toolkit_modules(

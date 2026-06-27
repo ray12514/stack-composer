@@ -5,8 +5,6 @@ from typing import Any
 from stack_composer.errors import Issue
 from stack_composer.resolve.build_kind import normalize_builds
 
-# Stable ordering for compiler fan-out when the profile reports several.
-_KNOWN_COMPILER_ORDER = ("gcc", "cce", "aocc", "intel", "nvhpc", "llvm", "rocmcc")
 # Conservative shared target for `target: baseline`.
 _BASELINE_TARGET = "x86_64_v3"
 
@@ -152,14 +150,12 @@ def runtime_nodes(profile: dict[str, Any], want_gpu: bool) -> list[tuple[str, di
 
 
 def profile_compilers(profile: dict[str, Any]) -> list[str]:
-    """Compilers the profile reports, in a stable order."""
+    """Compiler names the profile reports, in profile order (deduped). Reads the
+    generic compiler_providers inventory — any provider family, no hardcoded
+    list, so a new CPE compiler is picked up automatically."""
     found: list[str] = []
-    vendor_cray = profile.get("vendor_cray") or {}
-    for name in _KNOWN_COMPILER_ORDER:
-        if vendor_cray.get(name) is not None and name not in found:
-            found.append(name)
-    for compiler in profile.get("compilers_external") or []:
-        name = compiler.get("name")
+    for provider in profile.get("compiler_providers") or []:
+        name = provider.get("name")
         if name and name not in found:
             found.append(name)
     return found
@@ -182,8 +178,10 @@ def resolve_compilers(
 
 
 def vendor_scope_for(profile: dict[str, Any]) -> str:
-    """Automatic: Cray facts present → vendor/cray, else vendor/linux."""
-    return "vendor/cray" if profile.get("vendor_cray") else "vendor/linux"
+    """Automatic, by provider family: a cray-pe compiler present → vendor/cray,
+    else vendor/linux."""
+    families = {p.get("provider_family") for p in profile.get("compiler_providers") or []}
+    return "vendor/cray" if "cray-pe" in families else "vendor/linux"
 
 
 def resolve_mpi(
@@ -200,11 +198,12 @@ def resolve_mpi(
         mpi = {}
     requested = mpi.get("provider")
     source = mpi.get("source", "auto")
+    # Platform MPI = an mpi_provider the profile reports; prefer a cray-pe one.
+    providers = profile.get("mpi_providers") or []
     platform_provider = None
-    if (profile.get("vendor_cray") or {}).get("cray_mpich"):
-        platform_provider = "cray-mpich"
-    elif profile.get("mpi"):
-        platform_provider = (profile["mpi"][0] or {}).get("name")
+    if providers:
+        cray = [p for p in providers if p.get("provider_family") == "cray-pe"]
+        platform_provider = (cray[0] if cray else providers[0]).get("name")
     if source == "build":
         return requested, "build"
     if source == "platform":
