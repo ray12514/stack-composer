@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import glob
 import re
 import sys
 from pathlib import Path
@@ -8,11 +9,26 @@ from typing import IO, Any
 import click
 import yaml
 
-from stack_composer.commands.assess_profiles import expand_profile_globs
 from stack_composer.errors import ValidationFailed
 from stack_composer.model.profile import load_profile
 from stack_composer.render.engine import render_workspace
 from stack_composer.render.release import ReleaseVars, SourceRepo
+
+
+def expand_profile_globs(profile_args: tuple[str, ...]) -> list[Path]:
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    for arg in profile_args:
+        if any(c in arg for c in "*?["):
+            matches = sorted(Path(p) for p in glob.glob(arg))
+        else:
+            matches = [Path(arg)]
+        for path in matches:
+            resolved = path.resolve()
+            if resolved not in seen:
+                paths.append(path)
+                seen.add(resolved)
+    return paths
 
 SMOKE_RELEASE_TAG = "validate"
 SMOKE_RENDERED_AT = "1970-01-01T00:00:00Z"
@@ -39,9 +55,9 @@ def run(
         raise click.ClickException("--concretize is not implemented in this phase")
 
     template_set_dir = Path(templates)
-    if not (template_set_dir / "contract.yaml").is_file():
+    if not (template_set_dir / "defaults.yaml").is_file():
         raise click.ClickException(
-            f"--templates must point at a single template set with contract.yaml; "
+            f"--templates must point at a single template set with defaults.yaml; "
             f"got {template_set_dir!r}"
         )
 

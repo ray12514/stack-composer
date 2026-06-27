@@ -4,9 +4,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from stack_composer.model.contract import load_contract
 from stack_composer.model.profile import load_profile
-from stack_composer.model.stack import load_stack, load_stack_defaults, merge_defaults
+from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
 from stack_composer.render.engine import render_workspace
 from stack_composer.render.plan import plan_lanes
 from stack_composer.render.release import ReleaseVars, SourceRepo
@@ -16,8 +15,8 @@ from tests.conftest import fixture_path
 
 
 def test_scope_selection_is_lane_specific_for_cray_gpu_and_core() -> None:
-    profile, stack, contract = fixture_context("example-cray")
-    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack, contract)
+    profile, stack = fixture_context("example-cray")
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
     assert issues == []
 
     gpu_lane = lane_by_name(lanes, "gcc-gpu-craympich-gfx90a")
@@ -41,8 +40,8 @@ def test_scope_selection_is_lane_specific_for_cray_gpu_and_core() -> None:
 
 
 def test_scope_selection_keeps_generic_linux_out_of_cray_scopes() -> None:
-    profile, stack, contract = fixture_context("example-linux")
-    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack, contract)
+    profile, stack = fixture_context("example-linux")
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
     assert issues == []
 
     mpi_lane = lane_by_name(lanes, "aocc-mpi-openmpi")
@@ -60,30 +59,28 @@ def test_scope_selection_keeps_generic_linux_out_of_cray_scopes() -> None:
     assert not any(scope.startswith("gpu/") for scope in scopes)
 
 
-def test_vendor_scope_selection_comes_from_contract() -> None:
-    profile, stack, contract = fixture_context("example-cray")
-    contract = deepcopy(contract)
-    contract["vendor_scope_selectors"]["cray"]["scope"] = "vendor/current-cpe"
-
-    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack, contract)
+def test_vendor_scope_is_automatic_from_profile() -> None:
+    profile, stack = fixture_context("example-cray")
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
     assert issues == []
 
     core_lane = lane_by_name(lanes, "gcc-core")
-    assert core_lane["vendor_scope"] == "vendor/current-cpe"
+    assert core_lane["vendor_scope"] == "vendor/cray"
     assert scopes_for_lane(core_lane, stack, profile) == [
         "../../../configs/common",
         "../../../configs/os/rhel8",
         "../../../configs/target/x86_64_v3",
-        "../../../configs/vendor/current-cpe",
+        "../../../configs/vendor/cray",
     ]
 
 
 def test_gpu_toolkit_scope_selection_is_independent_of_host_compiler() -> None:
-    profile, stack, _contract = fixture_context("example-cray")
+    profile, stack = fixture_context("example-cray")
     lane = {
         "target": "zen3",
         "vendor_scope": "vendor/cray",
         "mpi_provider": "cray-mpich",
+        "mpi_source": "platform",
         "gpu_arch": "gfx90a",
     }
 
@@ -180,7 +177,7 @@ def test_rendered_generic_linux_workspace_contains_site_mpi_without_cray(
 
 
 def test_rendered_cray_nvidia_workspace_uses_current_cpe_names(tmp_path: Path) -> None:
-    profile, _stack, _contract = fixture_context("example-cray")
+    profile, _stack = fixture_context("example-cray")
     profile = cray_nvidia_profile(profile)
     profile_path = write_profile(tmp_path / "profile", profile)
 
@@ -218,7 +215,7 @@ def test_rendered_cray_nvidia_workspace_uses_current_cpe_names(tmp_path: Path) -
 def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
     tmp_path: Path,
 ) -> None:
-    profile, _stack, _contract = fixture_context("example-linux")
+    profile, _stack = fixture_context("example-linux")
     profile = generic_linux_gpu_profile(profile)
     profile_path = write_profile(tmp_path / "profile", profile)
 
@@ -250,18 +247,16 @@ def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
     assert "+gpu" not in nvidia_env
 
 
-def fixture_context(profile_name: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+def fixture_context(profile_name: str) -> tuple[dict[str, Any], dict[str, Any]]:
     profile, profile_issues = load_profile(fixture_path("profiles", profile_name, "profile.yaml"))
     assert profile_issues == []
     template_set = fixture_path("template-sets", "v6")
-    defaults, default_issues = load_stack_defaults(template_set / "stack-defaults.yaml")
+    defaults, default_issues = load_defaults(template_set / "defaults.yaml")
     assert default_issues == []
-    contract, contract_issues = load_contract(template_set / "contract.yaml")
-    assert contract_issues == []
     raw_stack, stack_issues = load_stack(fixture_path("stacks", "science-stack", "stack.yaml"))
     assert stack_issues == []
     stack = merge_defaults(defaults, deepcopy(raw_stack))
-    return profile, stack, contract
+    return profile, stack
 
 
 def lane_by_name(lanes: list[dict[str, Any]], name: str) -> dict[str, Any]:

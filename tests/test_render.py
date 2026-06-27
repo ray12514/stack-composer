@@ -8,9 +8,8 @@ import pytest
 from jinja2 import UndefinedError
 
 from stack_composer.errors import ValidationFailed
-from stack_composer.model.contract import load_contract
 from stack_composer.model.profile import load_profile
-from stack_composer.model.stack import load_stack, load_stack_defaults, merge_defaults
+from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
 from stack_composer.render.engine import render_workspace
 from stack_composer.render.plan import plan_lanes
 from stack_composer.render.release import ReleaseVars, SourceRepo
@@ -29,7 +28,7 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     assert validate_schema("release-manifest", manifest, "release-manifest.yaml") == []
     assert manifest["phase"] == "draft"
     assert manifest["templates"]["render_tool"]["name"] == "stack-composer render"
-    assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "serial", "mpi", "gpu"}
+    assert {lane["kind"] for lane in manifest["lanes"]} == {"cpu", "mpi", "gpu"}
 
 
 def test_render_workspace_handles_generic_linux_without_gpu(tmp_path: Path) -> None:
@@ -38,12 +37,12 @@ def test_render_workspace_handles_generic_linux_without_gpu(tmp_path: Path) -> N
     manifest = load_yaml(workspace / "release-manifest.yaml")
     assert validate_schema("release-manifest", manifest, "release-manifest.yaml") == []
     assert manifest["profile"]["system_name"] == "example-linux"
-    assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "serial", "mpi"}
+    assert {lane["kind"] for lane in manifest["lanes"]} == {"cpu", "mpi"}
     assert manifest["skipped_builds"] == [
         {
             "build": "gpu",
             "reason_code": "nodes_unmatched",
-            "reason": "no profile node type matches selector 'gpu'",
+            "reason": "profile has no runtime GPU node type",
         }
     ]
 
@@ -78,7 +77,7 @@ def test_render_workspace_refuses_stale_pending_path(tmp_path: Path) -> None:
 def test_render_workspace_removes_pending_on_template_failure(tmp_path: Path) -> None:
     templates_root = tmp_path / "template-sets"
     shutil.copytree(fixture_path("template-sets"), templates_root)
-    broken_template = templates_root / "v6" / "environments" / "core" / "spack.yaml.j2"
+    broken_template = templates_root / "v6" / "environments" / "cpu" / "spack.yaml.j2"
     broken_template.write_text("{{ missing_context_key }}\n", encoding="utf-8")
 
     output_root = tmp_path / "out-a"
@@ -94,8 +93,7 @@ def test_plan_lanes_reports_per_system_empty_when_narrowing_drops_all_lanes() ->
     profile, _ = load_profile(fixture_path("profiles", "example-cray", "profile.yaml"))
     raw_stack, _ = load_stack(fixture_path("stacks", "science-stack", "stack.yaml"))
     template_set = fixture_path("template-sets", "v6")
-    defaults, _ = load_stack_defaults(template_set / "stack-defaults.yaml")
-    contract, _ = load_contract(template_set / "contract.yaml")
+    defaults, _ = load_defaults(template_set / "defaults.yaml")
     stack = merge_defaults(defaults, deepcopy(raw_stack))
     for build in stack["builds"]:
         if build["name"] == "mpi":
@@ -103,7 +101,7 @@ def test_plan_lanes_reports_per_system_empty_when_narrowing_drops_all_lanes() ->
             break
     stack["per_system"]["example-cray"]["builds"]["mpi"] = {"compilers": ["does-not-exist"]}
 
-    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack, contract)
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
     assert all(lane["source_build"] != "mpi" for lane in lanes)
     mpi_issues = [i for i in issues if i.path == "stack.builds.mpi"]
     assert len(mpi_issues) == 1

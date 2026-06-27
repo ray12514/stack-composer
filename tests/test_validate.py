@@ -25,21 +25,6 @@ def test_validate_inputs_accepts_reference_fixtures() -> None:
         assert context["stack"]["name"] == "science-stack"
 
 
-def test_validate_inputs_rejects_unknown_build_class(tmp_path) -> None:
-    stack_path = fixture_path("stacks", "science-stack", "stack.yaml")
-    data = stack_path.read_text(encoding="utf-8").replace("class: gpu", "class: bad-gpu")
-    bad_stack = tmp_path / "bad-stack.yaml"
-    bad_stack.write_text(data, encoding="utf-8")
-    issues, _ = validate_inputs(
-        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
-        stack_path=bad_stack,
-        templates_root=fixture_path("template-sets"),
-        package_sets_dir=fixture_path("package-sets"),
-        package_repos_dir=fixture_path("package-repos"),
-    )
-    assert any(issue.code == "unknown-build-class" for issue in issues)
-
-
 def test_validate_inputs_rejects_missing_package_repo_yaml(tmp_path: Path) -> None:
     repo_dir = tmp_path / "package-repos" / "science"
     repo_dir.mkdir(parents=True)
@@ -151,10 +136,10 @@ def test_validate_inputs_rejects_unresolved_narrowing_mpi(tmp_path: Path) -> Non
     assert any(issue.code == "unresolved-narrowing-mpi" for issue in issues)
 
 
-def test_validate_inputs_rejects_unresolved_narrowing_gpu_selector(tmp_path: Path) -> None:
-    stack = stack_with_narrowing("gpu", "gpu_selectors", ["a100"])
+def test_validate_inputs_rejects_unresolved_narrowing_gpu_arch(tmp_path: Path) -> None:
+    stack = stack_with_narrowing("gpu", "gpu_archs", ["sm_999"])
     issues = validate_stack_copy(tmp_path, stack)
-    assert any(issue.code == "unresolved-narrowing-gpu-selector" for issue in issues)
+    assert any(issue.code == "unresolved-narrowing-gpu-arch" for issue in issues)
 
 
 def test_validate_inputs_rejects_required_build_that_cannot_resolve(tmp_path: Path) -> None:

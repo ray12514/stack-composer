@@ -20,7 +20,6 @@ def build_render_context(
         "profile": profile,
         "stack": base_context["stack"],
         "defaults": base_context["defaults"],
-        "contract": base_context["contract"],
         "package_repos": base_context["package_repos"],
         "spec_sources": base_context["spec_sources"],
         "rendered_lanes": rendered_lanes,

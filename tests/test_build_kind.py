@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from stack_composer.model.contract import load_contract
 from stack_composer.model.profile import load_profile
+from stack_composer.model.stack import load_defaults, merge_defaults
 from stack_composer.render.plan import plan_lanes
 from stack_composer.resolve.build_kind import infer_kind, normalize_build
 from tests.conftest import fixture_path
@@ -22,88 +22,52 @@ def test_infer_kind_from_specs() -> None:
     assert infer_kind({"package_set": "science-full"}) == "cpu"
 
 
-def test_normalize_build_fills_from_kind_defaults() -> None:
-    contract = {
-        "kind_defaults": {
-            "mpi": {
-                "class": "mpi",
-                "toolchain": "science-mpi-default",
-                "nodes": "cpu",
-                "expand": "one",
-            }
-        }
-    }
-    out = normalize_build({"name": "sci", "specs": ["hdf5@1.14.5+mpi+fortran"]}, contract)
+def test_normalize_build_sets_kind() -> None:
+    out = normalize_build({"name": "sci", "specs": ["hdf5@1.14.5+mpi+fortran"]})
     assert out["kind"] == "mpi"
-    assert out["class"] == "mpi"
-    assert out["toolchain"] == "science-mpi-default"
-    assert out["nodes"] == "cpu"
-    assert out["expand"] == "one"
+    out = normalize_build({"name": "g", "kind": "gpu", "specs": ["cmake"]})
+    assert out["kind"] == "gpu"
+    out = normalize_build({"name": "c", "package_set": "x"})
+    assert out["kind"] == "cpu"
 
 
-def test_normalize_build_explicit_fields_win() -> None:
-    contract = {
-        "kind_defaults": {
-            "mpi": {"class": "mpi", "toolchain": "science-mpi-default", "nodes": "cpu"}
-        }
-    }
-    build = {
-        "name": "sci",
-        "kind": "mpi",
-        "class": "custom",
-        "toolchain": "custom-tc",
-        "nodes": "gpu",
-        "expand": "per_gpu_arch",
-        "specs": ["hdf5+mpi"],
-    }
-    out = normalize_build(build, contract)
-    assert (out["class"], out["toolchain"], out["nodes"], out["expand"]) == (
-        "custom",
-        "custom-tc",
-        "gpu",
-        "per_gpu_arch",
-    )
+def _v6_defaults() -> dict:
+    defaults, issues = load_defaults(fixture_path("template-sets", "v6", "defaults.yaml"))
+    assert issues == []
+    return defaults
 
 
-def test_normalize_build_expand_falls_back_per_kind() -> None:
-    # No kind_defaults at all: expand still gets a per-kind fallback.
-    out = normalize_build({"name": "g", "kind": "gpu", "package_set": "x"}, {})
-    assert out["expand"] == "per_gpu_arch"
-    out = normalize_build({"name": "c", "kind": "cpu", "package_set": "x"}, {})
-    assert out["expand"] == "one"
-
-
-def test_spec_native_renders_same_lanes_as_explicit() -> None:
+def test_spec_native_mpi_resolves_against_defaults_and_profile() -> None:
     profile, profile_issues = load_profile(fixture_path("profiles", "example-cray", "profile.yaml"))
-    contract, contract_issues = load_contract(
-        fixture_path("template-sets", "v6", "contract.yaml")
-    )
     assert profile_issues == []
-    assert contract_issues == []
+    stack = merge_defaults(
+        _v6_defaults(),
+        {
+            "name": "science-stack",
+            "builds": [{"name": "mpi", "kind": "mpi", "package_set": "science-full"}],
+        },
+    )
+    lanes, _, _, issues = plan_lanes(profile, stack)
+    assert issues == []
+    # Cray auto-selects the platform MPI (cray-mpich) for an mpi build.
+    assert lanes
+    assert all(lane["mpi_provider"] == "cray-mpich" for lane in lanes)
+    assert all(lane["mpi_source"] == "platform" for lane in lanes)
+    # The science compilers the profile reports resolve into lanes.
+    assert {"gcc", "cce"} <= {lane["compiler"] for lane in lanes}
 
-    explicit_stack = {
-        "name": "science-stack",
-        "builds": [
-            {
-                "name": "mpi",
-                "class": "mpi",
-                "package_set": "science-full",
-                "toolchain": "science-mpi-default",
-                "nodes": "cpu",
-                "expand": "one",
-            }
-        ],
-    }
-    spec_native_stack = {
-        "name": "science-stack",
-        "builds": [{"name": "mpi", "kind": "mpi", "package_set": "science-full"}],
-    }
 
-    explicit_lanes, _, _, explicit_issues = plan_lanes(profile, explicit_stack, contract)
-    native_lanes, _, _, native_issues = plan_lanes(profile, spec_native_stack, contract)
-
-    assert explicit_issues == []
-    assert native_issues == []
-    assert native_lanes == explicit_lanes
-    # Sanity: the cray profile resolves both compilers for the MPI lane.
-    assert {lane["compiler"] for lane in native_lanes} == {"gcc", "cce"}
+def test_per_build_compiler_override_narrows_lanes() -> None:
+    profile, _ = load_profile(fixture_path("profiles", "example-cray", "profile.yaml"))
+    stack = merge_defaults(
+        _v6_defaults(),
+        {
+            "name": "science-stack",
+            "builds": [
+                {"name": "mpi", "kind": "mpi", "package_set": "science-full", "compilers": ["gcc"]}
+            ],
+        },
+    )
+    lanes, _, _, issues = plan_lanes(profile, stack)
+    assert issues == []
+    assert {lane["compiler"] for lane in lanes} == {"gcc"}

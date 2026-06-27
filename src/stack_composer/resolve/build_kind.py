@@ -1,11 +1,12 @@
-"""Spec-native build normalization.
+"""Spec-native build kind inference.
 
-A stack.yaml build may be authored minimally as just ``name`` + ``specs`` (or a
-``package_set``), with an optional ``kind`` (cpu/mpi/gpu). This module infers the
-kind from the specs when omitted, then fills ``class``/``toolchain``/``nodes``/
-``expand`` from the contract's ``kind_defaults`` for that kind. Explicit build
-fields always win, so the legacy fully-specified form is unchanged
-(normalization is idempotent on it).
+A stack build is authored minimally as ``name`` + ``specs`` (or a
+``package_set``) with an optional ``kind`` (cpu/mpi/gpu). When ``kind`` is
+omitted it is inferred from the specs. That is the only normalization the build
+needs — how it actually fans out into lanes (which compilers, which MPI, which
+GPU arches, which target) is resolved by the planner from the merged site
+defaults and any per-build overrides, against the profile. There is no contract,
+toolchain, or build class.
 """
 
 from __future__ import annotations
@@ -15,11 +16,6 @@ from typing import Any
 # GPU markers win over MPI: a `+mpi+rocm` spec is a GPU build.
 _GPU_SPEC_MARKERS = ("+rocm", "+cuda", "+sycl", "cuda_arch", "amdgpu_target")
 _MPI_SPEC_MARKERS = ("+mpi",)
-
-# Fallback expand per kind when neither the build nor kind_defaults set it.
-_DEFAULT_EXPAND = {"cpu": "one", "mpi": "one", "gpu": "per_gpu_arch"}
-
-_FILLABLE_FIELDS = ("class", "toolchain", "nodes")
 
 
 def _spec_strings(build: dict[str, Any]) -> list[str]:
@@ -58,29 +54,18 @@ def infer_kind(build: dict[str, Any]) -> str:
     return "cpu"
 
 
-def normalize_build(build: dict[str, Any], contract: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of *build* with kind set and class/toolchain/nodes/expand
-    filled from ``contract.kind_defaults[kind]`` where the build omits them.
-    Explicit build fields are preserved."""
+def normalize_build(build: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *build* with ``kind`` set (inferred when omitted)."""
     normalized = dict(build)
-    kind = infer_kind(build)
-    normalized.setdefault("kind", kind)
-
-    defaults = (contract.get("kind_defaults") or {}).get(kind, {})
-    for field in _FILLABLE_FIELDS:
-        if not normalized.get(field) and defaults.get(field):
-            normalized[field] = defaults[field]
-    if not normalized.get("expand"):
-        normalized["expand"] = defaults.get("expand") or _DEFAULT_EXPAND.get(kind, "one")
+    normalized.setdefault("kind", infer_kind(build))
     return normalized
 
 
-def normalize_builds(stack: dict[str, Any], contract: dict[str, Any]) -> dict[str, Any]:
-    """Return a copy of *stack* with every build normalized. No-op when there are
-    no builds."""
+def normalize_builds(stack: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of *stack* with every build's ``kind`` set."""
     builds = stack.get("builds")
     if not isinstance(builds, list):
         return stack
     normalized = dict(stack)
-    normalized["builds"] = [normalize_build(build, contract) for build in builds]
+    normalized["builds"] = [normalize_build(build) for build in builds]
     return normalized

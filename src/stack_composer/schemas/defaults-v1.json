@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stack-composer.example/schemas/defaults-v1.json",
+  "title": "Site defaults (v1)",
+  "description": "Site-wide build policy and conventions. One per template set, merged into every stack on every system. Replaces contract.yaml + stack-defaults.yaml. Selection fields (compilers/mpi/gpu/target) are written as policy that resolves against any profile; a stack build may override them.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "profile_contract": {
+      "type": "object",
+      "properties": { "schema_version": { "type": "integer", "minimum": 1 } },
+      "required": ["schema_version"],
+      "additionalProperties": false
+    },
+    "compilers": {
+      "$ref": "#/$defs/compiler_selection",
+      "description": "Which compilers to build lanes for, from what the profile reports. 'all' = every reported; a list pins families (resolved against the profile)."
+    },
+    "mpi": {
+      "$ref": "#/$defs/mpi_selection",
+      "description": "MPI provider + whether to build it or use the platform external. Used for mpi/gpu kinds."
+    },
+    "gpu": {
+      "$ref": "#/$defs/gpu_selection",
+      "description": "Which GPU arches to fan out (Spack's own names), for gpu kind."
+    },
+    "target": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Microarchitecture policy: native | baseline | an explicit Spack target (e.g. x86_64_v3)."
+    },
+    "spack": {
+      "type": "object",
+      "properties": { "floor": { "type": "string", "minLength": 1 } },
+      "additionalProperties": false
+    },
+    "externals": {
+      "type": "object",
+      "description": "System-external posture for ordinary packages.",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "modules": { "type": "object" },
+    "foundation_pins": {
+      "type": "object",
+      "patternProperties": { "^[a-z0-9][a-z0-9._-]*$": { "type": "string", "minLength": 1 } },
+      "additionalProperties": false
+    },
+    "buildcache": { "type": "object" },
+    "release": { "type": "object" },
+    "helpers": { "type": "object" }
+  },
+  "required": ["schema_version"],
+  "additionalProperties": false,
+  "$defs": {
+    "compiler_selection": {
+      "oneOf": [
+        { "const": "all" },
+        { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true }
+      ]
+    },
+    "mpi_selection": {
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "enum": ["auto", "build", "platform"] }
+      },
+      "additionalProperties": false
+    },
+    "gpu_selection": {
+      "type": "object",
+      "properties": {
+        "archs": {
+          "oneOf": [
+            { "const": "all" },
+            { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

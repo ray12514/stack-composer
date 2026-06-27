@@ -42,9 +42,7 @@ def render_workspace(
     stack = context["stack"]
     stack["_release_tag"] = release_vars.release_tag
     template_set = Path(context["template_set"])
-    rendered_lanes, skipped_builds, applied_narrowing, plan_issues = plan_lanes(
-        profile, stack, context["contract"]
-    )
+    rendered_lanes, skipped_builds, applied_narrowing, plan_issues = plan_lanes(profile, stack)
     if plan_issues:
         raise ValidationFailed(plan_issues)
     render_context = build_render_context(

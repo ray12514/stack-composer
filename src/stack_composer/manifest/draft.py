@@ -57,8 +57,7 @@ def draft_manifest(
         "templates": {
             "set": stack["templates"]["set"],
             "digest": sha256_tree(template_set),
-            "defaults_digest": sha256_file(template_set / "stack-defaults.yaml"),
-            "contract_digest": sha256_file(template_set / "contract.yaml"),
+            "defaults_digest": sha256_file(template_set / "defaults.yaml"),
             "render_tool": {"name": "stack-composer render", "version": __version__},
             "applied_narrowing": context["applied_narrowing"],
         },

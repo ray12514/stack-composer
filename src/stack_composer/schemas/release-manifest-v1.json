@@ -110,7 +110,6 @@
         "set": { "type": "string", "minLength": 1 },
         "digest": { "$ref": "#/$defs/sha256_digest" },
         "defaults_digest": { "$ref": "#/$defs/sha256_digest" },
-        "contract_digest": { "$ref": "#/$defs/sha256_digest" },
         "render_tool": {
           "type": "object",
           "description": "Which render step produced this workspace.",
@@ -135,7 +134,7 @@
           "description": "Null when no per_system block matched profile.system.name. Otherwise a record of which axes the narrowing dropped candidates on."
         }
       },
-      "required": ["set", "digest", "defaults_digest", "contract_digest", "render_tool"],
+      "required": ["set", "digest", "defaults_digest", "render_tool"],
       "additionalProperties": false
     },
     "spack": {
@@ -172,6 +171,10 @@
             "enum": [
               "per_system_empty",
               "nodes_unmatched",
+              "compiler_unavailable",
+              "mpi_unresolved",
+              "gpu_unavailable",
+              "no_candidates",
               "requires_unsatisfied",
               "template_not_supported"
             ]

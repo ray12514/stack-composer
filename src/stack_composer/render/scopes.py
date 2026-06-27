@@ -87,14 +87,25 @@ def scope_names_for_lane(lane: dict[str, Any], profile: dict[str, Any]) -> list[
     return scopes
 
 
+# RHEL-compatible distributions share a single curated os/rhel<major> scope.
+# cluster-inspector reports the concrete distro id (rocky, almalinux, ...); the
+# template carries the family scope, so normalize here.
+_RHEL_FAMILY = {"rhel", "rocky", "almalinux", "alma", "centos", "ol", "oraclelinux"}
+
+
 def os_scope(profile: dict[str, Any]) -> str:
     os_data = profile["os"]
-    return f"os/{os_data['name']}{os_data['major']}"
+    name = os_data["name"]
+    if name in _RHEL_FAMILY:
+        name = "rhel"
+    return f"os/{name}{os_data['major']}"
 
 
 def mpi_scope(lane: dict[str, Any]) -> str | None:
+    # Only platform MPI needs an externals scope. Build-from-source MPI is pinned
+    # as the provider preference in the common scope and built by Spack.
     provider = lane.get("mpi_provider")
-    if not provider:
+    if not provider or lane.get("mpi_source") != "platform":
         return None
     return "mpi/" + provider
 

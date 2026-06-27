@@ -55,7 +55,7 @@ def test_validate_template_set_records_render_failure_and_exits_nonzero(tmp_path
             shutil.copytree(child, bad_templates / child.name)
         else:
             shutil.copy2(child, bad_templates / child.name)
-    broken = bad_templates / "environments" / "core" / "spack.yaml.j2"
+    broken = bad_templates / "environments" / "cpu" / "spack.yaml.j2"
     broken.write_text("{{ missing_context_key }}\n", encoding="utf-8")
 
     err = io.StringIO()
@@ -75,12 +75,12 @@ def test_validate_template_set_concretize_flag_is_not_implemented(tmp_path: Path
     assert "concretize" in str(excinfo.value).lower()
 
 
-def test_validate_template_set_rejects_templates_dir_without_contract(tmp_path: Path) -> None:
+def test_validate_template_set_rejects_templates_dir_without_defaults(tmp_path: Path) -> None:
     empty_templates = tmp_path / "empty"
     empty_templates.mkdir()
     with pytest.raises(click.ClickException) as excinfo:
         validate_template_set.run(**_kwargs(tmp_path / "out", templates=str(empty_templates)))
-    assert "contract.yaml" in str(excinfo.value)
+    assert "defaults.yaml" in str(excinfo.value)
 
 
 def test_validate_template_set_is_deterministic(tmp_path: Path) -> None:
