@@ -124,7 +124,7 @@
     },
     "gpu_toolkit_modules": {
       "type": "object",
-      "description": "Standalone GPU toolkit modules separable from a vendor PrgEnv. Used by the Cray PE Option B GPU lane.",
+      "description": "Standalone GPU toolkit modules separable from compiler/MPI provider modules. Used by GPU lanes when the toolkit is exposed independently.",
       "properties": {
         "rocm": { "$ref": "#/$defs/rocm_toolkit_module" },
         "cudatoolkit": { "$ref": "#/$defs/cuda_toolkit_module" },
