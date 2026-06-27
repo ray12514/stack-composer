@@ -54,9 +54,11 @@
   "$defs": {
     "compiler_selection": {
       "oneOf": [
+        { "const": "baseline" },
         { "const": "all" },
         { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true }
-      ]
+      ],
+      "description": "baseline (gcc-or-first, the lean default), all (fan out), or an explicit list."
     },
     "mpi_selection": {
       "type": "object",

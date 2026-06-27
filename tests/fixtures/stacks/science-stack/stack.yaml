@@ -19,15 +19,19 @@ builds:
     kind: cpu
     package_set: core-foundation
     target: baseline
+    compilers: all
   - name: serial
     kind: cpu
     package_set: science-full
+    compilers: all
   - name: mpi
     kind: mpi
     package_set: science-full
+    compilers: all
   - name: gpu
     kind: gpu
     package_set: science-full
+    compilers: all
 
 per_system:
   example-cray:
