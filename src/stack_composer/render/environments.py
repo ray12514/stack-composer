@@ -28,7 +28,6 @@ def render_lane_environment(
             "lane": lane,
             "specs": expand_specs_for_lane(ctx["spec_sources"][lane["source_build"]], lane),
             "scopes": scopes_for_lane(lane, ctx["stack"], ctx["profile"]),
-            "toolchain": toolchain_for_lane(ctx["profile"], lane),
             "view_root": lane["view_root"],
             "platform_module_prereqs": prereqs,
         }
@@ -38,37 +37,3 @@ def render_lane_environment(
     dst.parent.mkdir(parents=True, exist_ok=True)
     template_name = src.relative_to(template_dir).as_posix()
     dst.write_text(env.get_template(template_name).render(lane_ctx), encoding="utf-8")
-
-def toolchain_for_lane(profile: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any]:
-    compiler = {"name": lane["compiler"], "version": None, "spec": "%" + lane["compiler"]}
-    vendor_cray = profile.get("vendor_cray") or {}
-    if vendor_cray.get(lane["compiler"]):
-        compiler["version"] = vendor_cray[lane["compiler"]].get("version")
-    mpi = None
-    if "craympich" in lane["lane"]:
-        mpi = {
-            "name": "cray-mpich",
-            "version": vendor_cray.get("cray_mpich", {}).get("version"),
-            "provider": "cray-mpich",
-            "spec": "^cray-mpich",
-        }
-    gpu_toolkit = None
-    arch = lane.get("gpu_arch")
-    toolkits = profile.get("gpu_toolkit_modules") or {}
-    if arch and arch.startswith("gfx") and toolkits.get("rocm"):
-        rocm = toolkits["rocm"]
-        gpu_toolkit = {
-            "name": "rocm",
-            "version": rocm.get("version"),
-            "prefix": rocm.get("prefix"),
-            "spec": "+rocm",
-        }
-    elif arch and arch.startswith("sm_") and toolkits.get("cudatoolkit"):
-        cuda = toolkits["cudatoolkit"]
-        gpu_toolkit = {
-            "name": "cudatoolkit",
-            "version": cuda.get("version"),
-            "prefix": cuda.get("prefix"),
-            "spec": "+cuda",
-        }
-    return {"compiler": compiler, "mpi": mpi, "gpu_toolkit": gpu_toolkit}

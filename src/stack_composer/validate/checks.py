@@ -4,10 +4,9 @@ from pathlib import Path
 from typing import Any
 
 from stack_composer.errors import Issue
-from stack_composer.model.contract import load_contract
 from stack_composer.model.package_set import load_package_set
 from stack_composer.model.profile import load_profile
-from stack_composer.model.stack import load_stack, load_stack_defaults, merge_defaults
+from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
 from stack_composer.resolve.build_kind import normalize_builds
 from stack_composer.yaml_io import load_yaml
 
@@ -30,33 +29,24 @@ def validate_inputs(
 
     template_set_name = raw_stack["templates"]["set"]
     template_set = templates_root / template_set_name
-    defaults_path = template_set / "stack-defaults.yaml"
-    contract_path = template_set / "contract.yaml"
+    defaults_path = template_set / "defaults.yaml"
     if not defaults_path.exists():
-        issues.append(missing_file_issue(defaults_path, "template stack-defaults.yaml is required"))
-    if not contract_path.exists():
-        issues.append(missing_file_issue(contract_path, "template contract.yaml is required"))
-    if issues:
+        issues.append(missing_file_issue(defaults_path, "template defaults.yaml is required"))
         return issues, {}
 
-    defaults, defaults_issues = load_stack_defaults(defaults_path)
-    contract, contract_issues = load_contract(contract_path)
+    defaults, defaults_issues = load_defaults(defaults_path)
     issues.extend(defaults_issues)
-    issues.extend(contract_issues)
     if issues:
         return issues, {}
 
     stack = merge_defaults(defaults, raw_stack)
-    stack = normalize_builds(stack, contract)
+    stack = normalize_builds(stack)
     issues.extend(cross_check_profile_contract(profile, stack))
-    build_contract_issues = validate_builds_against_contract(stack, contract)
-    issues.extend(build_contract_issues)
-    issues.extend(validate_package_sets(stack, package_sets_dir, contract))
+    issues.extend(validate_package_sets(stack, package_sets_dir))
     issues.extend(validate_package_repositories(stack, package_repos_dir))
-    issues.extend(validate_per_system_narrowing(stack, profile, contract))
-    if not build_contract_issues:
-        issues.extend(validate_lane_plan(profile, stack, contract))
-    spec_sources, spec_source_issues = load_spec_sources(stack, package_sets_dir, contract)
+    issues.extend(validate_per_system_narrowing(stack, profile))
+    issues.extend(validate_lane_plan(profile, stack))
+    spec_sources, spec_source_issues = load_spec_sources(stack, package_sets_dir)
     issues.extend(spec_source_issues)
 
     context = {
@@ -64,7 +54,6 @@ def validate_inputs(
         "stack": stack,
         "raw_stack": raw_stack,
         "defaults": defaults,
-        "contract": contract,
         "template_set": str(template_set),
         "spec_sources": spec_sources,
         "package_repos": resolve_package_repositories(stack, package_repos_dir),
@@ -93,59 +82,22 @@ def cross_check_profile_contract(profile: dict[str, Any], stack: dict[str, Any])
     return issues
 
 
-def validate_builds_against_contract(
-    stack: dict[str, Any], contract: dict[str, Any]
-) -> list[Issue]:
-    issues: list[Issue] = []
-    build_classes = contract.get("build_classes", {})
-    toolchains = contract.get("toolchains", {})
-    node_selectors = contract.get("node_selectors", {})
-    for index, build in enumerate(stack.get("builds", [])):
-        location = f"stack.builds[{index}]"
-        if build.get("class") not in build_classes:
-            issues.append(
-                Issue("error", "unknown-build-class", f"{location}.class", build.get("class", ""))
-            )
-        if build.get("toolchain") not in toolchains:
-            issues.append(
-                Issue(
-                    "error",
-                    "unknown-toolchain",
-                    f"{location}.toolchain",
-                    build.get("toolchain", ""),
-                )
-            )
-        if build.get("nodes") not in node_selectors:
-            issues.append(
-                Issue("error", "unknown-node-selector", f"{location}.nodes", build.get("nodes", ""))
-            )
-    return issues
-
-
-def validate_lane_plan(
-    profile: dict[str, Any], stack: dict[str, Any], contract: dict[str, Any]
-) -> list[Issue]:
+def validate_lane_plan(profile: dict[str, Any], stack: dict[str, Any]) -> list[Issue]:
     from stack_composer.render.plan import plan_lanes
     from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
-    lanes, _, _, issues = plan_lanes(profile, stack, contract)
+    lanes, _, _, issues = plan_lanes(profile, stack)
     for lane in lanes:
         _, prereq_issues = platform_module_prereqs_for_lane(lane, profile)
         issues.extend(prereq_issues)
     return issues
 
 
-def validate_package_sets(
-    stack: dict[str, Any], package_sets_dir: Path, contract: dict[str, Any]
-) -> list[Issue]:
+def validate_package_sets(stack: dict[str, Any], package_sets_dir: Path) -> list[Issue]:
     issues: list[Issue] = []
-    class_kinds = {
-        name: build_class["package_set_kind"]
-        for name, build_class in contract.get("build_classes", {}).items()
-    }
     loaded: dict[str, dict[str, Any]] = {}
     for index, build in enumerate(stack.get("builds", [])):
-        required_kind = class_kinds.get(build.get("class"))
+        required_kind = build.get("kind")
         package_set_name = build.get("package_set")
         if not package_set_name:
             specs = build.get("specs")
@@ -206,17 +158,13 @@ def validate_package_sets(
 
 
 def load_spec_sources(
-    stack: dict[str, Any], package_sets_dir: Path, contract: dict[str, Any]
+    stack: dict[str, Any], package_sets_dir: Path
 ) -> tuple[dict[str, dict[str, Any]], list[Issue]]:
     sources: dict[str, dict[str, Any]] = {}
     issues: list[Issue] = []
-    class_kinds = {
-        name: build_class["package_set_kind"]
-        for name, build_class in contract.get("build_classes", {}).items()
-    }
     for build in stack.get("builds", []):
         build_name = build["name"]
-        required_kind = class_kinds.get(build.get("class"), build.get("class"))
+        required_kind = build.get("kind", "cpu")
         if build.get("package_set"):
             path = package_sets_dir / f"{build['package_set']}.yaml"
             if not path.exists():
@@ -337,9 +285,7 @@ def resolve_package_repositories(
     return repos
 
 
-def validate_per_system_narrowing(
-    stack: dict[str, Any], profile: dict[str, Any], contract: dict[str, Any]
-) -> list[Issue]:
+def validate_per_system_narrowing(stack: dict[str, Any], profile: dict[str, Any]) -> list[Issue]:
     issues: list[Issue] = []
     system_name = profile.get("system", {}).get("name")
     if not system_name:
@@ -347,11 +293,9 @@ def validate_per_system_narrowing(
     system_block = (stack.get("per_system") or {}).get(system_name)
     if not system_block:
         return issues
-    build_names = {build["name"] for build in stack.get("builds", [])}
     builds_by_name = {build["name"]: build for build in stack.get("builds", [])}
-    gpu_selectors = contract.get("gpu_selectors", {})
     for build_name, narrowing in (system_block.get("builds") or {}).items():
-        if build_name not in build_names:
+        if build_name not in builds_by_name:
             issues.append(
                 Issue(
                     "error",
@@ -363,19 +307,9 @@ def validate_per_system_narrowing(
             continue
         issues.extend(
             validate_narrowing_candidates(
-                build_name, narrowing, builds_by_name[build_name], profile, stack, contract
+                build_name, narrowing, builds_by_name[build_name], profile, stack
             )
         )
-        for gpu_selector in narrowing.get("gpu_selectors", []) or []:
-            if gpu_selector not in gpu_selectors:
-                issues.append(
-                    Issue(
-                        "error",
-                        "unknown-gpu-selector",
-                        f"per_system.{system_name}.builds.{build_name}.gpu_selectors",
-                        f"gpu selector {gpu_selector!r} is not defined in template contract",
-                    )
-                )
     return issues
 
 
@@ -385,26 +319,19 @@ def validate_narrowing_candidates(
     build: dict[str, Any],
     profile: dict[str, Any],
     stack: dict[str, Any],
-    contract: dict[str, Any],
 ) -> list[Issue]:
     from stack_composer.render.plan import lane_candidates_for_build
 
-    if build.get("class") not in contract.get("build_classes", {}):
-        return []
-    if build.get("toolchain") not in contract.get("toolchains", {}):
-        return []
-    if build.get("nodes") not in contract.get("node_selectors", {}):
-        return []
-    lanes, _, _ = lane_candidates_for_build(profile, stack, contract, build)
+    lanes, _, _ = lane_candidates_for_build(profile, stack, build)
     candidates = {
         "compilers": {lane["compiler"] for lane in lanes if lane.get("compiler")},
         "mpi": {lane["mpi_provider"] for lane in lanes if lane.get("mpi_provider")},
-        "gpu_selectors": {lane["gpu_selector"] for lane in lanes if lane.get("gpu_selector")},
+        "gpu_archs": {lane["gpu_arch"] for lane in lanes if lane.get("gpu_arch")},
     }
     issue_codes = {
         "compilers": "unresolved-narrowing-compiler",
         "mpi": "unresolved-narrowing-mpi",
-        "gpu_selectors": "unresolved-narrowing-gpu-selector",
+        "gpu_archs": "unresolved-narrowing-gpu-arch",
     }
     issues = []
     system_name = profile["system"]["name"]
@@ -414,7 +341,7 @@ def validate_narrowing_candidates(
             issues.append(
                 Issue(
                     "error",
-                    issue_codes[axis],
+                    issue_codes.get(axis, "unresolved-narrowing"),
                     f"per_system.{system_name}.builds.{build_name}.{axis}",
                     f"narrowing values {unknown!r} do not resolve for build {build_name!r}",
                 )

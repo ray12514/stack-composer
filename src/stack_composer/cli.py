@@ -4,19 +4,13 @@ import click
 
 from stack_composer import __version__
 from stack_composer.commands import (
-    assess_profiles as assess_profiles_command,
-)
-from stack_composer.commands import (
-    explain as explain_command,
-)
-from stack_composer.commands import (
     publish_manifest as publish_manifest_command,
 )
 from stack_composer.commands import (
     render as render_command,
 )
 from stack_composer.commands import (
-    scaffold_templates as scaffold_templates_command,
+    show as show_command,
 )
 from stack_composer.commands import (
     validate as validate_command,
@@ -40,23 +34,27 @@ def cli(ctx: click.Context, show_licenses: bool) -> None:
         ctx.exit(0)
 
 
-@cli.command("assess-profiles")
-@click.option("--profiles", multiple=True, required=True, help="Profile glob; may be repeated.")
-@click.option("--templates", required=True, help="Root directory containing template sets.")
-@click.option("--output", help="Report YAML path; stdout when omitted.")
-@command_error_handler
-def assess_profiles(profiles: tuple[str, ...], templates: str, output: str | None) -> None:
-    assess_profiles_command.run(profiles=profiles, templates=templates, output=output)
-
-
-@cli.command("scaffold-templates")
+@cli.command("show")
 @click.option("--profile", required=True, help="profile.yaml path.")
-@click.option("--seed", help="Optional seed template-set directory.")
-@click.option("--output", required=True, help="Empty output directory for proposed templates.")
-@click.option("--stack-kind", type=click.Choice(["library", "application"]), default="library")
+@click.option("--templates", help="Templates root; used with --template-set to load defaults.")
+@click.option("--template-set", "template_set_name", help="Template-set name under --templates.")
+@click.option("--defaults", "defaults_path", help="explicit defaults.yaml path.")
+@click.option("--stack", "stack_path", help="Optional stack.yaml; recomputes the lanes for it.")
 @command_error_handler
-def scaffold_templates(profile: str, seed: str | None, output: str, stack_kind: str) -> None:
-    scaffold_templates_command.run(profile=profile, seed=seed, output=output, stack_kind=stack_kind)
+def show(
+    profile: str,
+    templates: str | None,
+    template_set_name: str | None,
+    defaults_path: str | None,
+    stack_path: str | None,
+) -> None:
+    show_command.run(
+        profile=profile,
+        templates=templates,
+        template_set_name=template_set_name,
+        defaults_path=defaults_path,
+        stack_path=stack_path,
+    )
 
 
 @cli.command("validate-template-set")
@@ -89,44 +87,6 @@ def validate_template_set(
         package_repos_dir=package_repos_dir,
         output=output,
         concretize=concretize,
-    )
-
-
-@cli.command("explain")
-@click.option("--profile", required=True, help="profile.yaml path.")
-@click.option("--templates", required=True, help="Root directory containing template sets.")
-@click.option(
-    "--stack",
-    "stack_path",
-    default=None,
-    help="Optional stack.yaml. When set, output adds per_system_narrowing menu per build.",
-)
-@click.option(
-    "--template-set",
-    "template_set_name",
-    default=None,
-    help="Template-set directory name under --templates. Required when --stack is omitted.",
-)
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["human", "yaml", "json"]),
-    default="human",
-)
-@command_error_handler
-def explain(
-    profile: str,
-    templates: str,
-    stack_path: str | None,
-    template_set_name: str | None,
-    output_format: str,
-) -> None:
-    explain_command.run(
-        profile=profile,
-        templates=templates,
-        stack_path=stack_path,
-        template_set_name=template_set_name,
-        output_format=output_format,
     )
 
 

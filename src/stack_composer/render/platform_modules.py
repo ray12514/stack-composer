@@ -65,6 +65,10 @@ def _mpi_modules(
     provider = lane.get("mpi_provider")
     if not provider:
         return []
+    # Build-from-source MPI has no platform module prerequisite; it is built by
+    # Spack and pinned as the provider preference in the common scope.
+    if lane.get("mpi_source") != "platform":
+        return []
     if provider == "cray-mpich":
         flavors = ((profile.get("vendor_cray") or {}).get("cray_mpich") or {}).get("flavors") or {}
         flavor = flavors.get(lane.get("compiler", ""))

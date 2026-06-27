@@ -7,7 +7,7 @@ def test_returns_compiler_mpi_and_gpu_modules_for_cray_amd_lane() -> None:
     lane = {
         "name": "gcc-gpu",
         "compiler": "gcc",
-        "mpi_provider": "cray-mpich",
+        "mpi_provider": "cray-mpich", "mpi_source": "platform",
         "gpu_arch": "gfx90a",
     }
     profile = {
@@ -25,7 +25,13 @@ def test_returns_compiler_mpi_and_gpu_modules_for_cray_amd_lane() -> None:
 
 
 def test_dedupes_modules_while_preserving_order() -> None:
-    lane = {"name": "x", "compiler": "gcc", "mpi_provider": "cray-mpich", "gpu_arch": None}
+    lane = {
+        "name": "x",
+        "compiler": "gcc",
+        "mpi_provider": "cray-mpich",
+        "mpi_source": "platform",
+        "gpu_arch": None,
+    }
     profile = {
         "vendor_cray": {
             "gcc": {"modules": ["A", "B"]},
@@ -52,7 +58,7 @@ def test_missing_cray_mpich_flavor_raises_unresolved() -> None:
     lane = {
         "name": "rocmcc-mpi",
         "compiler": "rocmcc",
-        "mpi_provider": "cray-mpich",
+        "mpi_provider": "cray-mpich", "mpi_source": "platform",
         "gpu_arch": None,
     }
     profile = {

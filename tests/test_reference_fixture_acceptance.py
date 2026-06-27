@@ -88,7 +88,7 @@ def assert_reference_workspace(workspace: Path, stack_name: str, profile_name: s
             {
                 "build": "gpu",
                 "reason_code": "nodes_unmatched",
-                "reason": "no profile node type matches selector 'gpu'",
+                "reason": "profile has no runtime GPU node type",
             }
         ]
     else:

@@ -13,8 +13,7 @@ from stack_composer.errors import Issue
 SCHEMA_FILES = {
     "profile": "profile-v1.json",
     "stack": "stack-v1.json",
-    "stack-defaults": "stack-defaults-v1.json",
-    "template-contract": "template-contract-v1.json",
+    "defaults": "defaults-v1.json",
     "package-set": "package-set-v1.json",
     "release-manifest": "release-manifest-v1.json",
 }

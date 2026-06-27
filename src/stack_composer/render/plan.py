@@ -5,20 +5,25 @@ from typing import Any
 from stack_composer.errors import Issue
 from stack_composer.resolve.build_kind import normalize_builds
 
+# Stable ordering for compiler fan-out when the profile reports several.
+_KNOWN_COMPILER_ORDER = ("gcc", "cce", "aocc", "intel", "nvhpc", "llvm", "rocmcc")
+# Conservative shared target for `target: baseline`.
+_BASELINE_TARGET = "x86_64_v3"
+
 
 def plan_lanes(
-    profile: dict[str, Any], stack: dict[str, Any], contract: dict[str, Any]
+    profile: dict[str, Any], stack: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any] | None, list[Issue]]:
     issues: list[Issue] = []
     lanes: list[dict[str, Any]] = []
     skipped: list[dict[str, str]] = []
     applied_narrowing = None
-    stack = normalize_builds(stack, contract)
+    stack = normalize_builds(stack)
     system_name = profile["system"]["name"]
     narrowing = ((stack.get("per_system") or {}).get(system_name) or {}).get("builds") or {}
 
     for build in stack.get("builds", []):
-        candidates, reason_code, reason = lane_candidates_for_build(profile, stack, contract, build)
+        candidates, reason_code, reason = lane_candidates_for_build(profile, stack, build)
         had_candidates_before_narrowing = bool(candidates)
         candidates, narrowing_result = apply_narrowing(candidates, narrowing.get(build["name"], {}))
         if narrowing_result:
@@ -60,180 +65,208 @@ def plan_lanes(
 
 
 def lane_candidates_for_build(
-    profile: dict[str, Any], stack: dict[str, Any], contract: dict[str, Any], build: dict[str, Any]
+    profile: dict[str, Any], stack: dict[str, Any], build: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], str, str]:
-    build_class = contract["build_classes"][build["class"]]
-    node_selector = contract["node_selectors"][build["nodes"]]["match"]
-    node_types = matching_node_types(profile, node_selector)
+    """Resolve one build into lanes = selected compilers × (mpi provider, for
+    mpi/gpu) × (gpu arch, for gpu). Everything is read from the merged site
+    defaults, overridable per build, resolved against the profile."""
+    kind = build.get("kind") or "cpu"
+    want_gpu = kind == "gpu"
+    node_types = runtime_nodes(profile, want_gpu)
     if not node_types:
-        return [], "nodes_unmatched", f"no profile node type matches selector {build['nodes']!r}"
+        which = "GPU" if want_gpu else "CPU"
+        return [], "nodes_unmatched", f"profile has no runtime {which} node type"
 
-    toolchain = contract["toolchains"][build["toolchain"]]
-    compilers = compiler_candidates(profile, toolchain)
+    compilers, missing = resolve_compilers(profile, stack, build)
+    if missing:
+        return (
+            [],
+            "compiler_unavailable",
+            f"requested compiler(s) not reported by profile: {', '.join(missing)}",
+        )
     if not compilers:
-        return [], "requires_unsatisfied", f"no compiler candidate for {build['toolchain']!r}"
+        return [], "compiler_unavailable", "profile reports no compilers to build with"
 
-    vendor_scope = vendor_scope_for(profile, contract)
-    mpi_provider = mpi_provider_for(profile, toolchain, build_class)
-    gpu_selectors = gpu_selectors_for(profile, contract, node_types, build)
-    if (
-        build_class.get("requires")
-        and "runtime_gpu" in build_class["requires"]
-        and not gpu_selectors
-    ):
-        return [], "requires_unsatisfied", "build requires GPU but no contract GPU selector matches"
+    vendor_scope = vendor_scope_for(profile)
 
+    mpi_provider, mpi_source = (None, None)
+    if kind in ("mpi", "gpu"):
+        mpi_provider, mpi_source = resolve_mpi(profile, stack, build)
+        if not mpi_provider:
+            return (
+                [],
+                "mpi_unresolved",
+                f"{kind} build needs an MPI provider; set defaults.mpi.provider",
+            )
+
+    target_policy = build.get("target") or stack.get("target") or "native"
     lanes: list[dict[str, Any]] = []
-    for compiler in compilers:
-        for node_name, node in node_types:
-            if build.get("expand") == "per_gpu_arch":
-                node_gpu_arch = (node.get("gpu") or {}).get("arch_target")
-                for gpu_selector_name, gpu_selector in gpu_selectors:
-                    if gpu_selector.get("arch_target") != node_gpu_arch:
-                        continue
-                    lanes.append(
-                        make_lane(
-                            profile,
-                            stack,
-                            build,
-                            build_class,
-                            compiler,
-                            vendor_scope,
-                            mpi_provider,
-                            node_name,
-                            node,
-                            gpu_selector_name,
-                            gpu_selector,
-                        )
+    if want_gpu:
+        selected, missing_archs = resolve_gpu_archs(profile, stack, build, node_types)
+        if missing_archs:
+            return (
+                [],
+                "gpu_unavailable",
+                f"requested GPU arch(es) not on this system: {', '.join(missing_archs)}",
+            )
+        if not selected:
+            return [], "gpu_unavailable", "gpu build but the profile reports no GPU arch"
+        selected_set = set(selected)
+        # One lane per (compiler, gpu node); the lane's target follows its node.
+        for compiler in compilers:
+            for node_name, node in node_types:
+                arch = (node.get("gpu") or {}).get("arch_target")
+                if arch not in selected_set:
+                    continue
+                lanes.append(
+                    make_lane(
+                        profile, stack, build, kind, compiler, vendor_scope,
+                        mpi_provider, mpi_source, target_for(target_policy, node),
+                        node_name, arch,
                     )
-                continue
+                )
+    else:
+        node_name, node = node_types[0]
+        target = target_for(target_policy, node)
+        for compiler in compilers:
             lanes.append(
                 make_lane(
-                    profile,
-                    stack,
-                    build,
-                    build_class,
-                    compiler,
-                    vendor_scope,
-                    mpi_provider,
-                    node_name,
-                    node,
-                    None,
-                    None,
+                    profile, stack, build, kind, compiler, vendor_scope,
+                    mpi_provider, mpi_source, target, node_name, None,
                 )
             )
-            break
-    return lanes, "template_not_supported", "no lane candidates produced"
+    return lanes, "no_candidates", "no lane candidates produced"
 
 
-def matching_node_types(
-    profile: dict[str, Any], selector_match: str
-) -> list[tuple[str, dict[str, Any]]]:
+def runtime_nodes(profile: dict[str, Any], want_gpu: bool) -> list[tuple[str, dict[str, Any]]]:
     matches: list[tuple[str, dict[str, Any]]] = []
     for name, node in sorted(profile.get("node_types", {}).items()):
         if node.get("role") not in {"runtime", "both"}:
             continue
         has_gpu = node.get("gpu") is not None
-        if selector_match == "runtime_without_gpu" and not has_gpu:
+        if want_gpu and has_gpu:
             matches.append((name, node))
-        elif selector_match == "runtime_with_gpu" and has_gpu:
+        elif not want_gpu and not has_gpu:
             matches.append((name, node))
     return matches
 
 
-def compiler_candidates(profile: dict[str, Any], toolchain: dict[str, Any]) -> list[str]:
-    candidates: list[str] = []
+def profile_compilers(profile: dict[str, Any]) -> list[str]:
+    """Compilers the profile reports, in a stable order."""
+    found: list[str] = []
     vendor_cray = profile.get("vendor_cray") or {}
-    for name in ("gcc", "cce", "aocc", "intel", "nvhpc", "rocmcc"):
-        if vendor_cray.get(name) is not None:
-            candidates.append(name)
+    for name in _KNOWN_COMPILER_ORDER:
+        if vendor_cray.get(name) is not None and name not in found:
+            found.append(name)
     for compiler in profile.get("compilers_external") or []:
         name = compiler.get("name")
-        if name and name not in candidates:
-            candidates.append(name)
-    allowed = toolchain.get("allowed_compilers")
-    if allowed:
-        candidates = [name for name in candidates if name in set(allowed)]
-    if not candidates:
-        return []
-    policy = toolchain.get("compiler", "")
-    if policy == "gnu_host_default" and "gcc" in candidates:
-        return ["gcc"]
-    if policy.startswith("each_science_"):
-        return [name for name in candidates if name != "rocmcc"]
-    return candidates
+        if name and name not in found:
+            found.append(name)
+    return found
 
 
-def vendor_scope_for(profile: dict[str, Any], contract: dict[str, Any]) -> str:
-    selectors = contract["vendor_scope_selectors"]
-    default_scope: str | None = None
-    for selector in selectors.values():
-        scope = selector["scope"]
-        if selector.get("default"):
-            default_scope = scope
-        profile_key = selector.get("profile_key")
-        if profile_key and profile.get(profile_key):
-            return scope
-    if default_scope:
-        return default_scope
-    raise ValueError("contract.vendor_scope_selectors must include a default selector")
+def resolve_compilers(
+    profile: dict[str, Any], stack: dict[str, Any], build: dict[str, Any]
+) -> tuple[list[str], list[str]]:
+    """Return (selected_compilers, missing). Selection = per-build override, else
+    site default, else 'all'. A list is intersected with the profile; anything
+    requested but absent is reported as missing."""
+    available = profile_compilers(profile)
+    selection = build.get("compilers") or stack.get("compilers") or "all"
+    if selection == "all":
+        return available, []
+    selected_set = {name for name in selection if name in set(available)}
+    missing = [name for name in selection if name not in set(available)]
+    selected = [name for name in available if name in selected_set]
+    return selected, missing
 
 
-def mpi_provider_for(
-    profile: dict[str, Any], toolchain: dict[str, Any], build_class: dict[str, Any]
-) -> str | None:
-    if "mpi" not in build_class.get("requires", []):
-        return None
-    mpi_policy = toolchain.get("mpi", "")
-    if (profile.get("vendor_cray") or {}).get("cray_mpich") and mpi_policy != "none":
-        return "cray-mpich"
-    providers = profile.get("mpi") or []
-    return providers[0]["name"] if providers else None
+def vendor_scope_for(profile: dict[str, Any]) -> str:
+    """Automatic: Cray facts present → vendor/cray, else vendor/linux."""
+    return "vendor/cray" if profile.get("vendor_cray") else "vendor/linux"
 
 
-def gpu_selectors_for(
+def resolve_mpi(
+    profile: dict[str, Any], stack: dict[str, Any], build: dict[str, Any]
+) -> tuple[str | None, str]:
+    """Resolve (provider, source). source policy:
+      - auto (default): use the platform MPI the profile reports if any, else
+        build the requested provider from source;
+      - platform: use the platform MPI (falls back to requested);
+      - build: build the requested provider regardless.
+    The requested provider comes from the per-build override or defaults.mpi."""
+    mpi = build.get("mpi") or stack.get("mpi") or {}
+    if not isinstance(mpi, dict):
+        mpi = {}
+    requested = mpi.get("provider")
+    source = mpi.get("source", "auto")
+    platform_provider = None
+    if (profile.get("vendor_cray") or {}).get("cray_mpich"):
+        platform_provider = "cray-mpich"
+    elif profile.get("mpi"):
+        platform_provider = (profile["mpi"][0] or {}).get("name")
+    if source == "build":
+        return requested, "build"
+    if source == "platform":
+        return (platform_provider or requested), "platform"
+    if platform_provider:
+        return platform_provider, "platform"
+    return requested, "build"
+
+
+def resolve_gpu_archs(
     profile: dict[str, Any],
-    contract: dict[str, Any],
-    node_types: list[tuple[str, dict[str, Any]]],
+    stack: dict[str, Any],
     build: dict[str, Any],
-) -> list[tuple[str, dict[str, Any]]]:
-    if build.get("expand") != "per_gpu_arch":
-        return []
-    node_arches = {
-        node.get("gpu", {}).get("arch_target")
-        for _, node in node_types
-        if node.get("gpu") is not None
-    }
-    selectors = []
-    for name, selector in sorted((contract.get("gpu_selectors") or {}).items()):
-        if selector.get("arch_target") in node_arches:
-            selectors.append((name, selector))
-    return selectors
+    node_types: list[tuple[str, dict[str, Any]]],
+) -> tuple[list[str], list[str]]:
+    available = sorted(
+        {
+            (node.get("gpu") or {}).get("arch_target")
+            for _, node in node_types
+            if (node.get("gpu") or {}).get("arch_target")
+        }
+    )
+    gpu_block = build.get("gpu") or stack.get("gpu") or {}
+    selection = gpu_block.get("archs", "all") if isinstance(gpu_block, dict) else "all"
+    if selection == "all":
+        return available, []
+    selected = [a for a in available if a in set(selection)]
+    missing = [a for a in selection if a not in set(available)]
+    return selected, missing
+
+
+def target_for(policy: str, node: dict[str, Any]) -> str:
+    """Resolve a lane's CPU target: native = the node's preferred uarch;
+    baseline = the conservative shared target; anything else = explicit."""
+    if policy == "native":
+        return node["cpu"]["preferred"]
+    if policy == "baseline":
+        return _BASELINE_TARGET
+    return policy
 
 
 def make_lane(
     profile: dict[str, Any],
     stack: dict[str, Any],
     build: dict[str, Any],
-    build_class: dict[str, Any],
+    kind: str,
     compiler: str,
     vendor_scope: str,
     mpi_provider: str | None,
+    mpi_source: str | None,
+    target: str,
     node_name: str,
-    node: dict[str, Any],
-    gpu_selector_name: str | None,
-    gpu_selector: dict[str, Any] | None,
+    gpu_arch: str | None,
 ) -> dict[str, Any]:
-    kind = build_class["lane_kind"]
-    lane_suffix = kind
+    # Key the lane on the build name so two builds of the same kind (e.g. two
+    # cpu builds) never collide; the env template is still chosen by kind.
+    lane_suffix = build["name"]
     if mpi_provider:
         lane_suffix += "-" + mpi_provider.replace("-", "")
-    if gpu_selector:
-        lane_suffix += "-" + gpu_selector["arch_target"]
+    if gpu_arch:
+        lane_suffix += "-" + gpu_arch
     name = f"{compiler}-{lane_suffix}"
-    target = (
-        "x86_64_v3" if build_class["default_target"] == "foundation" else node["cpu"]["preferred"]
-    )
     release_tag = stack.get("_release_tag", "validate")
     system_name = profile["system"]["name"]
     stack_name = stack["name"]
@@ -248,9 +281,10 @@ def make_lane(
         "package_set": build.get("package_set"),
         "target": target,
         "runtime_node_type": node_name,
-        "gpu_selector": gpu_selector_name,
-        "gpu_arch": gpu_selector.get("arch_target") if gpu_selector else None,
+        "gpu_selector": gpu_arch,
+        "gpu_arch": gpu_arch,
         "mpi_provider": mpi_provider,
+        "mpi_source": mpi_source,
         "env_path": f"environments/{compiler}/{lane_suffix}",
         "spec_source": spec_source_id(build),
         "view_root": f"{release_root}/views/{compiler}/{lane_suffix}",
@@ -267,11 +301,12 @@ def spec_source_id(build: dict[str, Any]) -> str:
 def apply_narrowing(
     lanes: list[dict[str, Any]], narrowing: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Subset-narrow resolved lanes by compiler / gpu arch / mpi provider."""
     if not narrowing:
         return lanes, None
     narrowed = lanes
     narrowed_by: dict[str, dict[str, list[str]]] = {}
-    for axis, lane_key in (("compilers", "compiler"), ("gpu_selectors", "gpu_selector")):
+    for axis, lane_key in (("compilers", "compiler"), ("gpu_archs", "gpu_arch")):
         allowed = narrowing.get(axis)
         if not allowed:
             continue

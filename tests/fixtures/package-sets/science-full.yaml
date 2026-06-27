@@ -8,12 +8,12 @@ description: |
   Full curated science library set: HDF5/NetCDF/PnetCDF (multi-version),
   TAU, and performance-portability roots used by science-stack payload lanes.
 
-kinds: [serial, mpi, gpu]
+kinds: [cpu, mpi, gpu]
 
 specs:
   any:
     - gsl@2.8
-  serial:
+  cpu:
     - hdf5@1.14.5~mpi+fortran
     - hdf5@1.14.4~mpi+fortran
     - hdf5@1.12.3~mpi+fortran

@@ -13,12 +13,15 @@ def load_stack(path: Path) -> tuple[dict[str, Any], list]:
     return data, validate_schema("stack", data, str(path))
 
 
-def load_stack_defaults(path: Path) -> tuple[dict[str, Any], list]:
+def load_defaults(path: Path) -> tuple[dict[str, Any], list]:
     data = load_yaml(path)
-    return data, validate_schema("stack-defaults", data, str(path))
+    return data, validate_schema("defaults", data, str(path))
 
 
 def merge_defaults(defaults: dict[str, Any], stack: dict[str, Any]) -> dict[str, Any]:
+    """Merge site defaults under the stack. Selection policy (compilers/mpi/gpu/
+    target) and site conventions both land at stack top level; a stack key (or a
+    per-build field) overrides the default."""
     merged = deepcopy(defaults)
     deep_update(merged, stack)
     return merged
