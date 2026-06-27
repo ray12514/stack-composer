@@ -23,7 +23,10 @@ Command status:
   It requires `--deployment`; install tree, build stage, caches, view roots, and
   module roots are installer-owned deployment inputs, not profile guesses.
 - `show` prints the buildable menu from a profile plus optional defaults/stack:
-  compilers, MPI providers, GPU arches, and lanes under the current defaults.
+  provider families, compiler modules, MPI compiler/flavor relationships, GPU
+  toolkit modules, and resolved lane module prerequisites under the current
+  defaults. Program-environment modules such as `PrgEnv-*` are displayed from
+  `profile.yaml` provider facts; `show` does not infer vendor module naming.
 - `validate-template-set` renders a smoke stack for each supplied profile and
   writes per-profile reports. `--concretize` is intentionally deferred and exits
   with a clear not-implemented error.

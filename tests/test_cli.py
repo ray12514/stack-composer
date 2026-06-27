@@ -20,6 +20,54 @@ def test_licenses_flag_prints_manifest() -> None:
     assert "PyYAML" in result.output
 
 
+def test_show_command_prints_provider_families_and_module_chains() -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "show",
+            "--profile",
+            str(fixture_path("profiles", "example-cray", "profile.yaml")),
+            "--templates",
+            str(fixture_path("template-sets")),
+            "--template-set",
+            "v6",
+            "--stack",
+            str(fixture_path("stacks", "science-stack", "stack.yaml")),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "provider families: cray-pe" in result.output
+    assert "family=cray-pe" in result.output
+    assert "modules=PrgEnv-gnu, gcc-native/13" in result.output
+    assert "gcc      modules=cray-mpich/8.1.29" in result.output
+    assert "scope=vendor/cray" in result.output
+    assert "modules=PrgEnv-gnu, gcc-native/13, cray-mpich/8.1.29, rocm/6.0.0" in result.output
+
+
+def test_show_command_prints_generic_provider_families() -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "show",
+            "--profile",
+            str(fixture_path("profiles", "example-linux", "profile.yaml")),
+            "--templates",
+            str(fixture_path("template-sets")),
+            "--template-set",
+            "v6",
+            "--stack",
+            str(fixture_path("stacks", "science-stack", "stack.yaml")),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "provider families: site, system" in result.output
+    assert "family=site" in result.output
+    assert "family=system" in result.output
+    assert "scope=vendor/linux" in result.output
+
+
 def test_validate_command_passes_reference_fixture() -> None:
     result = CliRunner().invoke(
         cli,
