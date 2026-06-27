@@ -121,6 +121,14 @@ def render_menu(
         lines.extend(f"  {line}" for line in toolkits)
     lines.append("")
 
+    system_external_rows = system_external_lines(profile)
+    lines.append(f"system externals ({len(system_external_rows)} candidates)")
+    if system_external_rows:
+        lines.extend(f"  {line}" for line in system_external_rows)
+    else:
+        lines.append("  none")
+    lines.append("")
+
     lines.append(
         "you would build  "
         f"(defaults: compilers={_fmt_sel(defaults.get('compilers', 'all'))}"
@@ -241,7 +249,34 @@ def gpu_toolkit_lines(profile: dict[str, Any]) -> list[str]:
             details.append(f"module={module}")
         if prefix:
             details.append(f"prefix={prefix}")
+        components = toolkit.get("spack_components") or []
+        if components:
+            packages = [component.get("package", "?") for component in components]
+            details.append(f"components={len(packages)}: {', '.join(packages)}")
         lines.append(" ".join(details))
+    return lines
+
+
+def system_external_lines(profile: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    for external in profile.get("system_externals") or []:
+        name = external.get("name", "?")
+        version = external.get("version") or "(version n/a)"
+        family = external.get("provider_family") or "?"
+        prefix = external.get("prefix") or "?"
+        variants = external.get("variants")
+        modules = _fmt_modules(external.get("modules") or [])
+        detection = external.get("detection") or {}
+        detected_by = ""
+        if detection:
+            confidence = detection.get("confidence", "?")
+            source = detection.get("source", "?")
+            detected_by = f" detected={confidence}/{source}"
+        variant_text = f" variants={variants}" if variants else ""
+        lines.append(
+            f"{name:<10} {version:<12} family={family:<8} prefix={prefix}"
+            f"{variant_text} modules={modules}{detected_by}"
+        )
     return lines
 
 

@@ -132,6 +132,13 @@
       },
       "additionalProperties": false
     },
+    "system_externals": {
+      "type": "array",
+      "description": "Ordinary system or site package externals such as openssl and curl. Profile facts say what exists; defaults/stack policy decides whether render may use them.",
+      "items": {
+        "$ref": "#/$defs/system_external"
+      }
+    },
     "filesystem": {
       "type": "object",
       "description": "Install-tree and shared-storage candidates.",
@@ -424,6 +431,55 @@
         }
       },
       "required": ["version", "module", "prefix"],
+      "additionalProperties": false
+    },
+    "system_external": {
+      "type": "object",
+      "description": "A non-compiler, non-MPI, non-GPU-toolkit external package candidate.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Spack package name, e.g. openssl or curl."
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Observed package version."
+        },
+        "prefix": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Absolute external prefix."
+        },
+        "provider_family": { "$ref": "#/$defs/provider_family" },
+        "variants": {
+          "type": "string",
+          "description": "Optional Spack variant suffix to append to the external spec."
+        },
+        "modules": {
+          "type": "array",
+          "description": "Modules to load for this external, if module-backed.",
+          "items": { "type": "string" }
+        },
+        "detection": {
+          "type": "object",
+          "description": "How this external fact was obtained.",
+          "properties": {
+            "confidence": {
+              "type": "string",
+              "enum": ["probed", "inferred", "hinted", "unknown"]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": ["confidence", "source"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["name", "version", "prefix", "provider_family"],
       "additionalProperties": false
     },
     "node_type": {
