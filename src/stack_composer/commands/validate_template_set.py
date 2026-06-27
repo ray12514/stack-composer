@@ -130,9 +130,12 @@ def render_one(
         rendered_at=SMOKE_RENDERED_AT,
         source_repo=SMOKE_SOURCE_REPO,
     )
+    deployment_path = workspace_dir / "deployment.yaml"
+    write_validation_deployment(profile_path, deployment_path)
     try:
         rendered = render_workspace(
             profile_path=profile_path,
+            deployment_path=deployment_path,
             stack_path=smoke_stack,
             templates_root=template_set_dir.parent,
             release_vars=release_vars,
@@ -148,6 +151,28 @@ def render_one(
     except Exception as exc:
         return {"render": "fail", "reason_code": "render-error", "reason": str(exc)}
     return {"render": "ok", "workspace": rendered.as_posix()}
+
+
+def write_validation_deployment(profile_path: Path, deployment_path: Path) -> None:
+    profile_data, _ = load_profile(profile_path)
+    system = (profile_data.get("system") or {}).get("name") or profile_path.stem
+    deployment = {
+        "schema_version": 1,
+        "system": system,
+        "install_tree": {"root": "/tmp/stack-composer-validate/spack/opt"},
+        "build_stage": {"default": "/tmp/stack-composer-validate/stage"},
+        "caches": {
+            "source": "/tmp/stack-composer-validate/source-cache",
+            "misc": "/tmp/stack-composer-validate/misc-cache",
+        },
+        "roots": {
+            "views": "/tmp/stack-composer-validate/views",
+            "modules": "/tmp/stack-composer-validate/modules",
+        },
+        "modules": {"publish_root": None},
+        "buildcache": {"destinations": []},
+    }
+    deployment_path.write_text(yaml.safe_dump(deployment, sort_keys=False), encoding="utf-8")
 
 
 _SLUG_BAD = re.compile(r"[^a-zA-Z0-9_-]+")

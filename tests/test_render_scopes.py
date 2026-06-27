@@ -268,8 +268,12 @@ def render_fixture(output_root: Path, profile_name: str) -> Path:
 
 
 def render_profile(output_root: Path, profile_path: Path) -> Path:
+    deployment_path = output_root.parent / "deployment.yaml"
+    profile = load_yaml(profile_path)
+    write_test_deployment(deployment_path, profile["system"]["name"])
     return render_workspace(
         profile_path=profile_path,
+        deployment_path=deployment_path,
         stack_path=fixture_path("stacks", "science-stack", "stack.yaml"),
         templates_root=fixture_path("template-sets"),
         release_vars=ReleaseVars(
@@ -291,6 +295,32 @@ def write_profile(directory: Path, profile: dict[str, Any]) -> Path:
     profile_path = directory / "profile.yaml"
     write_yaml(profile_path, profile)
     return profile_path
+
+
+def write_test_deployment(path: Path, system: str) -> None:
+    write_yaml(
+        path,
+        {
+            "schema_version": 1,
+            "system": system,
+            "install_tree": {"root": "/shared/stack/spack/opt"},
+            "build_stage": {"default": "/scratch/$user/spack-stage"},
+            "caches": {
+                "source": "/shared/stack/spack/source-cache",
+                "misc": "/shared/stack/cache/misc",
+            },
+            "roots": {
+                "views": "/shared/stack/views",
+                "modules": "/shared/stack/modules",
+            },
+            "modules": {"publish_root": None},
+            "buildcache": {
+                "destinations": [
+                    {"name": "payload", "url": "file:///shared/stack/buildcache/payload"}
+                ]
+            },
+        },
+    )
 
 
 def cray_nvidia_profile(profile: dict[str, Any]) -> dict[str, Any]:

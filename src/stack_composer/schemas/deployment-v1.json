@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://stack-composer.example/schemas/deployment-v1.json",
+  "title": "Spack stack deployment overlay (v1)",
+  "description": "Installer-owned, per-system deployment choices consumed by stack-composer render. These are chosen paths and destinations, not observed profile facts.",
+  "type": "object",
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "system": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Must match profile.system.name."
+    },
+    "install_tree": {
+      "type": "object",
+      "properties": {
+        "root": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Absolute Spack install tree root chosen by the installer."
+        },
+        "padded_length": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["root"],
+      "additionalProperties": false
+    },
+    "build_stage": {
+      "type": "object",
+      "properties": {
+        "default": { "type": "string", "minLength": 1 },
+        "by_node_type": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-z][a-z0-9_]*$": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["default"],
+      "additionalProperties": false
+    },
+    "caches": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string", "pattern": "^/" },
+        "misc": { "type": "string", "pattern": "^/" }
+      },
+      "required": ["source", "misc"],
+      "additionalProperties": false
+    },
+    "roots": {
+      "type": "object",
+      "properties": {
+        "views": { "type": "string", "pattern": "^/" },
+        "modules": { "type": "string", "pattern": "^/" }
+      },
+      "required": ["views", "modules"],
+      "additionalProperties": false
+    },
+    "modules": {
+      "type": "object",
+      "properties": {
+        "publish_root": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "string", "pattern": "^/" }
+          ]
+        }
+      },
+      "required": ["publish_root"],
+      "additionalProperties": false
+    },
+    "buildcache": {
+      "type": "object",
+      "properties": {
+        "destinations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "url": { "type": "string", "minLength": 1 }
+            },
+            "required": ["name", "url"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["destinations"],
+      "additionalProperties": false
+    },
+    "spack": {
+      "type": "object",
+      "properties": {
+        "root": { "type": "string", "pattern": "^/" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "system",
+    "install_tree",
+    "build_stage",
+    "caches",
+    "roots",
+    "modules",
+    "buildcache"
+  ],
+  "additionalProperties": false
+}

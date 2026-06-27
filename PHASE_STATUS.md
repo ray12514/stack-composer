@@ -25,7 +25,7 @@ Primary planning docs:
 
 ## Implemented
 
-- Packaged schemas: `profile`, `defaults`, `stack`, `package-set`,
+- Packaged schemas: `profile`, `defaults`, `deployment`, `stack`, `package-set`,
   `release-manifest`.
 - `validate`: schema checks plus render preflight.
 - `show`: profile/defaults/stack buildable-menu summary.
@@ -39,12 +39,12 @@ Primary planning docs:
 - Baseline compiler default: `gcc` if present, otherwise first reported
   compiler.
 - MPI platform compatibility auto-narrowing for non-explicit compiler defaults.
+- `deployment.yaml` as a first-class render input; render emits
+  `configs/common/config.yaml` and lane view/module roots from deployment.
 
 ## Deferred / open
 
 - `validate-template-set --concretize` remains intentionally deferred.
-- Full `deployment.yaml` rendering into `config.yaml` needs verification against
-  the current template set.
 - Module front-door emission still needs a real end-to-end install validation.
 - System/package external inventory for OpenSSL/curl and fabric userspace still
   needs first-system evidence and render coverage.
