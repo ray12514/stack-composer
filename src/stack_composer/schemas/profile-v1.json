@@ -110,14 +110,14 @@
     },
     "compiler_providers": {
       "type": "array",
-      "description": "Every compiler available on the system as an external, each tagged with the provider family it comes from. Generic: Cray PE compilers are provider_family=cray-pe entries, not a special block.",
+      "description": "Every compiler available on the system as an external, each tagged with a generic provider family. Platform compilers may carry platform_family such as cray-pe, but platform details are not a top-level provider family.",
       "items": {
         "$ref": "#/$defs/compiler_provider"
       }
     },
     "mpi_providers": {
       "type": "array",
-      "description": "Every MPI implementation available on the system, each tagged with provider family. A provider is single-prefix or carries per-compiler flavors (e.g. cray-mpich). Generic across Cray PE, other vendor PEs, site builds, and OS packages.",
+      "description": "Every MPI implementation available on the system, each tagged with a generic provider family. A provider is single-prefix or carries per-compiler flavors (e.g. cray-mpich). Generic across platform PEs, site builds, and OS packages.",
       "items": {
         "$ref": "#/$defs/mpi_provider"
       }
@@ -235,8 +235,13 @@
     },
     "provider_family": {
       "type": "string",
-      "enum": ["cray-pe", "platform", "site", "system"],
-      "description": "Where a provider comes from: cray-pe (Cray PE / a future CPE), platform (another vendor PE), site (site-built/module), system (OS package)."
+      "enum": ["platform", "site", "system"],
+      "description": "Where a provider comes from: platform (vendor/programming environment such as Cray PE/CPE), site (site-built/module), system (OS package)."
+    },
+    "platform_family": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional platform-specific family for provider_family=platform, e.g. cray-pe. This is detail, not the generic provider axis."
     },
     "compiler_provider": {
       "type": "object",
@@ -258,6 +263,7 @@
           "description": "Absolute compiler install prefix."
         },
         "provider_family": { "$ref": "#/$defs/provider_family" },
+        "platform_family": { "$ref": "#/$defs/platform_family" },
         "languages": {
           "type": "array",
           "description": "Languages the compiler provides drivers for.",
@@ -299,6 +305,7 @@
           "description": "Exact MPI version."
         },
         "provider_family": { "$ref": "#/$defs/provider_family" },
+        "platform_family": { "$ref": "#/$defs/platform_family" },
         "prefix": {
           "type": "string",
           "pattern": "^/",
