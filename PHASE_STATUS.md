@@ -41,15 +41,20 @@ Primary planning docs:
 - MPI platform compatibility auto-narrowing for non-explicit compiler defaults.
 - `deployment.yaml` as a first-class render input; render emits
   `configs/common/config.yaml` and lane view/module roots from deployment.
+- System externals (`openssl`, `curl`) flow from `profile.yaml` into rendered
+  `configs/common/packages.yaml` when stack/defaults policy allows them.
+- Docker/Spack smoke path using `cse-stack/docker/smoke/run-smoke.sh` passes
+  profile -> render -> Spack 1.1.1 concretize/fetch/install/verify for the
+  Stack Content smoke lane.
 
 ## Deferred / open
 
 - `validate-template-set --concretize` remains intentionally deferred.
 - Module front-door emission still needs a real end-to-end install validation.
-- System/package external inventory for OpenSSL/curl and fabric userspace still
-  needs first-system evidence and render coverage.
-- Docker/Spack smoke should be run before claiming the full stack-content
-  handoff is production-ready.
+- Fabric userspace external inventory still needs first-system evidence and
+  render coverage.
+- Broader ordinary package external inventory remains focused/hints-driven;
+  `openssl` and `curl` are covered by the current smoke path.
 
 ## Definition of ready for first full iteration
 
@@ -59,4 +64,4 @@ Primary planning docs:
    `systems/smoke/deployment.yaml`, `templates/v6`, and
    `stacks/mpi-smoke/stack.yaml`.
 4. The Docker/Spack smoke path in `cse-stack/scripts` succeeds or has a clearly
-   documented blocker.
+   documented blocker. Current baseline passed with Spack 1.1.1 on Rocky 9.

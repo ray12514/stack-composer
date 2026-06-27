@@ -21,6 +21,8 @@ def test_spack_build_runs_lanes_and_writes_publish_inputs(tmp_path: Path) -> Non
         "#!/usr/bin/env bash\n"
         "printf '%s\\n' \"$*\" >> \"$SPACK_FAKE_LOG\"\n"
         "if [[ \"$1\" == \"--version\" ]]; then echo '1.1.1'; exit 0; fi\n"
+        "if [[ \"$*\" == *\"find -e -H\"* ]]; then echo 'externalhash'; exit 0; fi\n"
+        "if [[ \"$*\" == *\"find -H\"* ]]; then printf '%s\\n' externalhash localhash; exit 0; fi\n"
         "for arg in \"$@\"; do\n"
         "  if [[ \"$arg\" == \"find\" ]]; then echo '/opt/spack/fake-root'; exit 0; fi\n"
         "done\n"
@@ -73,6 +75,11 @@ def test_spack_build_runs_lanes_and_writes_publish_inputs(tmp_path: Path) -> Non
     log = fake_log.read_text(encoding="utf-8")
     assert "concretize --force" in log
     assert "install -j 2" in log
+    assert "find --explicit --format {prefix}" in log
+    assert "find -H" in log
+    assert "find -e -H" in log
+    assert "verify manifest localhash" in log
+    assert "verify manifest -a" not in log
     assert "buildcache push --update-index file:///cache/payload" in log
 
 
