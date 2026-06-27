@@ -53,8 +53,25 @@ def test_spec_native_mpi_resolves_against_defaults_and_profile() -> None:
     assert lanes
     assert all(lane["mpi_provider"] == "cray-mpich" for lane in lanes)
     assert all(lane["mpi_source"] == "platform" for lane in lanes)
-    # The science compilers the profile reports resolve into lanes.
-    assert {"gcc", "cce"} <= {lane["compiler"] for lane in lanes}
+    # The lean default is the baseline compiler (gcc), not the full fan-out.
+    assert {lane["compiler"] for lane in lanes} == {"gcc"}
+
+
+def test_compilers_all_fans_out_narrowed_to_mpi_compatible() -> None:
+    profile, _ = load_profile(fixture_path("profiles", "example-cray", "profile.yaml"))
+    stack = merge_defaults(
+        _v6_defaults(),
+        {
+            "name": "science-stack",
+            "builds": [
+                {"name": "mpi", "kind": "mpi", "package_set": "science-full", "compilers": "all"}
+            ],
+        },
+    )
+    lanes, _, _, issues = plan_lanes(profile, stack)
+    assert issues == []
+    # 'all' fans out, auto-narrowed to the cray-mpich flavors the profile carries.
+    assert {lane["compiler"] for lane in lanes} == {"gcc", "cce", "rocmcc"}
 
 
 def test_per_build_compiler_override_narrows_lanes() -> None:

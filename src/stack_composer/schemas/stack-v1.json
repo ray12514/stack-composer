@@ -219,6 +219,7 @@
         },
         "compilers": {
           "oneOf": [
+            { "const": "baseline" },
             { "const": "all" },
             {
               "type": "array",
@@ -227,7 +228,7 @@
               "uniqueItems": true
             }
           ],
-          "description": "Optional per-build override of defaults.yaml compilers. 'all' or a subset of the compilers the profile reports."
+          "description": "Optional per-build override of defaults.yaml compilers: baseline (gcc-or-first), all (fan out), or a subset of the compilers the profile reports."
         },
         "mpi": {
           "type": "object",

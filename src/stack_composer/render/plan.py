@@ -75,7 +75,7 @@ def lane_candidates_for_build(
         which = "GPU" if want_gpu else "CPU"
         return [], "nodes_unmatched", f"profile has no runtime {which} node type"
 
-    compilers, missing = resolve_compilers(profile, stack, build)
+    compilers, missing, explicit = resolve_compilers(profile, stack, build)
     if missing:
         return (
             [],
@@ -96,6 +96,19 @@ def lane_candidates_for_build(
                 "mpi_unresolved",
                 f"{kind} build needs an MPI provider; set defaults.mpi.provider",
             )
+        # Auto-narrow a default (non-explicit) compiler set to those the chosen
+        # platform MPI was actually built against. An explicit compiler list is
+        # honored as-is (a missing platform flavor then errors, or use source:build).
+        if mpi_source == "platform" and not explicit:
+            compatible = mpi_compatible_compilers(profile, mpi_provider)
+            if compatible:
+                compilers = [c for c in compilers if c in compatible]
+                if not compilers:
+                    return (
+                        [],
+                        "compiler_unavailable",
+                        f"no default compiler is compatible with platform MPI {mpi_provider!r}",
+                    )
 
     target_policy = build.get("target") or stack.get("target") or "native"
     lanes: list[dict[str, Any]] = []
@@ -163,18 +176,40 @@ def profile_compilers(profile: dict[str, Any]) -> list[str]:
 
 def resolve_compilers(
     profile: dict[str, Any], stack: dict[str, Any], build: dict[str, Any]
-) -> tuple[list[str], list[str]]:
-    """Return (selected_compilers, missing). Selection = per-build override, else
-    site default, else 'all'. A list is intersected with the profile; anything
-    requested but absent is reported as missing."""
+) -> tuple[list[str], list[str], bool]:
+    """Return (selected_compilers, missing, explicit). Selection = per-build
+    override, else site default, else 'baseline'.
+
+    - 'baseline' (lean default): gcc if the profile reports it, else the first
+      reported compiler. Power users opt into more.
+    - 'all': every reported compiler (fan-out).
+    - a list: intersected with the profile; absent names reported as missing.
+
+    explicit is True only for a list — it suppresses MPI auto-narrowing so an
+    explicit compiler choice is honored verbatim."""
     available = profile_compilers(profile)
-    selection = build.get("compilers") or stack.get("compilers") or "all"
+    selection = build.get("compilers") or stack.get("compilers") or "baseline"
+    if selection == "baseline":
+        if "gcc" in available:
+            return ["gcc"], [], False
+        return available[:1], [], False
     if selection == "all":
-        return available, []
+        return available, [], False
     selected_set = {name for name in selection if name in set(available)}
     missing = [name for name in selection if name not in set(available)]
     selected = [name for name in available if name in selected_set]
-    return selected, missing
+    return selected, missing, True
+
+
+def mpi_compatible_compilers(profile: dict[str, Any], provider_name: str) -> set[str]:
+    """Compilers a platform MPI provider was built against: its declared
+    compatibility list plus any per-compiler flavor keys."""
+    for provider in profile.get("mpi_providers") or []:
+        if provider.get("name") == provider_name:
+            compatible = set((provider.get("compatibility") or {}).get("compilers") or [])
+            compatible |= set((provider.get("flavors") or {}).keys())
+            return compatible
+    return set()
 
 
 def vendor_scope_for(profile: dict[str, Any]) -> str:
