@@ -157,6 +157,16 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
         "prefix": "/usr",
         "modules": [],
     }
+    assert common["packages"]["libfabric"]["externals"][0] == {
+        "spec": "libfabric@1.20",
+        "prefix": "/opt/cray/libfabric/1.20",
+        "modules": [],
+    }
+    assert common["packages"]["ucx"]["externals"][0] == {
+        "spec": "ucx@1.15",
+        "prefix": "/usr",
+        "modules": [],
+    }
 
     platform_scope = load_yaml(workspace / "configs" / "vendor" / "cray" / "packages.yaml")
     assert platform_scope["packages"]["gcc"]["buildable"] is False
@@ -193,6 +203,63 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
         "prefix": "/opt/rocm-6.0.0/hip",
         "modules": ["rocm/6.0.0"],
     }
+
+
+def test_rendered_common_scope_uses_arbitrary_system_external_policy(tmp_path: Path) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["system_externals"].append(
+        {
+            "name": "cray-libsci",
+            "version": "24.03.0",
+            "prefix": "/opt/cray/pe/libsci/24.03.0",
+            "provider_family": "platform",
+            "modules": ["cray-libsci/24.03.0"],
+            "detection": {"confidence": "probed", "source": "discovery policy"},
+        }
+    )
+    workspace = render_profile(tmp_path / "out", write_profile(tmp_path, profile))
+
+    common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
+    assert common["packages"]["cray-libsci"] == {
+        "buildable": False,
+        "externals": [
+            {
+                "spec": "cray-libsci@24.03.0",
+                "prefix": "/opt/cray/pe/libsci/24.03.0",
+                "modules": ["cray-libsci/24.03.0"],
+            }
+        ],
+    }
+
+
+def test_stack_built_system_external_policy_does_not_render_external(tmp_path: Path) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["system_externals"].append(
+        {
+            "name": "cray-libsci",
+            "version": "24.03.0",
+            "prefix": "/opt/cray/pe/libsci/24.03.0",
+            "provider_family": "platform",
+        }
+    )
+    stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    stack["externals"] = {
+        "compilers": "prefer_platform",
+        "mpi": "prefer_platform",
+        "openssl": "system",
+        "curl": "system",
+        "cray-libsci": "stack_built",
+    }
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+    common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
+    assert "cray-libsci" not in common["packages"]
 
     gpu_env = (
         workspace / "environments" / "gcc" / "gpu-craympich-gfx90a" / "spack.yaml"
@@ -325,13 +392,21 @@ def render_fixture(output_root: Path, profile_name: str) -> Path:
 
 
 def render_profile(output_root: Path, profile_path: Path) -> Path:
+    return render_profile_with_stack(
+        output_root,
+        profile_path=profile_path,
+        stack_path=fixture_path("stacks", "science-stack", "stack.yaml"),
+    )
+
+
+def render_profile_with_stack(output_root: Path, profile_path: Path, stack_path: Path) -> Path:
     deployment_path = output_root.parent / "deployment.yaml"
     profile = load_yaml(profile_path)
     write_test_deployment(deployment_path, profile["system"]["name"])
     return render_workspace(
         profile_path=profile_path,
         deployment_path=deployment_path,
-        stack_path=fixture_path("stacks", "science-stack", "stack.yaml"),
+        stack_path=stack_path,
         templates_root=fixture_path("template-sets"),
         release_vars=ReleaseVars(
             release_tag="2026.06",
@@ -352,6 +427,12 @@ def write_profile(directory: Path, profile: dict[str, Any]) -> Path:
     profile_path = directory / "profile.yaml"
     write_yaml(profile_path, profile)
     return profile_path
+
+
+def write_stack(directory: Path, stack: dict[str, Any]) -> Path:
+    stack_path = directory / "stack.yaml"
+    write_yaml(stack_path, stack)
+    return stack_path
 
 
 def write_test_deployment(path: Path, system: str) -> None:

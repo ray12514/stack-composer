@@ -373,7 +373,11 @@
         }
       },
       "required": ["compilers", "mpi", "openssl", "curl"],
-      "additionalProperties": false
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["system", "stack_built"],
+        "description": "Package-specific externalization mode for arbitrary profile.system_externals candidates."
+      }
     },
     "buildcache_block": {
       "type": "object",
