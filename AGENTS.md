@@ -40,7 +40,7 @@ current model is spec-native plus defaults and provider facts.
 - `stack-content` owns authored inputs: templates, package sets, package repos,
   stacks, profiles, deployments.
 - `stack-composer` renders a workspace tree; it does not build. Build happens
-  downstream via `stack tools`, `spack-build`, Ansible, or bare Spack.
+  downstream via `spacktools`, `spack-build`, Ansible, or bare Spack.
 - Do not add project-owned personal-GitHub import paths or docs dependencies.
 
 ## Validation before claiming done

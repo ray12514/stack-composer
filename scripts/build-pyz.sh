@@ -6,6 +6,16 @@ PYTHON=${PYTHON:-python3}
 
 cd "${ROOT_DIR}"
 
+# Refresh bundled schemas from canonical stack-planning when it's adjacent
+# (best-effort; tests/test_schema_drift.py is the hard gate). Release builds
+# without the sibling fall back to the already-bundled copies.
+if [ -d "${STACK_PLANNING:-${ROOT_DIR}/../stack-planning}/schemas" ]; then
+  scripts/sync-schema.sh
+else
+  echo "build-pyz: stack-planning not adjacent; using bundled schemas as-is" >&2
+  echo "           (run scripts/sync-schema.sh to refresh from canonical)" >&2
+fi
+
 "${PYTHON}" scripts/generate-third-party.py --check --sync-resources
 
 rm -rf \
