@@ -19,10 +19,12 @@ from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
 from stack_composer.render.plan import _BASELINE_TARGET, plan_lanes, runtime_nodes
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
+# Fallback for `show` when no --defaults/--templates is given (bare-profile mode).
+# Must mirror the shipped templates/v6/defaults.yaml so the preview matches render.
 _BUILTIN_DEFAULTS = {
     "schema_version": 1,
-    "compilers": "all",
-    "mpi": {"provider": "openmpi", "source": "build"},
+    "compilers": "baseline",
+    "mpi": {"provider": "openmpi", "source": "auto"},
     "gpu": {"archs": "all"},
     "target": "native",
 }

@@ -140,7 +140,7 @@ def render(
 
 @cli.command("validate")
 @click.option("--profile", required=True, help="profile.yaml path.")
-@click.option("--deployment", help="Optional deployment.yaml path.")
+@click.option("--deployment", required=True, help="deployment.yaml path (render requires it too).")
 @click.option("--stack", required=True, help="stack.yaml path.")
 @click.option("--templates", required=True, help="Root directory containing template sets.")
 @click.option("--package-sets", help="Package-set directory; defaults next to stack source.")
@@ -150,7 +150,7 @@ def render(
 @click.option("--report", help="Optional YAML report path.")
 def validate(
     profile: str,
-    deployment: str | None,
+    deployment: str,
     stack: str,
     templates: str,
     package_sets: str | None,
