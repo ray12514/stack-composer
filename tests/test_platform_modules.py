@@ -53,7 +53,7 @@ def test_empty_modules_lists_are_not_errors() -> None:
     assert modules == []
 
 
-def test_missing_cray_mpich_flavor_raises_unresolved() -> None:
+def test_missing_cray_mpich_flavor_names_incompatible_compiler() -> None:
     lane = {
         "name": "rocmcc-mpi",
         "compiler": "rocmcc",
@@ -70,8 +70,9 @@ def test_missing_cray_mpich_flavor_raises_unresolved() -> None:
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
     assert modules == ["PrgEnv-amd"]
     assert len(issues) == 1
-    assert issues[0].code == "unresolved-platform-module"
-    assert "cray-mpich flavor for compiler 'rocmcc'" in issues[0].message
+    assert issues[0].code == "platform-mpi-compiler-incompatible"
+    assert "platform MPI 'cray-mpich'" in issues[0].message
+    assert "compiler 'rocmcc'" in issues[0].message
 
 
 def test_unknown_compiler_raises_unresolved() -> None:
