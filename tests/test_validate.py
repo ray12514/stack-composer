@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from copy import deepcopy
 from pathlib import Path
 
@@ -136,6 +137,98 @@ def test_validate_inputs_rejects_inline_spec_kind_mismatch(tmp_path: Path) -> No
         package_repos_dir=fixture_path("package-repos"),
     )
     assert any(issue.code == "inline-spec-kind-mismatch" for issue in issues)
+
+
+def test_validate_inputs_rejects_missing_rendered_config_scope(tmp_path: Path) -> None:
+    templates_root = tmp_path / "template-sets"
+    shutil.copytree(fixture_path("template-sets"), templates_root)
+    shutil.rmtree(templates_root / "v6" / "configs" / "os" / "rhel8")
+
+    issues, _ = validate_inputs(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=fixture_path("stacks", "science-stack", "stack.yaml"),
+        templates_root=templates_root,
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+
+    assert any(
+        issue.code == "missing-template-scope" and issue.path.endswith("configs/os/rhel8")
+        for issue in issues
+    )
+
+
+def test_validate_inputs_rejects_unrecognized_gpu_arch_family(tmp_path: Path) -> None:
+    profile = deepcopy(load_yaml(fixture_path("profiles", "example-cray", "profile.yaml")))
+    profile["node_types"]["gpu_compute_mi250x"]["gpu"]["arch_target"] = "xe_hpc"
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    stack["per_system"] = {}
+    profile_path = tmp_path / "profile.yaml"
+    stack_path = tmp_path / "stack.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    issues, _ = validate_inputs(
+        profile_path=profile_path,
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+
+    assert any(
+        issue.code == "unrecognized-gpu-arch" and "xe_hpc" in issue.message
+        for issue in issues
+    )
+
+
+def test_validate_inputs_names_explicit_compiler_platform_mpi_incompatibility(
+    tmp_path: Path,
+) -> None:
+    profile = deepcopy(load_yaml(fixture_path("profiles", "example-cray", "profile.yaml")))
+    profile["compiler_providers"].append(
+        {
+            "name": "aocc",
+            "version": "4.2.0",
+            "prefix": "/opt/site/aocc/4.2.0",
+            "provider_family": "site",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["aocc/4.2.0"],
+        }
+    )
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    stack["builds"] = [
+        {
+            "name": "mpi",
+            "kind": "mpi",
+            "specs": ["hdf5+mpi"],
+            "compilers": ["aocc"],
+            "mpi": {"provider": "cray-mpich", "source": "platform"},
+        }
+    ]
+    stack["per_system"] = {}
+    profile_path = tmp_path / "profile.yaml"
+    stack_path = tmp_path / "stack.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    issues, _ = validate_inputs(
+        profile_path=profile_path,
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+
+    assert any(
+        issue.code == "platform-mpi-compiler-incompatible"
+        and "cray-mpich" in issue.message
+        and "aocc" in issue.message
+        for issue in issues
+    )
 
 
 def test_validate_inputs_rejects_unresolved_narrowing_compiler(tmp_path: Path) -> None:

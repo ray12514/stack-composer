@@ -85,10 +85,11 @@ def _mpi_modules(
         issues.append(
             Issue(
                 "error",
-                "unresolved-platform-module",
+                "platform-mpi-compiler-incompatible",
                 f"{lane_path}.mpi_provider",
-                f"{provider} flavor for compiler {lane.get('compiler')!r} is missing "
-                "from profile.mpi_providers[].flavors",
+                f"platform MPI {provider!r} has no flavor compatible with "
+                f"compiler {lane.get('compiler')!r}; available flavors: "
+                f"{', '.join(sorted(flavors)) or 'none'}",
             )
         )
         return []
@@ -133,7 +134,7 @@ def _gpu_toolkit_modules(
     issues.append(
         Issue(
             "error",
-            "unresolved-platform-module",
+            "unrecognized-gpu-arch",
             f"{lane_path}.gpu_arch",
             f"unrecognized gpu_arch {arch!r}; expected gfx* or sm_*",
         )

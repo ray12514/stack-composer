@@ -55,7 +55,7 @@ def validate_inputs(
     issues.extend(validate_package_sets(stack, package_sets_dir))
     issues.extend(validate_package_repositories(stack, package_repos_dir))
     issues.extend(validate_per_system_narrowing(stack, profile))
-    issues.extend(validate_lane_plan(profile, stack))
+    issues.extend(validate_lane_plan(profile, stack, template_set))
     spec_sources, spec_source_issues = load_spec_sources(stack, package_sets_dir)
     issues.extend(spec_source_issues)
 
@@ -93,14 +93,28 @@ def cross_check_profile_contract(profile: dict[str, Any], stack: dict[str, Any])
     return issues
 
 
-def validate_lane_plan(profile: dict[str, Any], stack: dict[str, Any]) -> list[Issue]:
+def validate_lane_plan(
+    profile: dict[str, Any], stack: dict[str, Any], template_set: Path
+) -> list[Issue]:
     from stack_composer.render.plan import plan_lanes
     from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
+    from stack_composer.render.scopes import required_scopes
 
     lanes, _, _, issues = plan_lanes(profile, stack)
     for lane in lanes:
         _, prereq_issues = platform_module_prereqs_for_lane(lane, profile)
         issues.extend(prereq_issues)
+    for scope in required_scopes(profile, lanes):
+        scope_dir = template_set / "configs" / scope
+        if not scope_dir.is_dir():
+            issues.append(
+                Issue(
+                    "error",
+                    "missing-template-scope",
+                    str(scope_dir),
+                    f"rendered lane plan requires template config scope {scope!r}",
+                )
+            )
     return issues
 
 
