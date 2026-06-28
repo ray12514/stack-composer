@@ -5,6 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 
 import pytest
+import yaml
 from jinja2 import UndefinedError
 
 from stack_composer.errors import ValidationFailed
@@ -32,6 +33,64 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     assert manifest["phase"] == "draft"
     assert manifest["templates"]["render_tool"]["name"] == "stack-composer render"
     assert {lane["kind"] for lane in manifest["lanes"]} == {"cpu", "mpi", "gpu"}
+
+
+def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None:
+    workspace = render_fixture(tmp_path / "out-a")
+
+    selector = workspace / "modulefiles" / "ScienceStack" / "gcc" / "gpu-craympich-gfx90a"
+    text = selector.read_text(encoding="utf-8")
+
+    assert text.startswith("#%Module1.0\n")
+    assert 'module-whatis "ScienceStack lane: gcc gpu-craympich-gfx90a"' in text
+    assert "conflict ScienceStack/gcc/mpi-craympich" in text
+    assert "prereq PrgEnv-gnu" in text
+    assert "prereq gcc-native/13" in text
+    assert "prereq cray-mpich/8.1.29" in text
+    assert "prereq rocm/6.0.0" in text
+    assert 'setenv STACK_RELEASE "2026.06"' in text
+    assert 'setenv STACK_COMPILER "gcc"' in text
+    assert 'setenv STACK_LANE "gpu-craympich-gfx90a"' in text
+    assert (
+        'prepend-path MODULEPATH "/shared/stack/modules/2026.06/example-cray/'
+        'science-stack/gcc/core"'
+    ) in text
+    assert (
+        'prepend-path MODULEPATH "/shared/stack/modules/2026.06/example-cray/'
+        'science-stack/gcc/gpu-craympich-gfx90a"'
+    ) in text
+
+
+def test_render_workspace_skips_front_door_modules_for_direct_exposure(tmp_path: Path) -> None:
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    stack["modules"] = {
+        "format": "tcl",
+        "exposure": "direct",
+        "module_root": "ScienceStack",
+    }
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    workspace = render_workspace(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        release_vars=ReleaseVars(
+            release_tag="2026.06",
+            output_root=(tmp_path / "out-a").as_posix(),
+            rendered_at="2026-06-19T00:00:00Z",
+            source_repo=SourceRepo(
+                url="git@example:stacks/science-stack",
+                commit="0375b16fdeadbeef0123456789abcdef01234567",
+                dirty=False,
+            ),
+        ),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+
+    assert not (workspace / "modulefiles").exists()
 
 
 def test_render_workspace_handles_generic_linux_without_gpu(tmp_path: Path) -> None:

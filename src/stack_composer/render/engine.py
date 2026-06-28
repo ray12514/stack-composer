@@ -9,6 +9,7 @@ from stack_composer.manifest.draft import draft_manifest
 from stack_composer.render.context import build_render_context
 from stack_composer.render.deployment import materialize_lane_paths
 from stack_composer.render.environments import render_lane_environment
+from stack_composer.render.modulefiles import render_front_door_modules
 from stack_composer.render.plan import plan_lanes
 from stack_composer.render.release import ReleaseVars
 from stack_composer.render.scopes import (
@@ -100,6 +101,13 @@ def render_workspace(
                 ctx=context_dict,
                 lane=lane,
             )
+        render_front_door_modules(
+            pending=pending,
+            profile=profile,
+            stack=stack,
+            lanes=rendered_lanes,
+            release_tag=release_vars.release_tag,
+        )
         manifest = draft_manifest(
             profile_path=profile_path,
             stack_path=stack_path,
