@@ -347,6 +347,10 @@
         }
       },
       "required": ["name", "version", "provider_family"],
+      "anyOf": [
+        { "required": ["prefix"] },
+        { "required": ["flavors"] }
+      ],
       "additionalProperties": false
     },
     "rocm_toolkit_module": {
