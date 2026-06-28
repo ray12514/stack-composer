@@ -130,19 +130,19 @@
           "type": "string",
           "enum": ["front_door", "direct"],
           "default": "front_door",
-          "description": "front_door: users load a lane selector first. direct: public package/application modules."
+          "description": "front_door: users load a compiler init module, then one lane module, then package modules. direct: public package/application modules."
         },
         "init_module": {
           "oneOf": [
             { "type": "null" },
             { "type": "string", "minLength": 1 }
           ],
-          "description": "Optional bootstrap/init module name. Null when the public module root is already on MODULEPATH."
+          "description": "Optional compiler-init module prefix (e.g., science_init -> science_init_gcc). Null when the lane module root is already on MODULEPATH."
         },
         "module_root": {
           "type": "string",
           "minLength": 1,
-          "description": "User-facing module namespace (e.g., ScienceStack in ScienceStack/GCC/mpi-openmpi)."
+          "description": "User-facing lane module namespace (e.g., science in science/mpi)."
         },
         "publish_root": {
           "oneOf": [

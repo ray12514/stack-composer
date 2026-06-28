@@ -38,27 +38,104 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
 def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None:
     workspace = render_fixture(tmp_path / "out-a")
 
-    selector = workspace / "modulefiles" / "ScienceStack" / "gcc" / "gpu-craympich-gfx90a"
+    init_module = workspace / "modulefiles" / "science_init_gcc"
+    init_text = init_module.read_text(encoding="utf-8")
+
+    assert init_text.startswith("#%Module1.0\n")
+    assert 'module-whatis "science compiler environment: gcc"' in init_text
+    assert "prereq PrgEnv-gnu" in init_text
+    assert "prereq gcc-native/13" in init_text
+    assert (
+        'prepend-path PATH "/shared/stack/views/2026.06/example-cray/'
+        'science-stack/gcc/core/bin"'
+    ) in init_text
+    assert (
+        'prepend-path MODULEPATH "/shared/stack/modules/2026.06/example-cray/'
+        'science-stack/gcc/lanes"'
+    ) in init_text
+    assert "gpu-craympich-gfx90a" not in init_text
+
+    selector = workspace / "modulefiles" / "gcc" / "lanes" / "science" / "gpu"
     text = selector.read_text(encoding="utf-8")
 
     assert text.startswith("#%Module1.0\n")
-    assert 'module-whatis "ScienceStack lane: gcc gpu-craympich-gfx90a"' in text
-    assert "conflict ScienceStack/gcc/mpi-craympich" in text
-    assert "prereq PrgEnv-gnu" in text
-    assert "prereq gcc-native/13" in text
+    assert 'module-whatis "science lane: gcc gpu"' in text
+    assert "conflict science/serial" in text
+    assert "conflict science/mpi" in text
     assert "prereq cray-mpich/8.1.29" in text
     assert "prereq rocm/6.0.0" in text
     assert 'setenv STACK_RELEASE "2026.06"' in text
     assert 'setenv STACK_COMPILER "gcc"' in text
-    assert 'setenv STACK_LANE "gpu-craympich-gfx90a"' in text
-    assert (
-        'prepend-path MODULEPATH "/shared/stack/modules/2026.06/example-cray/'
-        'science-stack/gcc/core"'
-    ) in text
+    assert 'setenv STACK_LANE "gpu"' in text
+    assert 'setenv STACK_LANE_ID "gpu-craympich-gfx90a"' in text
     assert (
         'prepend-path MODULEPATH "/shared/stack/modules/2026.06/example-cray/'
         'science-stack/gcc/gpu-craympich-gfx90a"'
     ) in text
+    assert (
+        'prepend-path MODULEPATH "/shared/stack/modules/2026.06/example-cray/'
+        'science-stack/gcc/core"'
+    ) not in text
+
+
+def test_render_workspace_uses_build_names_when_lane_names_collide(tmp_path: Path) -> None:
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    stack["builds"] = [
+        build for build in stack["builds"] if build["name"] not in {"mpi", "gpu"}
+    ]
+    stack["builds"].extend(
+        [
+            {
+                "name": "mpi-osu",
+                "kind": "mpi",
+                "package_set": "science-full",
+                "compilers": ["gcc"],
+            },
+            {
+                "name": "mpi-hdf5",
+                "kind": "mpi",
+                "package_set": "science-full",
+                "compilers": ["gcc"],
+            },
+        ]
+    )
+    stack["per_system"]["example-cray"]["builds"] = {
+        "core": {"compilers": ["gcc"]},
+        "serial": {"compilers": ["gcc"]},
+        "mpi-osu": {"compilers": ["gcc"]},
+        "mpi-hdf5": {"compilers": ["gcc"]},
+    }
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    workspace = render_workspace(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        release_vars=ReleaseVars(
+            release_tag="2026.06",
+            output_root=(tmp_path / "out-a").as_posix(),
+            rendered_at="2026-06-19T00:00:00Z",
+            source_repo=SourceRepo(
+                url="git@example:stacks/science-stack",
+                commit="0375b16fdeadbeef0123456789abcdef01234567",
+                dirty=False,
+            ),
+        ),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+
+    lane_root = workspace / "modulefiles" / "gcc" / "lanes" / "science"
+    assert (lane_root / "mpi-osu").exists()
+    assert (lane_root / "mpi-hdf5").exists()
+    assert not (lane_root / "mpi").exists()
+
+    osu_text = (lane_root / "mpi-osu").read_text(encoding="utf-8")
+    assert "conflict science/mpi-hdf5" in osu_text
+    assert 'setenv STACK_LANE "mpi-osu"' in osu_text
+    assert 'setenv STACK_LANE_ID "mpi-osu-craympich"' in osu_text
 
 
 def test_render_workspace_skips_front_door_modules_for_direct_exposure(tmp_path: Path) -> None:
