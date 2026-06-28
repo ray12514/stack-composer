@@ -34,6 +34,9 @@ Primary planning docs:
   environments, package repos, and draft `release-manifest.yaml`.
 - `publish-manifest`: finalizes a draft manifest from downstream build evidence.
 - `spack-build`: local Spack-driving companion script.
+- Front-door Tcl lane selector modulefiles are rendered under the workspace's
+  `modulefiles/` tree. Spack still generates package modulefiles into each
+  lane's `package_module_root`.
 - Generic provider inventory consumption: `compiler_providers` +
   `mpi_providers`.
 - Baseline compiler default: `gcc` if present, otherwise first reported
@@ -50,7 +53,8 @@ Primary planning docs:
 ## Deferred / open
 
 - `validate-template-set --concretize` remains intentionally deferred.
-- Module front-door emission still needs a real end-to-end install validation.
+- Front-door selector emission still needs real-system module-tool validation.
+  Package module generation remains owned by Spack (`spack module tcl refresh`).
 - Fabric userspace external inventory still needs first-system evidence and
   render coverage.
 - Broader ordinary package external inventory remains focused/hints-driven;
