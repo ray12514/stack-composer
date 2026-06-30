@@ -8,6 +8,8 @@ from typing import Any
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from stack_composer.render.plan import vendor_scope_for_provider
+
 
 def make_jinja_environment(template_dir: Path) -> Environment:
     env = Environment(
@@ -22,6 +24,7 @@ def make_jinja_environment(template_dir: Path) -> Environment:
     env.globals["to_yaml"] = to_yaml
     env.globals["path_join"] = path_join
     env.globals["spack_spec"] = spack_spec
+    env.globals["compiler_providers_for_scope"] = compiler_providers_for_scope
     return env
 
 
@@ -41,6 +44,16 @@ def spack_spec(parts: dict[str, Any]) -> str:
     if variants:
         spec += " " + " ".join(str(variant) for variant in variants)
     return spec
+
+
+def compiler_providers_for_scope(
+    profile: dict[str, Any], stack: dict[str, Any], scope: str
+) -> list[dict[str, Any]]:
+    return [
+        provider
+        for provider in profile.get("compiler_providers") or []
+        if vendor_scope_for_provider(stack, provider) == scope
+    ]
 
 
 def required_scopes(profile: dict[str, Any], rendered_lanes: list[dict[str, Any]]) -> list[str]:

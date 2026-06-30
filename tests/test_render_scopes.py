@@ -96,6 +96,69 @@ def test_vendor_scope_is_per_compiler_provider_family() -> None:
     assert lane_by_name(lanes, "aocc-core")["vendor_scope"] == "vendor/linux"
 
 
+def test_rendered_compiler_scopes_filter_and_group_duplicate_provider_names(
+    tmp_path: Path,
+) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["compiler_providers"].append(
+        {
+            "name": "aocc",
+            "version": "4.2.0",
+            "prefix": "/opt/site/aocc/4.2.0",
+            "provider_family": "site",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["aocc/4.2.0"],
+        }
+    )
+    profile["compiler_providers"].extend(
+        [
+            {
+                "name": "aocc",
+                "version": "5.1.0",
+                "prefix": "/opt/platform/aocc/5.1.0",
+                "provider_family": "platform",
+                "platform_family": "cray-pe",
+                "languages": ["c", "c++", "fortran"],
+                "modules": ["PrgEnv-aocc", "aocc/5.1.0"],
+            },
+            {
+                "name": "aocc",
+                "version": "5.2.0",
+                "prefix": "/opt/platform/aocc/5.2.0",
+                "provider_family": "platform",
+                "platform_family": "cray-pe",
+                "languages": ["c", "c++", "fortran"],
+                "modules": ["PrgEnv-aocc", "aocc/5.2.0"],
+            },
+        ]
+    )
+    stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    stack["builds"] = [{"name": "core", "kind": "cpu", "specs": ["zlib"], "compilers": "all"}]
+    stack["per_system"] = {}
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+    cray_text = (workspace / "configs" / "vendor" / "cray" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert cray_text.count("\n  aocc:") == 1
+    cray = load_yaml(workspace / "configs" / "vendor" / "cray" / "packages.yaml")
+    assert [external["prefix"] for external in cray["packages"]["aocc"]["externals"]] == [
+        "/opt/platform/aocc/5.1.0",
+        "/opt/platform/aocc/5.2.0",
+    ]
+
+    linux = load_yaml(workspace / "configs" / "vendor" / "linux" / "packages.yaml")
+    assert [external["prefix"] for external in linux["packages"]["aocc"]["externals"]] == [
+        "/opt/site/aocc/4.2.0"
+    ]
+
+
 def test_mpi_auto_uses_profile_order_without_cray_special_case() -> None:
     profile, stack = fixture_context("example-cray")
     profile["mpi_providers"].insert(
