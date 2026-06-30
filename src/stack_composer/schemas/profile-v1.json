@@ -145,8 +145,7 @@
       "properties": {
         "install_tree_candidates": {
           "type": "array",
-          "description": "Shared filesystems suitable for the install tree.",
-          "minItems": 1,
+          "description": "Observed shared filesystems that may be suitable for the install tree. May be empty when discovery cannot infer a candidate; deployment.yaml owns the selected install tree.",
           "items": {
             "type": "object",
             "properties": {
