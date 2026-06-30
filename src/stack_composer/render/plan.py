@@ -249,15 +249,18 @@ def resolve_mpi(
       - platform: use the platform MPI (falls back to requested);
       - build: build the requested provider regardless.
     The requested provider comes from the per-build override or defaults.mpi."""
-    mpi = build.get("mpi") or stack.get("mpi") or {}
+    build_mpi = build.get("mpi")
+    mpi = build_mpi or stack.get("mpi") or {}
     if not isinstance(mpi, dict):
         mpi = {}
     requested = mpi.get("provider")
+    explicit_requested = requested if isinstance(build_mpi, dict) else None
     source = mpi.get("source", "auto")
     # Platform MPI = an mpi_provider the profile reports. Profile order is the
     # default priority; templates may supply a provider-family priority list.
     providers = profile.get("mpi_providers") or []
     platform_provider = None
+    requested_provider = None
     if providers:
         priority = mpi.get("provider_family_priority") or []
         prioritized = [
@@ -267,10 +270,26 @@ def resolve_mpi(
             if provider.get("provider_family") == family
         ]
         platform_provider = (prioritized[0] if prioritized else providers[0]).get("name")
+        if explicit_requested:
+            requested_provider = next(
+                (
+                    provider.get("name")
+                    for provider in providers
+                    if provider.get("name") == explicit_requested
+                ),
+                None,
+            )
     if source == "build":
         return requested, "build"
     if source == "platform":
-        return (platform_provider or requested), "platform"
+        return (
+            requested_provider or platform_provider or explicit_requested or requested,
+            "platform",
+        )
+    if explicit_requested:
+        if requested_provider:
+            return requested_provider, "platform"
+        return explicit_requested, "build"
     if platform_provider:
         return platform_provider, "platform"
     return requested, "build"
