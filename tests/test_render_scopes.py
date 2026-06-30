@@ -327,6 +327,72 @@ def test_rendered_common_scope_uses_arbitrary_system_external_policy(tmp_path: P
     }
 
 
+def test_common_scope_prefers_platform_fabric_userspace_duplicates(tmp_path: Path) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["fabric"]["userspace"].insert(
+        0,
+        {
+            "name": "libfabric",
+            "version": "1.22.0",
+            "prefix": "/p/app/unsupported/libfabric/1.22.0",
+        },
+    )
+    workspace = render_profile(tmp_path / "out", write_profile(tmp_path, profile))
+
+    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert common_text.count("\n  libfabric:") == 1
+    common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
+    assert common["packages"]["libfabric"]["externals"] == [
+        {
+            "spec": "libfabric@1.20",
+            "prefix": "/opt/cray/libfabric/1.20",
+            "modules": [],
+        }
+    ]
+
+
+def test_common_scope_mixed_fabric_userspace_keeps_duplicates_under_one_key(
+    tmp_path: Path,
+) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["fabric"]["userspace"].insert(
+        0,
+        {
+            "name": "libfabric",
+            "version": "1.22.0",
+            "prefix": "/p/app/unsupported/libfabric/1.22.0",
+        },
+    )
+    stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    stack["externals"] = {
+        "compilers": "prefer_platform",
+        "mpi": "prefer_platform",
+        "openssl": "system",
+        "curl": "system",
+        "fabric_userspace": "mixed",
+    }
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert common_text.count("\n  libfabric:") == 1
+    common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
+    assert [external["prefix"] for external in common["packages"]["libfabric"]["externals"]] == [
+        "/opt/cray/libfabric/1.20",
+        "/p/app/unsupported/libfabric/1.22.0",
+    ]
+
+
 def test_stack_built_system_external_policy_does_not_render_external(tmp_path: Path) -> None:
     profile, _stack = fixture_context("example-cray")
     profile = deepcopy(profile)
