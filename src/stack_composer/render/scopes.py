@@ -25,6 +25,7 @@ def make_jinja_environment(template_dir: Path) -> Environment:
     env.globals["path_join"] = path_join
     env.globals["spack_spec"] = spack_spec
     env.globals["compiler_providers_for_scope"] = compiler_providers_for_scope
+    env.globals["common_external_packages"] = common_external_packages
     return env
 
 
@@ -54,6 +55,60 @@ def compiler_providers_for_scope(
         for provider in profile.get("compiler_providers") or []
         if vendor_scope_for_provider(stack, provider) == scope
     ]
+
+
+def common_external_packages(
+    profile: dict[str, Any], stack: dict[str, Any]
+) -> list[dict[str, Any]]:
+    external_policy = stack.get("externals") or {}
+    fabric_policy = external_policy.get("fabric_userspace", "prefer_platform")
+    packages: dict[str, dict[str, Any]] = {}
+
+    fabric_names: set[str] = set()
+    fabric_by_name: dict[str, list[dict[str, Any]]] = {}
+    if fabric_policy in {"prefer_platform", "mixed"}:
+        for userspace in (profile.get("fabric") or {}).get("userspace") or []:
+            fabric_by_name.setdefault(userspace["name"], []).append(userspace)
+        for name, entries in fabric_by_name.items():
+            ranked = sorted(entries, key=lambda entry: fabric_userspace_sort_key(profile, entry))
+            selected = ranked if fabric_policy == "mixed" else ranked[:1]
+            for userspace in selected:
+                add_external(packages, userspace)
+            fabric_names.add(name)
+
+    for external in profile.get("system_externals") or []:
+        if external_policy.get(external["name"]) != "system":
+            continue
+        if fabric_policy == "prefer_platform" and external["name"] in fabric_names:
+            continue
+        add_external(packages, external)
+
+    return list(packages.values())
+
+
+def add_external(packages: dict[str, dict[str, Any]], external: dict[str, Any]) -> None:
+    package = packages.setdefault(
+        external["name"], {"name": external["name"], "buildable": False, "externals": []}
+    )
+    spec = f"{external['name']}@{external['version']}"
+    if external.get("variants"):
+        spec += f" {external['variants']}"
+    package["externals"].append(
+        {
+            "spec": spec,
+            "prefix": external["prefix"],
+            "modules": external.get("modules") or [],
+        }
+    )
+
+
+def fabric_userspace_sort_key(profile: dict[str, Any], entry: dict[str, Any]) -> tuple[int, str]:
+    prefix = entry.get("prefix", "")
+    is_cray_platform = (
+        (profile.get("fabric") or {}).get("type") == "slingshot"
+        and prefix.startswith("/opt/cray/")
+    )
+    return (0 if is_cray_platform else 1, entry.get("name", ""))
 
 
 def required_scopes(profile: dict[str, Any], rendered_lanes: list[dict[str, Any]]) -> list[str]:
