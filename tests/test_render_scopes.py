@@ -159,6 +159,43 @@ def test_rendered_compiler_scopes_filter_and_group_duplicate_provider_names(
     ]
 
 
+def test_invalid_compiler_provider_version_is_not_rendered_or_selected(
+    tmp_path: Path,
+) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["compiler_providers"].insert(
+        0,
+        {
+            "name": "clang",
+            "version": "clang/v2512-",
+            "prefix": "/p/app/openfoam/aocc-compiler-4.1.0",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "languages": ["c", "c++"],
+            "modules": ["openfoam/Clang/v2512-"],
+        },
+    )
+    stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    stack["builds"] = [{"name": "core", "kind": "cpu", "specs": ["zlib"], "compilers": "all"}]
+    stack["per_system"] = {}
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+    assert issues == []
+    assert "clang" not in {lane["compiler"] for lane in lanes}
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+    cray_text = (workspace / "configs" / "vendor" / "cray" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "clang@clang/v2512-" not in cray_text
+    assert "openfoam/Clang/v2512-" not in cray_text
+
+
 def test_mpi_auto_uses_profile_order_without_cray_special_case() -> None:
     profile, stack = fixture_context("example-cray")
     profile["mpi_providers"].insert(

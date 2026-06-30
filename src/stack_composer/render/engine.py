@@ -17,6 +17,7 @@ from stack_composer.render.scopes import (
     render_template_tree,
     required_scopes,
 )
+from stack_composer.render.workspace_validation import validate_rendered_workspace
 from stack_composer.schema_registry import validate_schema
 from stack_composer.validate.checks import validate_inputs
 from stack_composer.yaml_io import write_yaml
@@ -108,6 +109,9 @@ def render_workspace(
             lanes=rendered_lanes,
             release_tag=release_vars.release_tag,
         )
+        rendered_issues = validate_rendered_workspace(pending)
+        if rendered_issues:
+            raise ValidationFailed(rendered_issues)
         manifest = draft_manifest(
             profile_path=profile_path,
             stack_path=stack_path,

@@ -9,6 +9,17 @@ import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from stack_composer.render.plan import vendor_scope_for_provider
+from stack_composer.render.spack_specs import is_renderable_external_name_version
+
+_COMPILER_COMMANDS = {
+    "aocc": {"c": "clang", "cxx": "clang++", "fortran": "flang"},
+    "cce": {"c": "craycc", "cxx": "craycxx", "fortran": "crayftn"},
+    "gcc": {"c": "gcc", "cxx": "g++", "fortran": "gfortran"},
+    "intel": {"c": "icx", "cxx": "icpx", "fortran": "ifx"},
+    "llvm": {"c": "clang", "cxx": "clang++", "fortran": "flang"},
+    "nvhpc": {"c": "nvc", "cxx": "nvc++", "fortran": "nvfortran"},
+    "rocmcc": {"c": "amdclang", "cxx": "amdclang++", "fortran": "amdflang"},
+}
 
 
 def make_jinja_environment(template_dir: Path) -> Environment:
@@ -25,6 +36,7 @@ def make_jinja_environment(template_dir: Path) -> Environment:
     env.globals["path_join"] = path_join
     env.globals["spack_spec"] = spack_spec
     env.globals["compiler_providers_for_scope"] = compiler_providers_for_scope
+    env.globals["compiler_external_packages"] = compiler_external_packages
     env.globals["common_external_packages"] = common_external_packages
     return env
 
@@ -55,6 +67,54 @@ def compiler_providers_for_scope(
         for provider in profile.get("compiler_providers") or []
         if vendor_scope_for_provider(stack, provider) == scope
     ]
+
+
+def compiler_external_packages(
+    profile: dict[str, Any], stack: dict[str, Any], scope: str
+) -> list[dict[str, Any]]:
+    packages: dict[str, dict[str, Any]] = {}
+    for provider in compiler_providers_for_scope(profile, stack, scope):
+        name = provider.get("name")
+        version = provider.get("version")
+        if not is_renderable_external_name_version(name, version):
+            continue
+        package = packages.setdefault(
+            name, {"name": name, "buildable": False, "externals": []}
+        )
+        package["externals"].append(compiler_external(provider))
+    return list(packages.values())
+
+
+def compiler_external(provider: dict[str, Any]) -> dict[str, Any]:
+    name = provider["name"]
+    languages = ",".join(provider.get("languages") or [])
+    external: dict[str, Any] = {
+        "spec": f"{name}@{provider['version']} languages='{languages}'",
+        "prefix": provider["prefix"],
+        "modules": provider.get("modules") or [],
+    }
+    compilers = compiler_commands(provider)
+    if compilers:
+        external["extra_attributes"] = {"compilers": compilers}
+    return external
+
+
+def compiler_commands(provider: dict[str, Any]) -> dict[str, str] | None:
+    explicit = provider.get("compilers")
+    if explicit:
+        return {
+            "c": explicit["c"],
+            "cxx": explicit["cxx"],
+            "fortran": explicit["fortran"],
+        }
+    commands = _COMPILER_COMMANDS.get(provider["name"])
+    if not commands:
+        return None
+    return {
+        "c": path_join(provider["prefix"], "bin", commands["c"]),
+        "cxx": path_join(provider["prefix"], "bin", commands["cxx"]),
+        "fortran": path_join(provider["prefix"], "bin", commands["fortran"]),
+    }
 
 
 def common_external_packages(
