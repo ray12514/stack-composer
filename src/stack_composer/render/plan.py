@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from stack_composer.errors import Issue
-from stack_composer.render.spack_specs import is_renderable_external_name_version
+from stack_composer.render.spack_specs import (
+    is_absolute_prefix,
+    is_compiler_fragment,
+    is_renderable_external_name_version,
+)
 from stack_composer.resolve.build_kind import normalize_builds
 
 # Conservative shared target for `target: baseline`.
@@ -206,7 +210,7 @@ def mpi_compatible_compilers(profile: dict[str, Any], provider_name: str) -> set
     """Compilers a platform MPI provider was built against: its declared
     compatibility list plus any per-compiler flavor keys."""
     for provider in profile.get("mpi_providers") or []:
-        if provider.get("name") == provider_name:
+        if provider.get("name") == provider_name and is_renderable_mpi_provider(provider):
             compatible = set((provider.get("compatibility") or {}).get("compilers") or [])
             compatible |= set((provider.get("flavors") or {}).keys())
             return compatible
@@ -264,7 +268,11 @@ def resolve_mpi(
     source = mpi.get("source", "auto")
     # Platform MPI = an mpi_provider the profile reports. Profile order is the
     # default priority; templates may supply a provider-family priority list.
-    providers = profile.get("mpi_providers") or []
+    providers = [
+        provider
+        for provider in profile.get("mpi_providers") or []
+        if is_renderable_mpi_provider(provider)
+    ]
     platform_provider = None
     requested_provider = None
     if providers:
@@ -301,6 +309,27 @@ def resolve_mpi(
     return requested, "build"
 
 
+def is_renderable_mpi_provider(provider: dict[str, Any]) -> bool:
+    """True when a probed MPI entry can produce at least one safe external spec.
+
+    This keeps MPI selection generic: provider shape decides renderability, not
+    vendor names. Per-compiler flavor MPIs and single-prefix MPIs share this
+    one predicate.
+    """
+    if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
+        return False
+    flavors = provider.get("flavors")
+    if isinstance(flavors, dict):
+        return any(
+            is_compiler_fragment(compiler)
+            and isinstance(flavor, dict)
+            and is_absolute_prefix(flavor.get("prefix"))
+            for compiler, flavor in flavors.items()
+        )
+    if not is_absolute_prefix(provider.get("prefix")):
+        return False
+    compiler = provider.get("compiler")
+    return not compiler or is_compiler_fragment(compiler)
 def resolve_gpu_archs(
     profile: dict[str, Any],
     stack: dict[str, Any],

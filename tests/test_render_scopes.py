@@ -218,6 +218,40 @@ def test_mpi_auto_uses_profile_order_without_cray_special_case() -> None:
     assert {lane["mpi_source"] for lane in lanes} == {"platform"}
 
 
+def test_invalid_mpi_provider_is_not_selected_or_rendered(tmp_path: Path) -> None:
+    profile, stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    raw_stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    profile["mpi_providers"].insert(
+        0,
+        {
+            "name": "openmpi",
+            "version": "module/openmpi4",
+            "provider_family": "site",
+            "compatibility": {"compilers": ["aocc"]},
+            "prefix": "/opt/site/openmpi/bad",
+            "modules": ["openmpi/module/openmpi4"],
+        },
+    )
+    stack["builds"] = [{"name": "mpi", "kind": "mpi", "specs": ["hdf5+mpi"]}]
+    raw_stack["builds"] = stack["builds"]
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+    assert issues == []
+    assert {lane["mpi_provider"] for lane in lanes} == {"openmpi"}
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", raw_stack),
+    )
+    openmpi_text = (workspace / "configs" / "mpi" / "openmpi" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "openmpi@module/openmpi4" not in openmpi_text
+    assert "openmpi@4.1.6" in openmpi_text
+
+
 def test_mpi_auto_honors_explicit_platform_provider() -> None:
     profile, stack = fixture_context("example-cray")
     profile["mpi_providers"].insert(
@@ -247,6 +281,41 @@ def test_mpi_auto_honors_explicit_platform_provider() -> None:
     assert {lane["mpi_source"] for lane in lanes} == {"platform"}
     assert "mpi/cray-mpich" in required_scopes(profile, lanes)
     assert "mpi/openmpi" not in required_scopes(profile, lanes)
+
+
+def test_invalid_single_prefix_mpi_compiler_is_not_rendered(tmp_path: Path) -> None:
+    profile, stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    raw_stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    profile["mpi_providers"].insert(
+        0,
+        {
+            "name": "openmpi",
+            "version": "5.0.6",
+            "provider_family": "site",
+            "compatibility": {"compilers": ["clang"]},
+            "compiler": "clang/v2512-",
+            "prefix": "/opt/openfoam/openmpi/5.0.6",
+            "modules": ["openfoam/openmpi/5.0.6"],
+        },
+    )
+    stack["builds"] = [{"name": "mpi", "kind": "mpi", "specs": ["hdf5+mpi"]}]
+    raw_stack["builds"] = stack["builds"]
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+    assert issues == []
+    assert {lane["mpi_provider"] for lane in lanes} == {"openmpi"}
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", raw_stack),
+    )
+    openmpi_text = (workspace / "configs" / "mpi" / "openmpi" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "%clang/v2512-" not in openmpi_text
+    assert "openmpi@4.1.6" in openmpi_text
 
 
 def test_gpu_toolkit_scope_selection_is_independent_of_host_compiler() -> None:
@@ -336,6 +405,25 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     }
 
 
+def test_invalid_gpu_toolkit_component_is_not_rendered(tmp_path: Path) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["gpu_toolkit_modules"]["rocm"]["spack_components"].insert(
+        0,
+        {
+            "package": "roc/solver",
+            "prefix": "/opt/rocm-6.0.0/rocsolver",
+        },
+    )
+
+    workspace = render_profile(tmp_path / "out", write_profile(tmp_path / "profile", profile))
+    rocm_text = (workspace / "configs" / "gpu" / "amd-rocm" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "roc/solver" not in rocm_text
+    assert "hip@6.0.0" in rocm_text
+
+
 def test_rendered_common_scope_uses_arbitrary_system_external_policy(tmp_path: Path) -> None:
     profile, _stack = fixture_context("example-cray")
     profile = deepcopy(profile)
@@ -362,6 +450,40 @@ def test_rendered_common_scope_uses_arbitrary_system_external_policy(tmp_path: P
             }
         ],
     }
+
+
+def test_invalid_system_external_is_not_rendered(tmp_path: Path) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["system_externals"].append(
+        {
+            "name": "bad/pkg",
+            "version": "1.0",
+            "prefix": "/opt/site/bad/pkg",
+            "provider_family": "site",
+            "detection": {"confidence": "probed", "source": "test"},
+        }
+    )
+    stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    stack["externals"] = {
+        "compilers": "prefer_platform",
+        "mpi": "prefer_platform",
+        "openssl": "system",
+        "curl": "system",
+        "fabric_userspace": "prefer_platform",
+        "bad/pkg": "system",
+    }
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "bad/pkg" not in common_text
+    assert "openssl@3.0.7" in common_text
 
 
 def test_common_scope_prefers_platform_fabric_userspace_duplicates(tmp_path: Path) -> None:
