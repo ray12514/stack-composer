@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from stack_composer.errors import Issue
+from stack_composer.render.spack_specs import is_renderable_external_name_version
 from stack_composer.resolve.build_kind import normalize_builds
 
 # Conservative shared target for `target: baseline`.
@@ -167,6 +168,8 @@ def profile_compilers(profile: dict[str, Any]) -> list[str]:
     found: list[str] = []
     for provider in profile.get("compiler_providers") or []:
         name = provider.get("name")
+        if not is_renderable_external_name_version(name, provider.get("version")):
+            continue
         if name and name not in found:
             found.append(name)
     return found
