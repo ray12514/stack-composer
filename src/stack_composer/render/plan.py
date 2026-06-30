@@ -224,9 +224,12 @@ def vendor_scope_for(profile: dict[str, Any], stack: dict[str, Any], compiler_na
     provider-specific scopes as data-driven adapters instead of hardcoded vendor
     branches in the lane planner.
     """
+    return vendor_scope_for_provider(stack, compiler_provider_metadata(profile, compiler_name))
+
+
+def vendor_scope_for_provider(stack: dict[str, Any], provider: dict[str, Any]) -> str:
     scope_policy = (stack.get("provider_scopes") or {}).get("compiler") or {}
     default_scope = scope_policy.get("default", "vendor/linux")
-    provider = compiler_provider_metadata(profile, compiler_name)
     if not provider:
         return default_scope
     platform_family = provider.get("platform_family")
