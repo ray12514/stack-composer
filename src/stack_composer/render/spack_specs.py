@@ -17,3 +17,22 @@ def is_spack_version(value: object) -> bool:
 def is_renderable_external_name_version(name: object, version: object) -> bool:
     return is_spack_package_name(name) and is_spack_version(version)
 
+
+def is_absolute_prefix(value: object) -> bool:
+    return isinstance(value, str) and value.startswith("/")
+
+
+def is_compiler_fragment(value: object) -> bool:
+    if not isinstance(value, str) or not value:
+        return False
+    if "@" not in value:
+        return is_spack_package_name(value)
+    name, version = value.split("@", 1)
+    return is_renderable_external_name_version(name, version)
+
+
+def external_spec(name: str, version: str, suffix: str = "") -> str:
+    spec = f"{name}@{version}"
+    if suffix:
+        spec += f" {suffix}"
+    return spec

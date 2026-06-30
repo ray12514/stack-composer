@@ -9,7 +9,12 @@ import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from stack_composer.render.plan import vendor_scope_for_provider
-from stack_composer.render.spack_specs import is_renderable_external_name_version
+from stack_composer.render.spack_specs import (
+    external_spec,
+    is_absolute_prefix,
+    is_compiler_fragment,
+    is_renderable_external_name_version,
+)
 
 _COMPILER_COMMANDS = {
     "aocc": {"c": "clang", "cxx": "clang++", "fortran": "flang"},
@@ -20,6 +25,7 @@ _COMPILER_COMMANDS = {
     "nvhpc": {"c": "nvc", "cxx": "nvc++", "fortran": "nvfortran"},
     "rocmcc": {"c": "amdclang", "cxx": "amdclang++", "fortran": "amdflang"},
 }
+_MPI_PROVIDER_VARIANTS = {"cray-mpich": "+wrappers"}
 
 
 def make_jinja_environment(template_dir: Path) -> Environment:
@@ -37,6 +43,8 @@ def make_jinja_environment(template_dir: Path) -> Environment:
     env.globals["spack_spec"] = spack_spec
     env.globals["compiler_providers_for_scope"] = compiler_providers_for_scope
     env.globals["compiler_external_packages"] = compiler_external_packages
+    env.globals["mpi_external_packages"] = mpi_external_packages
+    env.globals["gpu_external_packages"] = gpu_external_packages
     env.globals["common_external_packages"] = common_external_packages
     return env
 
@@ -89,7 +97,7 @@ def compiler_external(provider: dict[str, Any]) -> dict[str, Any]:
     name = provider["name"]
     languages = ",".join(provider.get("languages") or [])
     external: dict[str, Any] = {
-        "spec": f"{name}@{provider['version']} languages='{languages}'",
+        "spec": external_spec(name, provider["version"], f"languages='{languages}'"),
         "prefix": provider["prefix"],
         "modules": provider.get("modules") or [],
     }
@@ -115,6 +123,99 @@ def compiler_commands(provider: dict[str, Any]) -> dict[str, str] | None:
         "cxx": path_join(provider["prefix"], "bin", commands["cxx"]),
         "fortran": path_join(provider["prefix"], "bin", commands["fortran"]),
     }
+
+
+def mpi_external_packages(profile: dict[str, Any], provider_name: str) -> list[dict[str, Any]]:
+    packages: dict[str, dict[str, Any]] = {}
+    for provider in profile.get("mpi_providers") or []:
+        if provider.get("name") != provider_name:
+            continue
+        if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
+            continue
+        variants = _MPI_PROVIDER_VARIANTS.get(provider_name)
+        for external in mpi_provider_externals(provider):
+            package = packages.setdefault(
+                provider_name,
+                {
+                    "name": provider_name,
+                    "buildable": False,
+                    "variants": variants,
+                    "externals": [],
+                },
+            )
+            package["externals"].append(external)
+    return list(packages.values())
+
+
+def mpi_provider_externals(provider: dict[str, Any]) -> list[dict[str, Any]]:
+    if provider.get("flavors"):
+        externals = []
+        for compiler, flavor in sorted(provider.get("flavors", {}).items()):
+            if not is_compiler_fragment(compiler) or not is_absolute_prefix(flavor.get("prefix")):
+                continue
+            externals.append(
+                {
+                    "spec": external_spec(provider["name"], provider["version"], f"%{compiler}"),
+                    "prefix": flavor["prefix"],
+                    "modules": flavor.get("modules") or [],
+                }
+            )
+        return externals
+
+    if not is_absolute_prefix(provider.get("prefix")):
+        return []
+    compiler = provider.get("compiler")
+    if compiler and not is_compiler_fragment(compiler):
+        return []
+    suffix = f"%{compiler}" if compiler else ""
+    return [
+        {
+            "spec": external_spec(provider["name"], provider["version"], suffix),
+            "prefix": provider["prefix"],
+            "modules": provider.get("modules") or [],
+        }
+    ]
+
+
+def gpu_external_packages(profile: dict[str, Any], toolkit: str) -> list[dict[str, Any]]:
+    if toolkit == "rocm":
+        return rocm_external_packages((profile.get("gpu_toolkit_modules") or {}).get("rocm") or {})
+    if toolkit == "cuda":
+        return cuda_external_packages(
+            (profile.get("gpu_toolkit_modules") or {}).get("cudatoolkit") or {}
+        )
+    return []
+
+
+def rocm_external_packages(rocm: dict[str, Any]) -> list[dict[str, Any]]:
+    packages: dict[str, dict[str, Any]] = {}
+    version = rocm.get("version")
+    module = rocm.get("module")
+    for component in rocm.get("spack_components") or []:
+        add_external(
+            packages,
+            {
+                "name": component.get("package"),
+                "version": version,
+                "prefix": component.get("prefix"),
+                "modules": [module] if module else [],
+            },
+        )
+    return list(packages.values())
+
+
+def cuda_external_packages(cuda: dict[str, Any]) -> list[dict[str, Any]]:
+    packages: dict[str, dict[str, Any]] = {}
+    add_external(
+        packages,
+        {
+            "name": "cuda",
+            "version": cuda.get("version"),
+            "prefix": cuda.get("prefix"),
+            "modules": [cuda["module"]] if cuda.get("module") else [],
+        },
+    )
+    return list(packages.values())
 
 
 def common_external_packages(
@@ -147,10 +248,18 @@ def common_external_packages(
 
 
 def add_external(packages: dict[str, dict[str, Any]], external: dict[str, Any]) -> None:
+    name = external.get("name")
+    version = external.get("version")
+    prefix = external.get("prefix")
+    if not (
+        is_renderable_external_name_version(name, version)
+        and is_absolute_prefix(prefix)
+    ):
+        return
     package = packages.setdefault(
-        external["name"], {"name": external["name"], "buildable": False, "externals": []}
+        name, {"name": name, "buildable": False, "externals": []}
     )
-    spec = f"{external['name']}@{external['version']}"
+    spec = external_spec(name, version)
     if external.get("variants"):
         spec += f" {external['variants']}"
     package["externals"].append(
