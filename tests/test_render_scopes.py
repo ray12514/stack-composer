@@ -118,6 +118,37 @@ def test_mpi_auto_uses_profile_order_without_cray_special_case() -> None:
     assert {lane["mpi_source"] for lane in lanes} == {"platform"}
 
 
+def test_mpi_auto_honors_explicit_platform_provider() -> None:
+    profile, stack = fixture_context("example-cray")
+    profile["mpi_providers"].insert(
+        0,
+        {
+            "name": "openmpi",
+            "version": "5.0.6",
+            "provider_family": "site",
+            "compatibility": {"compilers": ["gcc"]},
+            "prefix": "/opt/site/openmpi/5.0.6-gcc",
+            "modules": ["openmpi/5.0.6"],
+        },
+    )
+    stack["builds"] = [
+        {
+            "name": "mpi",
+            "kind": "mpi",
+            "specs": ["hdf5+mpi"],
+            "mpi": {"provider": "cray-mpich", "source": "auto"},
+        }
+    ]
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    assert issues == []
+    assert {lane["mpi_provider"] for lane in lanes} == {"cray-mpich"}
+    assert {lane["mpi_source"] for lane in lanes} == {"platform"}
+    assert "mpi/cray-mpich" in required_scopes(profile, lanes)
+    assert "mpi/openmpi" not in required_scopes(profile, lanes)
+
+
 def test_gpu_toolkit_scope_selection_is_independent_of_host_compiler() -> None:
     profile, stack = fixture_context("example-cray")
     lane = {
