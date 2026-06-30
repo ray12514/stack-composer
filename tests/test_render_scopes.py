@@ -275,7 +275,17 @@ def test_stack_built_system_external_policy_does_not_render_external(tmp_path: P
 def test_rendered_generic_linux_workspace_contains_site_mpi_without_cray(
     tmp_path: Path,
 ) -> None:
-    workspace = render_fixture(tmp_path / "out", "example-linux")
+    profile, _stack = fixture_context("example-linux")
+    profile["mpi_providers"].append(
+        {
+            "name": "openmpi",
+            "version": "4.1.7",
+            "provider_family": "site",
+            "prefix": "/opt/site/openmpi/4.1.7",
+            "modules": ["openmpi/4.1.7"],
+        }
+    )
+    workspace = render_profile(tmp_path / "out", write_profile(tmp_path / "profile", profile))
 
     assert not (workspace / "configs" / "vendor" / "cray").exists()
     vendor_linux = load_yaml(workspace / "configs" / "vendor" / "linux" / "packages.yaml")
@@ -288,7 +298,12 @@ def test_rendered_generic_linux_workspace_contains_site_mpi_without_cray(
             "spec": "openmpi@4.1.6 %aocc@4.2.0",
             "prefix": "/opt/site/openmpi/4.1.6-aocc-4.2.0",
             "modules": [],
-        }
+        },
+        {
+            "spec": "openmpi@4.1.7",
+            "prefix": "/opt/site/openmpi/4.1.7",
+            "modules": ["openmpi/4.1.7"],
+        },
     ]
 
     mpi_env = (workspace / "environments" / "aocc" / "mpi-openmpi" / "spack.yaml").read_text(
