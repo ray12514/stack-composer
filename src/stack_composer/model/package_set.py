@@ -17,11 +17,18 @@ def load_package_set(path: Path) -> tuple[dict[str, Any], list]:
 def expand_specs_for_lane(spec_source: dict[str, Any], lane: dict[str, Any]) -> list[str]:
     specs = spec_source.get("specs", {})
     if isinstance(specs, list):
-        return [expand_gpu_variant(spec, lane) for spec in specs]
+        return [decorate_toolchain(expand_gpu_variant(spec, lane), lane) for spec in specs]
     expanded = []
     expanded.extend(specs.get("any", []))
     expanded.extend(specs.get(lane["kind"], []))
-    return [expand_gpu_variant(spec, lane) for spec in expanded]
+    return [decorate_toolchain(expand_gpu_variant(spec, lane), lane) for spec in expanded]
+
+
+def decorate_toolchain(spec: str, lane: dict[str, Any]) -> str:
+    toolchain = lane.get("toolchain")
+    if not toolchain or "%" in spec:
+        return spec
+    return f"{spec} %{toolchain}"
 
 
 def expand_gpu_variant(spec: str, lane: dict[str, Any]) -> str:
