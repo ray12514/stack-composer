@@ -8,6 +8,7 @@ in scopes.py cannot drift apart.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from stack_composer.render.spack_specs import (
@@ -15,6 +16,8 @@ from stack_composer.render.spack_specs import (
     is_compiler_fragment,
     is_renderable_external_name_version,
 )
+
+_TOKEN_RE = re.compile(r"[^A-Za-z0-9]+")
 
 
 def is_renderable_mpi_provider(provider: dict[str, Any]) -> bool:
@@ -53,19 +56,83 @@ def mpi_provider_is_ambiguous(profile: dict[str, Any], provider_name: str) -> bo
     return len(platform_mpi_candidates(profile, provider_name)) > 1
 
 
-def mpi_toolchain_name(compiler_name: str, provider_name: str, version: str | None = None) -> str:
+def slug_token(value: object) -> str:
+    """Return a Spack-spec-token-safe identifier fragment.
+
+    Toolchain names are referenced as `%name` in root specs, so do not preserve
+    punctuation that is meaningful to Spack's spec parser (`.`, `-`, `@`, `/`).
+    """
+    return _TOKEN_RE.sub("", str(value)).lower()
+
+
+def mpi_toolchain_name(
+    compiler_name: str,
+    provider_name: str,
+    compiler_version: str | None = None,
+    mpi_version: str | None = None,
+) -> str:
     """The toolchain key for one compiler/provider pairing.
 
-    Unversioned in the common case (one version of the provider on the
-    system); version-qualified only when the caller passes a version because
-    the provider name alone is ambiguous. Both plan.py's spec decoration and
-    scopes.py's rendered toolchains.yaml keys come from here — never derive
-    the name anywhere else.
+    Names are version-qualified whenever the profile gives versions. This
+    keeps the `%toolchain` token stable and unambiguous on systems with several
+    compiler or MPI versions, without forcing callers to learn the slug rules.
     """
-    name = f"{compiler_name}_{provider_name.replace('-', '')}"
-    if version:
-        name += f"_{version}"
-    return name
+    compiler = slug_token(compiler_name)
+    if compiler_version:
+        compiler += slug_token(compiler_version)
+    mpi = slug_token(provider_name)
+    if mpi_version:
+        mpi += slug_token(mpi_version)
+    return f"{compiler}_{mpi}"
+
+
+def compiler_fragment_name_version(compiler: str) -> tuple[str, str | None]:
+    if "@" not in compiler:
+        return compiler, None
+    name, version = compiler.split("@", 1)
+    return name, version
+
+
+def select_compiler_provider(
+    profile: dict[str, Any], compiler: str
+) -> dict[str, Any] | None:
+    """Select the compiler provider named by a lane or MPI compiler fragment.
+
+    A compiler fragment may be bare (`gcc`) or versioned (`gcc@13.3.0`). Exact
+    fragments resolve exactly; bare fragments use profile order, matching the
+    current compiler selection policy.
+    """
+    wanted_name, wanted_version = compiler_fragment_name_version(compiler)
+    candidates = [
+        provider
+        for provider in profile.get("compiler_providers") or []
+        if provider.get("name") == wanted_name
+        and is_renderable_external_name_version(provider.get("name"), provider.get("version"))
+    ]
+    if wanted_version:
+        return next(
+            (provider for provider in candidates if provider.get("version") == wanted_version),
+            None,
+        )
+    return candidates[0] if candidates else None
+
+
+def mpi_toolchain_name_for_profile(
+    profile: dict[str, Any],
+    compiler: str,
+    provider_name: str,
+    mpi_version: str | None = None,
+) -> str:
+    compiler_provider = select_compiler_provider(profile, compiler)
+    if compiler_provider:
+        return mpi_toolchain_name(
+            str(compiler_provider["name"]),
+            provider_name,
+            str(compiler_provider["version"]),
+            mpi_version,
+        )
+    compiler_name, _ = compiler_fragment_name_version(compiler)
+    return mpi_toolchain_name(compiler_name, provider_name, None, mpi_version)
 
 
 def select_platform_mpi(

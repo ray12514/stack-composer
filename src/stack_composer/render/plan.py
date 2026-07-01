@@ -5,8 +5,7 @@ from typing import Any
 from stack_composer.errors import Issue
 from stack_composer.render.mpi import (
     is_renderable_mpi_provider,
-    mpi_provider_is_ambiguous,
-    mpi_toolchain_name,
+    mpi_toolchain_name_for_profile,
     select_platform_mpi,
 )
 from stack_composer.render.spack_specs import is_renderable_external_name_version
@@ -410,12 +409,8 @@ def toolchain_for(
 ) -> str | None:
     if not mpi_provider:
         return None
-    # Version-qualify only when the provider name alone is ambiguous on this
-    # profile; build-sourced lanes (no record) always use the unversioned name.
-    version = None
-    if mpi_record and mpi_provider_is_ambiguous(profile, mpi_provider):
-        version = mpi_record.get("version")
-    return mpi_toolchain_name(compiler, mpi_provider, version)
+    mpi_version = str(mpi_record["version"]) if mpi_record and mpi_record.get("version") else None
+    return mpi_toolchain_name_for_profile(profile, compiler, mpi_provider, mpi_version)
 
 
 def spec_source_id(build: dict[str, Any]) -> str:
