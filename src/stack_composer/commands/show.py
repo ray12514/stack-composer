@@ -16,7 +16,7 @@ import click
 
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
-from stack_composer.render.mpi import mpi_toolchain_name
+from stack_composer.render.mpi import mpi_toolchain_name_for_profile
 from stack_composer.render.plan import _BASELINE_TARGET, plan_lanes, runtime_nodes
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
@@ -215,7 +215,7 @@ def mpi_lines(profile: dict[str, Any]) -> list[str]:
         # here instead of only failing later at render time.
         ambiguous = len(entries) > 1
         for entry in entries:
-            lines.extend(mpi_entry_lines(name, entry, ambiguous))
+            lines.extend(mpi_entry_lines(profile, name, entry, ambiguous))
         if ambiguous:
             lines.append(
                 f"    !! {len(entries)} versions of {name!r} on this system: "
@@ -224,7 +224,9 @@ def mpi_lines(profile: dict[str, Any]) -> list[str]:
     return lines
 
 
-def mpi_entry_lines(name: str, entry: dict[str, Any], ambiguous: bool) -> list[str]:
+def mpi_entry_lines(
+    profile: dict[str, Any], name: str, entry: dict[str, Any], ambiguous: bool
+) -> list[str]:
     version = str(entry.get("version") or "(n/a)")
     family = entry.get("provider_family") or "?"
     compilers = mpi_entry_compilers(entry)
@@ -232,7 +234,7 @@ def mpi_entry_lines(name: str, entry: dict[str, Any], ambiguous: bool) -> list[s
     toolchain_text = ""
     if compilers:
         names = ", ".join(
-            mpi_toolchain_name(compiler, name, version if ambiguous else None)
+            mpi_toolchain_name_for_profile(profile, compiler, name, str(entry.get("version")))
             for compiler in compilers
         )
         toolchain_text = f"toolchains: {names}"

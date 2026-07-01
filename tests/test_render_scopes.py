@@ -399,7 +399,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     cray_mpich_toolchains = load_yaml(
         workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml"
     )
-    assert cray_mpich_toolchains["toolchains"]["gcc_craympich"] == [
+    assert cray_mpich_toolchains["toolchains"]["gcc1330_craympich8129"] == [
         {"spec": "%c=gcc@13.3.0", "when": "%c"},
         {"spec": "%cxx=gcc@13.3.0", "when": "%cxx"},
         {"spec": "%fortran=gcc@13.3.0", "when": "%fortran"},
@@ -409,8 +409,8 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     gpu_env = load_yaml(workspace / "environments" / "gcc" / "gpu-craympich-gfx90a" / "spack.yaml")
     assert "packages" not in gpu_env["spack"]
     assert gpu_env["spack"]["specs"]
-    assert all(spec.endswith(" %gcc_craympich") for spec in gpu_env["spack"]["specs"])
-    assert "kokkos+rocm amdgpu_target=gfx90a %gcc_craympich" in gpu_env["spack"]["specs"]
+    assert all(spec.endswith(" %gcc1330_craympich8129") for spec in gpu_env["spack"]["specs"])
+    assert "kokkos+rocm amdgpu_target=gfx90a %gcc1330_craympich8129" in gpu_env["spack"]["specs"]
 
     rocm = load_yaml(workspace / "configs" / "gpu" / "amd-rocm" / "packages.yaml")
     assert rocm["packages"]["hip"]["buildable"] is False
@@ -763,11 +763,11 @@ def test_build_sourced_mpi_lane_gets_a_defined_toolchain(tmp_path: Path) -> None
     workspace = render_build_sourced_openmpi(tmp_path)
 
     env = load_yaml(workspace / "environments" / "gcc" / "mpi-openmpi" / "spack.yaml")
-    assert env["spack"]["specs"] == ["osu-micro-benchmarks %gcc_openmpi"]
+    assert env["spack"]["specs"] == ["osu-micro-benchmarks %gcc1140_openmpi"]
     assert "../../../configs/mpi/openmpi" in env["spack"]["include"]
 
     toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
-    assert toolchains["toolchains"]["gcc_openmpi"] == [
+    assert toolchains["toolchains"]["gcc1140_openmpi"] == [
         {"spec": "%c=gcc@11.4.0", "when": "%c"},
         {"spec": "%cxx=gcc@11.4.0", "when": "%cxx"},
         {"spec": "%fortran=gcc@11.4.0", "when": "%fortran"},
@@ -833,23 +833,23 @@ def test_mpi_version_pin_disambiguates_and_versions_toolchain_names(tmp_path: Pa
     )
 
     env = load_yaml(workspace / "environments" / "aocc" / "mpi-openmpi" / "spack.yaml")
-    assert env["spack"]["specs"] == ["hdf5+mpi %aocc_openmpi_5.0.3"]
+    assert env["spack"]["specs"] == ["hdf5+mpi %aocc420_openmpi503"]
 
     # Both pairings render as a catalog, each under a version-qualified name;
     # the bare (collision-prone) name must not appear as a key.
     toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
-    assert set(toolchains["toolchains"]) == {"aocc_openmpi_4.1.6", "aocc_openmpi_5.0.3"}
+    assert set(toolchains["toolchains"]) == {"aocc420_openmpi416", "aocc420_openmpi503"}
     assert {"spec": "%mpi=openmpi@5.0.3", "when": "%mpi"} in toolchains["toolchains"][
-        "aocc_openmpi_5.0.3"
+        "aocc420_openmpi503"
     ]
     assert {"spec": "%mpi=openmpi@4.1.6", "when": "%mpi"} in toolchains["toolchains"][
-        "aocc_openmpi_4.1.6"
+        "aocc420_openmpi416"
     ]
 
 
-def test_single_version_provider_keeps_unversioned_toolchain_name() -> None:
-    # Regression guard: adding a second version of one provider must not
-    # rename toolchains of a different, unambiguous provider elsewhere.
+def test_single_version_provider_uses_versioned_spec_safe_toolchain_name() -> None:
+    # Toolchain identity is stable and Spack-token-safe even when the provider
+    # is unambiguous. It names the actual compiler/MPI versions being bound.
     profile, stack = fixture_context("example-linux")
     stack["builds"] = [
         {
@@ -865,7 +865,7 @@ def test_single_version_provider_keeps_unversioned_toolchain_name() -> None:
 
     assert issues == []
     lane = lane_by_name(lanes, "aocc-mpi-openmpi")
-    assert lane["toolchain"] == "aocc_openmpi"
+    assert lane["toolchain"] == "aocc420_openmpi416"
     assert lane["mpi_version"] == "4.1.6"
 
 
@@ -907,9 +907,9 @@ def test_platform_mpi_without_compiler_metadata_still_defines_lane_toolchain(
     )
 
     env = load_yaml(workspace / "environments" / "gcc" / "mpi-openmpi" / "spack.yaml")
-    assert env["spack"]["specs"] == ["hdf5+mpi %gcc_openmpi"]
+    assert env["spack"]["specs"] == ["hdf5+mpi %gcc1140_openmpi417"]
     toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
-    assert toolchains["toolchains"]["gcc_openmpi"] == [
+    assert toolchains["toolchains"]["gcc1140_openmpi417"] == [
         {"spec": "%c=gcc@11.4.0", "when": "%c"},
         {"spec": "%cxx=gcc@11.4.0", "when": "%cxx"},
         {"spec": "%fortran=gcc@11.4.0", "when": "%fortran"},

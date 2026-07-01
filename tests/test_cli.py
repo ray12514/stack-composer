@@ -91,9 +91,12 @@ def test_show_command_prints_toolchain_names() -> None:
 
     assert result.exit_code == 0, result.output
     # The provider line names the toolchains a manual user can decorate with.
-    assert "toolchains: cce_craympich, gcc_craympich, rocmcc_craympich" in result.output
+    assert (
+        "toolchains: cce1701_craympich8129, gcc1330_craympich8129, "
+        "rocmcc600_craympich8129"
+    ) in result.output
     # Each resolved lane shows the decoration it will apply.
-    assert "toolchain=gcc_craympich" in result.output
+    assert "toolchain=gcc1330_craympich8129" in result.output
 
 
 def test_show_command_marks_ambiguous_mpi_versions(tmp_path) -> None:
@@ -118,8 +121,8 @@ def test_show_command_marks_ambiguous_mpi_versions(tmp_path) -> None:
     assert result.exit_code == 0, result.output
     # Each version gets its own line and its own version-qualified toolchain
     # identity, plus the pointer to the disambiguating stack.yaml field.
-    assert "aocc_openmpi_4.1.6" in result.output
-    assert "aocc_openmpi_5.0.3" in result.output
+    assert "aocc420_openmpi416" in result.output
+    assert "aocc420_openmpi503" in result.output
     assert "mpi.version" in result.output
 
 

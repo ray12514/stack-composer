@@ -50,23 +50,59 @@ Primary planning docs:
 - Docker/Spack smoke path using `cse-stack/docker/smoke/run-smoke.sh` passes
   profile -> render -> Spack 1.1.1 concretize/fetch/install/verify for the
   Stack Content smoke lane.
-- Spack-native toolchains: every MPI lane's `%<compiler>_<provider>` spec
+- Spack-native toolchains: every MPI lane's `%<toolchain_name>` spec
   decoration is defined by a `toolchains.yaml` in that lane's included
   `configs/mpi/<provider>` scope (platform lanes pin `%mpi=<provider>@<ver>`,
   build-sourced lanes pin `%mpi=<provider>` unversioned with `buildable: true`
   + an `mpi` requirement in the scope's packages.yaml). Same-name multi-version
   platform MPI is a hard render error unless the build sets `mpi.version`;
-  when versions coexist, toolchain names carry the version
-  (`aocc_openmpi_5.0.3`). `stack-composer show` lists the toolchain identities.
+  toolchain names carry spec-token-safe compiler and MPI version slugs when
+  known (`aocc420_openmpi503`, `gcc1330_craympich8129`) so dots/dashes never
+  leak into `%toolchain` tokens. `stack-composer show` lists the identities.
 - Manual/Tier-0 verification (2026-07-01): rendered the smoke workspace, then
   hand-authored a standalone `spack.yaml` that `include:`s the rendered
   `configs/{common,os/rhel9,target/x86_64_v4,vendor/linux,mpi/openmpi}` scopes
-  and a spec `hdf5+mpi %gcc_openmpi`; verified every `%name` referenced by the
-  specs is a key in an included `toolchains.yaml` (structural check — no local
-  Spack; re-run with `spack -e <env> concretize` on a system with Spack).
+  and a spec like `hdf5+mpi %gcc1140_openmpi`; verified every `%name`
+  referenced by the specs is a key in an included `toolchains.yaml` (structural
+  check — no local Spack; re-run with `spack -e <env> concretize` on a system
+  with Spack).
+
+## Where we left off (2026-07-01)
+
+Blueback run #1 is ready to resume. The spec-native toolchain rework landed and
+is pushed: every MPI lane's `%<toolchain_name>` decoration is defined in an
+included scope; same-name multi-version platform MPI hard-errors unless the
+build pins `mpi.version`; toolchain names are spec-token-safe versioned slugs.
+Next step on the box (per
+`stack-content/systems/blueback/runbook-notes.md`): pull all three repos,
+rebuild the pyz, `show` against the fresh profile, validate, render, oracle-diff
+(including `configs/mpi/cray-mpich/toolchains.yaml`), build the mpi lane.
+Note: the Blueback profile captured the system default CPE, which is now the
+newest (ROCm 7-era) release — the known-good Kokkos baseline was built on the
+previous CPE, so the oracle diff is structural (flavor paths, toolchain
+binding), not version-exact.
 
 ## Deferred / open
 
+- Compiler same-family multi-version disambiguation: two versions of one
+  compiler family in a profile still resolve by first name match
+  (`compiler_provider_for`); needs the same treatment MPI provider selection
+  already has (candidates -> pin or hard error -> version-qualified identity).
+  Prerequisite for the committed multi-CPE v1 goal.
+- CPE-locked GPU/MPI pairing validation: profile facts (`cpe_version`,
+  per-MPI GPU-runtime linkage) plus a render preflight that refuses
+  cross-major toolkit/MPI pairings. Findings and sources:
+  `stack-planning/docs/cpe_rocm_compatibility_note_v1.md`.
+- GTL preload elimination: GPU-aware cray-mpich on Blueback currently needs an
+  `LD_PRELOAD` of the GTL library; goal is to stop preloading (own package-repo
+  GTL package, or site-style patches). Starting clue:
+  https://github.com/llnl/benchpark/pull/1226. Not yet researched.
+- `configs/common/packages.yaml.j2` sets the workspace `mpi` provider
+  preference from the first rendered lane — same "first pick" shape the MPI
+  version fix removed, one level up. Needs an explicit policy.
+- Multi-CPE support is a v1 commitment (multiple CPE releases coexisting):
+  needs version fan-out as a build axis and the deferred `cpe_version`
+  pairing tag, on top of the two items above.
 - `validate-template-set --concretize` remains intentionally deferred.
 - Front-door compiler-init/lane module emission still needs real-system
   module-tool validation.

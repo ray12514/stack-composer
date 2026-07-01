@@ -8,7 +8,10 @@ from typing import Any
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from stack_composer.render.mpi import mpi_provider_is_ambiguous, mpi_toolchain_name
+from stack_composer.render.mpi import (
+    mpi_toolchain_name_for_profile,
+    select_compiler_provider,
+)
 from stack_composer.render.plan import vendor_scope_for_provider
 from stack_composer.render.spack_specs import (
     external_spec,
@@ -182,10 +185,6 @@ def mpi_provider_externals(provider: dict[str, Any]) -> list[dict[str, Any]]:
 def mpi_toolchains(
     profile: dict[str, Any], rendered_lanes: list[dict[str, Any]], provider_name: str
 ) -> list[dict[str, Any]]:
-    # When the provider name is ambiguous on this profile, every toolchain key
-    # carries its version so two versions can never collide on one YAML key
-    # (the later key would silently clobber the earlier one when parsed).
-    ambiguous = mpi_provider_is_ambiguous(profile, provider_name)
     toolchains: list[dict[str, Any]] = []
     for provider in profile.get("mpi_providers") or []:
         if provider.get("name") != provider_name:
@@ -205,10 +204,11 @@ def mpi_toolchains(
             )
             toolchains.append(
                 {
-                    "name": mpi_toolchain_name(
-                        compiler_name(compiler_provider),
+                    "name": mpi_toolchain_name_for_profile(
+                        profile,
+                        compiler,
                         provider_name,
-                        str(provider["version"]) if ambiguous else None,
+                        str(provider["version"]),
                     ),
                     "entries": entries,
                 }
@@ -270,11 +270,7 @@ def mpi_toolchain_compilers(provider: dict[str, Any]) -> list[str]:
 
 
 def compiler_provider_for(profile: dict[str, Any], compiler: str) -> dict[str, Any] | None:
-    wanted = compiler_name_from_fragment(compiler)
-    for provider in profile.get("compiler_providers") or []:
-        if provider.get("name") == wanted:
-            return provider
-    return None
+    return select_compiler_provider(profile, compiler)
 
 
 def compiler_name_from_fragment(compiler: str) -> str:
