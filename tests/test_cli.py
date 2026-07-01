@@ -73,6 +73,56 @@ def test_show_command_prints_generic_provider_families() -> None:
     assert "scope=vendor/linux" in result.output
 
 
+def test_show_command_prints_toolchain_names() -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "show",
+            "--profile",
+            str(fixture_path("profiles", "example-cray", "profile.yaml")),
+            "--templates",
+            str(fixture_path("template-sets")),
+            "--template-set",
+            "v6",
+            "--stack",
+            str(fixture_path("stacks", "science-stack", "stack.yaml")),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    # The provider line names the toolchains a manual user can decorate with.
+    assert "toolchains: cce_craympich, gcc_craympich, rocmcc_craympich" in result.output
+    # Each resolved lane shows the decoration it will apply.
+    assert "toolchain=gcc_craympich" in result.output
+
+
+def test_show_command_marks_ambiguous_mpi_versions(tmp_path) -> None:
+    import yaml
+
+    profile_path = fixture_path("profiles", "example-linux", "profile.yaml")
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    profile["mpi_providers"].append(
+        {
+            "name": "openmpi",
+            "version": "5.0.3",
+            "provider_family": "site",
+            "prefix": "/opt/site/openmpi/5.0.3-aocc-4.2.0",
+            "compiler": "aocc@4.2.0",
+        }
+    )
+    ambiguous_path = tmp_path / "profile.yaml"
+    ambiguous_path.write_text(yaml.safe_dump(profile), encoding="utf-8")
+
+    result = CliRunner().invoke(cli, ["show", "--profile", str(ambiguous_path)])
+
+    assert result.exit_code == 0, result.output
+    # Each version gets its own line and its own version-qualified toolchain
+    # identity, plus the pointer to the disambiguating stack.yaml field.
+    assert "aocc_openmpi_4.1.6" in result.output
+    assert "aocc_openmpi_5.0.3" in result.output
+    assert "mpi.version" in result.output
+
+
 def test_validate_command_passes_reference_fixture() -> None:
     result = CliRunner().invoke(
         cli,

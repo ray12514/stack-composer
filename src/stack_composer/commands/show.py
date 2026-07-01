@@ -16,6 +16,7 @@ import click
 
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
+from stack_composer.render.mpi import mpi_toolchain_name
 from stack_composer.render.plan import _BASELINE_TARGET, plan_lanes, runtime_nodes
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
@@ -158,9 +159,11 @@ def render_menu(
             module_text = _fmt_modules(modules)
             issue_text = f"  unresolved={len(issues)}" if issues else ""
             mpi = lane.get("mpi_provider") or "none"
+            toolchain = lane.get("toolchain") or "none"
             lines.append(
                 f"  {lane['name']:<28} kind={lane['kind']:<3} compiler={lane['compiler']:<8} "
-                f"mpi={mpi:<10} scope={lane['vendor_scope']} modules={module_text}{issue_text}"
+                f"mpi={mpi:<10} toolchain={toolchain:<16} scope={lane['vendor_scope']} "
+                f"modules={module_text}{issue_text}"
             )
     return "\n".join(lines)
 
@@ -196,54 +199,65 @@ def compiler_entries(profile: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def mpi_lines(profile: dict[str, Any]) -> list[str]:
-    providers: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    grouped: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
     for entry in profile.get("mpi_providers") or []:
         name = entry.get("name")
         if not name:
             continue
-        slot = providers.setdefault(
-            name,
-            {
-                "versions": set(),
-                "families": set(),
-                "compilers": set(),
-                "modules": [],
-                "flavor_modules": OrderedDict(),
-            },
-        )
-        if entry.get("version"):
-            slot["versions"].add(entry["version"])
-        if entry.get("provider_family"):
-            slot["families"].add(entry["provider_family"])
-        for module in entry.get("modules") or []:
-            if module not in slot["modules"]:
-                slot["modules"].append(module)
-        for compiler in (entry.get("compatibility") or {}).get("compilers") or []:
-            slot["compilers"].add(compiler)
-        for compiler, flavor in (entry.get("flavors") or {}).items():
-            slot["compilers"].add(compiler)
-            slot["flavor_modules"][compiler] = list(flavor.get("modules") or [])
-        if entry.get("compiler"):
-            slot["compilers"].add(entry["compiler"])
+        grouped.setdefault(name, []).append(entry)
 
-    if not providers:
+    if not grouped:
         return ["mpi   none on system — built from source per defaults"]
-    lines = [f"mpi ({len(providers)} providers)"]
-    for name, slot in providers.items():
-        versions = ", ".join(sorted(slot["versions"])) or "(n/a)"
-        families = ", ".join(sorted(slot["families"])) or "?"
-        compilers = (
-            f"compilers: {', '.join(sorted(slot['compilers']))}" if slot["compilers"] else ""
-        )
-        modules = _fmt_modules(slot["modules"])
-        lines.append(
-            f"  {name:<10} {versions:<12} family={families:<8} {compilers} "
-            f"modules={modules}".rstrip()
-            + "   [platform]"
-        )
-        for compiler, modules_for_flavor in slot["flavor_modules"].items():
-            lines.append(f"    {compiler:<8} modules={_fmt_modules(modules_for_flavor)}")
+    lines = [f"mpi ({len(grouped)} providers)"]
+    for name, entries in grouped.items():
+        # Ambiguous provider names get one line per version, each with its
+        # version-qualified toolchain identity, so the conflict is legible
+        # here instead of only failing later at render time.
+        ambiguous = len(entries) > 1
+        for entry in entries:
+            lines.extend(mpi_entry_lines(name, entry, ambiguous))
+        if ambiguous:
+            lines.append(
+                f"    !! {len(entries)} versions of {name!r} on this system: "
+                "set mpi.version on the stack build to select one"
+            )
     return lines
+
+
+def mpi_entry_lines(name: str, entry: dict[str, Any], ambiguous: bool) -> list[str]:
+    version = str(entry.get("version") or "(n/a)")
+    family = entry.get("provider_family") or "?"
+    compilers = mpi_entry_compilers(entry)
+    compiler_text = f"compilers: {', '.join(compilers)}" if compilers else ""
+    toolchain_text = ""
+    if compilers:
+        names = ", ".join(
+            mpi_toolchain_name(compiler, name, version if ambiguous else None)
+            for compiler in compilers
+        )
+        toolchain_text = f"toolchains: {names}"
+    modules = _fmt_modules(entry.get("modules") or [])
+    parts = [f"  {name:<10} {version:<12} family={family:<8}"]
+    if compiler_text:
+        parts.append(compiler_text)
+    if toolchain_text:
+        parts.append(toolchain_text)
+    parts.append(f"modules={modules}")
+    lines = [" ".join(parts).rstrip() + "   [platform]"]
+    for compiler, flavor in (entry.get("flavors") or {}).items():
+        lines.append(f"    {compiler:<8} modules={_fmt_modules(flavor.get('modules') or [])}")
+    return lines
+
+
+def mpi_entry_compilers(entry: dict[str, Any]) -> list[str]:
+    compilers = {
+        str(compiler).split("@", 1)[0]
+        for compiler in (entry.get("compatibility") or {}).get("compilers") or []
+    }
+    compilers |= {str(compiler).split("@", 1)[0] for compiler in entry.get("flavors") or {}}
+    if entry.get("compiler"):
+        compilers.add(str(entry["compiler"]).split("@", 1)[0])
+    return sorted(compilers)
 
 
 def gpu_arches(profile: dict[str, Any]) -> list[str]:

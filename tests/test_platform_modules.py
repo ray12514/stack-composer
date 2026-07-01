@@ -53,6 +53,29 @@ def test_empty_modules_lists_are_not_errors() -> None:
     assert modules == []
 
 
+def test_version_pinned_lane_gets_its_own_versions_modules() -> None:
+    # Two same-name platform MPIs: the lane's pinned version selects which
+    # entry's modules are prerequisites, not profile order.
+    lane = {
+        "name": "aocc-mpi",
+        "compiler": "aocc",
+        "mpi_provider": "openmpi",
+        "mpi_source": "platform",
+        "mpi_version": "5.0.3",
+        "gpu_arch": None,
+    }
+    profile = {
+        "compiler_providers": [{"name": "aocc", "modules": ["aocc/4.2.0"]}],
+        "mpi_providers": [
+            {"name": "openmpi", "version": "4.1.6", "modules": ["openmpi/4.1.6"]},
+            {"name": "openmpi", "version": "5.0.3", "modules": ["openmpi/5.0.3"]},
+        ],
+    }
+    modules, issues = platform_module_prereqs_for_lane(lane, profile)
+    assert issues == []
+    assert modules == ["aocc/4.2.0", "openmpi/5.0.3"]
+
+
 def test_missing_cray_mpich_flavor_names_incompatible_compiler() -> None:
     lane = {
         "name": "rocmcc-mpi",

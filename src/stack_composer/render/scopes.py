@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from stack_composer.render.mpi import mpi_provider_is_ambiguous, mpi_toolchain_name
 from stack_composer.render.plan import vendor_scope_for_provider
 from stack_composer.render.spack_specs import (
     external_spec,
@@ -178,7 +179,13 @@ def mpi_provider_externals(provider: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def mpi_toolchains(profile: dict[str, Any], provider_name: str) -> list[dict[str, Any]]:
+def mpi_toolchains(
+    profile: dict[str, Any], rendered_lanes: list[dict[str, Any]], provider_name: str
+) -> list[dict[str, Any]]:
+    # When the provider name is ambiguous on this profile, every toolchain key
+    # carries its version so two versions can never collide on one YAML key
+    # (the later key would silently clobber the earlier one when parsed).
+    ambiguous = mpi_provider_is_ambiguous(profile, provider_name)
     toolchains: list[dict[str, Any]] = []
     for provider in profile.get("mpi_providers") or []:
         if provider.get("name") != provider_name:
@@ -198,13 +205,54 @@ def mpi_toolchains(profile: dict[str, Any], provider_name: str) -> list[dict[str
             )
             toolchains.append(
                 {
-                    "name": (
-                        f"{compiler_name(compiler_provider)}_"
-                        f"{provider['name'].replace('-', '')}"
+                    "name": mpi_toolchain_name(
+                        compiler_name(compiler_provider),
+                        provider_name,
+                        str(provider["version"]) if ambiguous else None,
                     ),
                     "entries": entries,
                 }
             )
+    toolchains.extend(
+        lane_mpi_toolchains(profile, rendered_lanes, provider_name, emitted=toolchains)
+    )
+    return toolchains
+
+
+def lane_mpi_toolchains(
+    profile: dict[str, Any],
+    rendered_lanes: list[dict[str, Any]],
+    provider_name: str,
+    emitted: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Guarantee every lane's decorated toolchain name is defined in-scope.
+
+    The profile-driven loop above only covers compiler-tagged provider entries
+    (the flavor catalog). Lanes referencing this provider without such an entry
+    still decorate their specs: build-sourced lanes pin the provider unversioned
+    (Spack resolves the version; the scope's packages.yaml keeps the provider
+    singular), platform lanes pin their disambiguated version. The name comes
+    from lane["toolchain"] — the very string the specs carry — so the reference
+    and the definition cannot drift. Names already emitted are skipped.
+    """
+    emitted_names = {toolchain["name"] for toolchain in emitted}
+    toolchains: list[dict[str, Any]] = []
+    for lane in rendered_lanes:
+        if lane.get("mpi_provider") != provider_name or not lane.get("toolchain"):
+            continue
+        name = lane["toolchain"]
+        if name in emitted_names:
+            continue
+        compiler_provider = compiler_provider_for(profile, lane["compiler"])
+        if not compiler_provider:
+            continue
+        emitted_names.add(name)
+        entries = compiler_toolchain_entries(compiler_provider)
+        mpi_spec = provider_name
+        if lane.get("mpi_source") == "platform" and lane.get("mpi_version"):
+            mpi_spec = f"{provider_name}@{lane['mpi_version']}"
+        entries.append({"spec": f"%mpi={mpi_spec}", "when": "%mpi"})
+        toolchains.append({"name": name, "entries": entries})
     return toolchains
 
 
@@ -420,10 +468,12 @@ def os_scope(profile: dict[str, Any]) -> str:
 
 
 def mpi_scope(lane: dict[str, Any]) -> str | None:
-    # Only platform MPI needs an externals scope. Build-from-source MPI is pinned
-    # as the provider preference in the common scope and built by Spack.
+    # Every MPI lane includes its provider scope: platform lanes for the
+    # externals, build-sourced lanes for the toolchain that decorates their
+    # specs (the toolchain must be defined in an included scope or Spack
+    # rejects the %name reference at concretize time).
     provider = lane.get("mpi_provider")
-    if not provider or lane.get("mpi_source") != "platform":
+    if not provider:
         return None
     return "mpi/" + provider
 

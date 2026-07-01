@@ -3,15 +3,23 @@ from __future__ import annotations
 from typing import Any
 
 from stack_composer.errors import Issue
-from stack_composer.render.spack_specs import (
-    is_absolute_prefix,
-    is_compiler_fragment,
-    is_renderable_external_name_version,
+from stack_composer.render.mpi import (
+    is_renderable_mpi_provider,
+    mpi_provider_is_ambiguous,
+    mpi_toolchain_name,
+    select_platform_mpi,
 )
+from stack_composer.render.spack_specs import is_renderable_external_name_version
 from stack_composer.resolve.build_kind import normalize_builds
 
 # Conservative shared target for `target: baseline`.
 _BASELINE_TARGET = "x86_64_v3"
+
+# Reason codes that fail the whole plan even when the owning build is not
+# required. These mark input-authoring defects (an ambiguous or nonexistent
+# MPI version selection), not "this system lacks that lane" — silently
+# skipping them would be as surprising as silently picking a version.
+_HARD_REASON_CODES = {"mpi_ambiguous", "mpi_version_unresolved"}
 
 
 def plan_lanes(
@@ -41,13 +49,13 @@ def plan_lanes(
                 f"per_system.{system_name} narrowing dropped every lane "
                 f"for build {build['name']!r}"
             )
-        if build.get("required", False):
+        if build.get("required", False) or reason_code in _HARD_REASON_CODES:
             issues.append(
                 Issue(
                     "error",
                     reason_code,
                     f"stack.builds.{build['name']}",
-                    f"required build {build['name']!r} cannot render: {reason}",
+                    f"build {build['name']!r} cannot render: {reason}",
                 )
             )
             continue
@@ -90,7 +98,7 @@ def lane_candidates_for_build(
     if not compilers:
         return [], "compiler_unavailable", "profile reports no compilers to build with"
 
-    mpi_provider, mpi_source = (None, None)
+    mpi_provider, mpi_source, mpi_record = (None, None, None)
     if kind in ("mpi", "gpu"):
         mpi_provider, mpi_source = resolve_mpi(profile, stack, build)
         if not mpi_provider:
@@ -99,11 +107,21 @@ def lane_candidates_for_build(
                 "mpi_unresolved",
                 f"{kind} build needs an MPI provider; set defaults.mpi.provider",
             )
+        if mpi_source == "platform":
+            mpi_config = build.get("mpi") or stack.get("mpi") or {}
+            requested_version = (
+                mpi_config.get("version") if isinstance(mpi_config, dict) else None
+            )
+            mpi_record, error_code, error = select_platform_mpi(
+                profile, mpi_provider, requested_version
+            )
+            if error_code:
+                return [], error_code, error
         # Auto-narrow a default (non-explicit) compiler set to those the chosen
         # platform MPI was actually built against. An explicit compiler list is
         # honored as-is (a missing platform flavor then errors, or use source:build).
         if mpi_source == "platform" and not explicit:
-            compatible = mpi_compatible_compilers(profile, mpi_provider)
+            compatible = mpi_compatible_compilers(mpi_record)
             if compatible:
                 compilers = [c for c in compilers if c in compatible]
                 if not compilers:
@@ -135,8 +153,8 @@ def lane_candidates_for_build(
                 lanes.append(
                     make_lane(
                         profile, stack, build, kind, compiler,
-                        mpi_provider, mpi_source, target_for(target_policy, node),
-                        node_name, arch,
+                        mpi_provider, mpi_source, mpi_record,
+                        target_for(target_policy, node), node_name, arch,
                     )
                 )
     else:
@@ -146,7 +164,7 @@ def lane_candidates_for_build(
             lanes.append(
                 make_lane(
                     profile, stack, build, kind, compiler,
-                    mpi_provider, mpi_source, target, node_name, None,
+                    mpi_provider, mpi_source, mpi_record, target, node_name, None,
                 )
             )
     return lanes, "no_candidates", "no lane candidates produced"
@@ -206,15 +224,16 @@ def resolve_compilers(
     return selected, missing, True
 
 
-def mpi_compatible_compilers(profile: dict[str, Any], provider_name: str) -> set[str]:
-    """Compilers a platform MPI provider was built against: its declared
-    compatibility list plus any per-compiler flavor keys."""
-    for provider in profile.get("mpi_providers") or []:
-        if provider.get("name") == provider_name and is_renderable_mpi_provider(provider):
-            compatible = set((provider.get("compatibility") or {}).get("compilers") or [])
-            compatible |= set((provider.get("flavors") or {}).keys())
-            return compatible
-    return set()
+def mpi_compatible_compilers(provider: dict[str, Any] | None) -> set[str]:
+    """Compilers the selected platform MPI was built against: its declared
+    compatibility list plus any per-compiler flavor keys. Works on the one
+    record select_platform_mpi already resolved — never re-searches by name,
+    so an unrelated same-name entry can't contribute its compatibility."""
+    if not provider:
+        return set()
+    compatible = set((provider.get("compatibility") or {}).get("compilers") or [])
+    compatible |= set((provider.get("flavors") or {}).keys())
+    return compatible
 
 
 def compiler_provider_metadata(profile: dict[str, Any], compiler_name: str) -> dict[str, Any]:
@@ -309,27 +328,6 @@ def resolve_mpi(
     return requested, "build"
 
 
-def is_renderable_mpi_provider(provider: dict[str, Any]) -> bool:
-    """True when a probed MPI entry can produce at least one safe external spec.
-
-    This keeps MPI selection generic: provider shape decides renderability, not
-    vendor names. Per-compiler flavor MPIs and single-prefix MPIs share this
-    one predicate.
-    """
-    if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
-        return False
-    flavors = provider.get("flavors")
-    if isinstance(flavors, dict):
-        return any(
-            is_compiler_fragment(compiler)
-            and isinstance(flavor, dict)
-            and is_absolute_prefix(flavor.get("prefix"))
-            for compiler, flavor in flavors.items()
-        )
-    if not is_absolute_prefix(provider.get("prefix")):
-        return False
-    compiler = provider.get("compiler")
-    return not compiler or is_compiler_fragment(compiler)
 def resolve_gpu_archs(
     profile: dict[str, Any],
     stack: dict[str, Any],
@@ -370,6 +368,7 @@ def make_lane(
     compiler: str,
     mpi_provider: str | None,
     mpi_source: str | None,
+    mpi_record: dict[str, Any] | None,
     target: str,
     node_name: str,
     gpu_arch: str | None,
@@ -396,16 +395,27 @@ def make_lane(
         "gpu_arch": gpu_arch,
         "mpi_provider": mpi_provider,
         "mpi_source": mpi_source,
-        "toolchain": toolchain_for(compiler, mpi_provider),
+        "mpi_version": mpi_record.get("version") if mpi_record else None,
+        "toolchain": toolchain_for(profile, compiler, mpi_provider, mpi_record),
         "env_path": f"environments/{compiler}/{lane_suffix}",
         "spec_source": spec_source_id(build),
     }
 
 
-def toolchain_for(compiler: str, mpi_provider: str | None) -> str | None:
+def toolchain_for(
+    profile: dict[str, Any],
+    compiler: str,
+    mpi_provider: str | None,
+    mpi_record: dict[str, Any] | None,
+) -> str | None:
     if not mpi_provider:
         return None
-    return f"{compiler}_{mpi_provider.replace('-', '')}"
+    # Version-qualify only when the provider name alone is ambiguous on this
+    # profile; build-sourced lanes (no record) always use the unversioned name.
+    version = None
+    if mpi_record and mpi_provider_is_ambiguous(profile, mpi_provider):
+        version = mpi_record.get("version")
+    return mpi_toolchain_name(compiler, mpi_provider, version)
 
 
 def spec_source_id(build: dict[str, Any]) -> str:
