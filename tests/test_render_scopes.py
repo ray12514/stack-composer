@@ -397,9 +397,14 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     assert "cray-mpich@8.1.29 %cce" in mpich_specs
 
     gpu_env = load_yaml(workspace / "environments" / "gcc" / "gpu-craympich-gfx90a" / "spack.yaml")
-    assert gpu_env["spack"]["packages"]["mpi"] == {
-        "buildable": False,
-        "require": ["cray-mpich %gcc"],
+    assert gpu_env["spack"]["packages"] == {
+        "all": {
+            "require": ["%gcc"],
+        },
+        "mpi": {
+            "buildable": False,
+            "require": ["cray-mpich %gcc"],
+        },
     }
 
     rocm = load_yaml(workspace / "configs" / "gpu" / "amd-rocm" / "packages.yaml")
