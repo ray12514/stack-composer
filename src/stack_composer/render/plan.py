@@ -396,9 +396,16 @@ def make_lane(
         "gpu_arch": gpu_arch,
         "mpi_provider": mpi_provider,
         "mpi_source": mpi_source,
+        "toolchain": toolchain_for(compiler, mpi_provider),
         "env_path": f"environments/{compiler}/{lane_suffix}",
         "spec_source": spec_source_id(build),
     }
+
+
+def toolchain_for(compiler: str, mpi_provider: str | None) -> str | None:
+    if not mpi_provider:
+        return None
+    return f"{compiler}_{mpi_provider.replace('-', '')}"
 
 
 def spec_source_id(build: dict[str, Any]) -> str:

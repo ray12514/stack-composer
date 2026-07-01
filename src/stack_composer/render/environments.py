@@ -30,7 +30,6 @@ def render_lane_environment(
             "scopes": scopes_for_lane(lane, ctx["stack"], ctx["profile"]),
             "view_root": lane["view_root"],
             "platform_module_prereqs": prereqs,
-            "lane_packages": packages_for_lane(lane),
         }
     )
     src = template_dir / "environments" / lane["kind"] / "spack.yaml.j2"
@@ -38,18 +37,3 @@ def render_lane_environment(
     dst.parent.mkdir(parents=True, exist_ok=True)
     template_name = src.relative_to(template_dir).as_posix()
     dst.write_text(env.get_template(template_name).render(lane_ctx), encoding="utf-8")
-
-
-def packages_for_lane(lane: dict[str, Any]) -> dict[str, Any]:
-    packages: dict[str, Any] = {"all": {"require": [f"%{lane['compiler']}"]}}
-    mpi_requirement = mpi_requirement_for_lane(lane)
-    if mpi_requirement:
-        packages["mpi"] = {"buildable": False, "require": [mpi_requirement]}
-    return packages
-
-
-def mpi_requirement_for_lane(lane: dict[str, Any]) -> str | None:
-    provider = lane.get("mpi_provider")
-    if not provider or lane.get("mpi_source") != "platform":
-        return None
-    return f"{provider} %{lane['compiler']}"

@@ -396,16 +396,21 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     assert "cray-mpich@8.1.29 %gcc" in mpich_specs
     assert "cray-mpich@8.1.29 %cce" in mpich_specs
 
+    cray_mpich_toolchains = load_yaml(
+        workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml"
+    )
+    assert cray_mpich_toolchains["toolchains"]["gcc_craympich"] == [
+        {"spec": "%c=gcc@13.3.0", "when": "%c"},
+        {"spec": "%cxx=gcc@13.3.0", "when": "%cxx"},
+        {"spec": "%fortran=gcc@13.3.0", "when": "%fortran"},
+        {"spec": "%mpi=cray-mpich@8.1.29", "when": "%mpi"},
+    ]
+
     gpu_env = load_yaml(workspace / "environments" / "gcc" / "gpu-craympich-gfx90a" / "spack.yaml")
-    assert gpu_env["spack"]["packages"] == {
-        "all": {
-            "require": ["%gcc"],
-        },
-        "mpi": {
-            "buildable": False,
-            "require": ["cray-mpich %gcc"],
-        },
-    }
+    assert "packages" not in gpu_env["spack"]
+    assert gpu_env["spack"]["specs"]
+    assert all(spec.endswith(" %gcc_craympich") for spec in gpu_env["spack"]["specs"])
+    assert "kokkos+rocm amdgpu_target=gfx90a %gcc_craympich" in gpu_env["spack"]["specs"]
 
     rocm = load_yaml(workspace / "configs" / "gpu" / "amd-rocm" / "packages.yaml")
     assert rocm["packages"]["hip"]["buildable"] is False

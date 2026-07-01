@@ -44,6 +44,7 @@ def make_jinja_environment(template_dir: Path) -> Environment:
     env.globals["compiler_providers_for_scope"] = compiler_providers_for_scope
     env.globals["compiler_external_packages"] = compiler_external_packages
     env.globals["mpi_external_packages"] = mpi_external_packages
+    env.globals["mpi_toolchains"] = mpi_toolchains
     env.globals["gpu_external_packages"] = gpu_external_packages
     env.globals["common_external_packages"] = common_external_packages
     return env
@@ -175,6 +176,86 @@ def mpi_provider_externals(provider: dict[str, Any]) -> list[dict[str, Any]]:
             "modules": provider.get("modules") or [],
         }
     ]
+
+
+def mpi_toolchains(profile: dict[str, Any], provider_name: str) -> list[dict[str, Any]]:
+    toolchains: list[dict[str, Any]] = []
+    for provider in profile.get("mpi_providers") or []:
+        if provider.get("name") != provider_name:
+            continue
+        if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
+            continue
+        for compiler in mpi_toolchain_compilers(provider):
+            compiler_provider = compiler_provider_for(profile, compiler)
+            if not compiler_provider:
+                continue
+            entries = compiler_toolchain_entries(compiler_provider)
+            entries.append(
+                {
+                    "spec": f"%mpi={provider['name']}@{provider['version']}",
+                    "when": "%mpi",
+                }
+            )
+            toolchains.append(
+                {
+                    "name": (
+                        f"{compiler_name(compiler_provider)}_"
+                        f"{provider['name'].replace('-', '')}"
+                    ),
+                    "entries": entries,
+                }
+            )
+    return toolchains
+
+
+def mpi_toolchain_compilers(provider: dict[str, Any]) -> list[str]:
+    if provider.get("flavors"):
+        return sorted(
+            compiler
+            for compiler, flavor in provider.get("flavors", {}).items()
+            if is_compiler_fragment(compiler) and is_absolute_prefix(flavor.get("prefix"))
+        )
+    compiler = provider.get("compiler")
+    if compiler and is_compiler_fragment(compiler):
+        return [compiler]
+    return sorted((provider.get("compatibility") or {}).get("compilers") or [])
+
+
+def compiler_provider_for(profile: dict[str, Any], compiler: str) -> dict[str, Any] | None:
+    wanted = compiler_name_from_fragment(compiler)
+    for provider in profile.get("compiler_providers") or []:
+        if provider.get("name") == wanted:
+            return provider
+    return None
+
+
+def compiler_name_from_fragment(compiler: str) -> str:
+    return compiler.split("@", 1)[0]
+
+
+def compiler_name(provider: dict[str, Any]) -> str:
+    return str(provider["name"])
+
+
+def compiler_spec(provider: dict[str, Any]) -> str:
+    return external_spec(provider["name"], provider["version"])
+
+
+def compiler_toolchain_entries(provider: dict[str, Any]) -> list[dict[str, str]]:
+    entries = []
+    languages = provider.get("languages") or ["c", "c++", "fortran"]
+    language_virtuals = {
+        "c": "c",
+        "c++": "cxx",
+        "cxx": "cxx",
+        "fortran": "fortran",
+    }
+    spec = compiler_spec(provider)
+    for language in languages:
+        virtual = language_virtuals.get(str(language).lower())
+        if virtual:
+            entries.append({"spec": f"%{virtual}={spec}", "when": f"%{virtual}"})
+    return entries
 
 
 def gpu_external_packages(profile: dict[str, Any], toolkit: str) -> list[dict[str, Any]]:
