@@ -235,7 +235,12 @@
           "description": "Optional per-build override of the MPI provider/source from defaults.yaml.",
           "properties": {
             "provider": { "type": "string", "minLength": 1 },
-            "source": { "type": "string", "enum": ["auto", "build", "platform"] }
+            "source": { "type": "string", "enum": ["auto", "build", "platform"] },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Selects one platform MPI when the profile reports the same provider name at more than one version (e.g. two openmpi installs). Required in that case; ignored when the provider name is unambiguous."
+            }
           },
           "additionalProperties": false
         },

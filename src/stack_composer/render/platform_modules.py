@@ -64,8 +64,17 @@ def _mpi_modules(
     # Spack and pinned as the provider preference in the common scope.
     if lane.get("mpi_source") != "platform":
         return []
+    # Match on the lane's disambiguated version too: with two same-name
+    # platform MPIs, name-only lookup would report the wrong entry's modules.
+    version = lane.get("mpi_version")
     entry = next(
-        (p for p in profile.get("mpi_providers") or [] if p.get("name") == provider), None
+        (
+            p
+            for p in profile.get("mpi_providers") or []
+            if p.get("name") == provider
+            and (version is None or p.get("version") == version)
+        ),
+        None,
     )
     if entry is None:
         issues.append(

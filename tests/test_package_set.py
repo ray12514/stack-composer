@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from stack_composer.model.package_set import expand_gpu_variant, expand_specs_for_lane
+from stack_composer.model.package_set import (
+    decorate_toolchain,
+    expand_gpu_variant,
+    expand_specs_for_lane,
+)
 
 
 def test_expands_gpu_placeholder_for_amd_lane() -> None:
@@ -22,6 +26,21 @@ def test_preserves_existing_gpu_arch_flags() -> None:
         expand_gpu_variant("kokkos+rocm amdgpu_target=gfx942", lane)
         == "kokkos+rocm amdgpu_target=gfx942"
     )
+
+
+def test_decorates_undecorated_spec_with_lane_toolchain() -> None:
+    lane = {"toolchain": "gcc_openmpi"}
+
+    assert decorate_toolchain("hdf5+mpi", lane) == "hdf5+mpi %gcc_openmpi"
+
+
+def test_skips_spec_that_already_carries_a_compiler_or_toolchain() -> None:
+    # A user-authored spec with its own %... qualification is never
+    # double-decorated; their choice wins over the lane toolchain.
+    lane = {"toolchain": "gcc_openmpi"}
+
+    assert decorate_toolchain("hdf5+mpi %aocc_site_mpi", lane) == "hdf5+mpi %aocc_site_mpi"
+    assert decorate_toolchain("hdf5+mpi %gcc@11.4.0", lane) == "hdf5+mpi %gcc@11.4.0"
 
 
 def test_expands_package_set_specs_for_lane_kind() -> None:

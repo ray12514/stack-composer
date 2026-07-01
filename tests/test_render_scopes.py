@@ -620,7 +620,18 @@ def test_rendered_generic_linux_workspace_contains_site_mpi_without_cray(
             "modules": ["openmpi/4.1.7"],
         }
     )
-    workspace = render_profile(tmp_path / "out", write_profile(tmp_path / "profile", profile))
+    # Two openmpi versions on one system: the stack must pin one per build
+    # (unpinned ambiguity is a hard render error, covered elsewhere). Both
+    # externals still render — they are system facts; the pin picks the lane's.
+    raw_stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    for build in raw_stack["builds"]:
+        if build["kind"] in ("mpi", "gpu"):
+            build["mpi"] = {"provider": "openmpi", "source": "platform", "version": "4.1.6"}
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", raw_stack),
+    )
 
     assert not (workspace / "configs" / "vendor" / "cray").exists()
     vendor_linux = load_yaml(workspace / "configs" / "vendor" / "linux" / "packages.yaml")
@@ -719,6 +730,199 @@ def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
     assert "kokkos+cuda cuda_arch=80" in nvidia_env
     assert "cuda_arch=80" in nvidia_env
     assert "+gpu" not in nvidia_env
+
+
+def render_build_sourced_openmpi(tmp_path: Path) -> Path:
+    """Render a lane that builds OpenMPI from source on a system without one."""
+    profile, _stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    profile["mpi_providers"] = []
+    stack = {
+        "schema_version": 1,
+        "name": "build-mpi",
+        "profile_contract": {"schema_version": 1},
+        "templates": {"set": "v6"},
+        "builds": [
+            {
+                "name": "mpi",
+                "kind": "mpi",
+                "compilers": ["gcc"],
+                "mpi": {"provider": "openmpi", "source": "build"},
+                "specs": ["osu-micro-benchmarks"],
+            }
+        ],
+    }
+    return render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+
+def test_build_sourced_mpi_lane_gets_a_defined_toolchain(tmp_path: Path) -> None:
+    workspace = render_build_sourced_openmpi(tmp_path)
+
+    env = load_yaml(workspace / "environments" / "gcc" / "mpi-openmpi" / "spack.yaml")
+    assert env["spack"]["specs"] == ["osu-micro-benchmarks %gcc_openmpi"]
+    assert "../../../configs/mpi/openmpi" in env["spack"]["include"]
+
+    toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
+    assert toolchains["toolchains"]["gcc_openmpi"] == [
+        {"spec": "%c=gcc@11.4.0", "when": "%c"},
+        {"spec": "%cxx=gcc@11.4.0", "when": "%cxx"},
+        {"spec": "%fortran=gcc@11.4.0", "when": "%fortran"},
+        {"spec": "%mpi=openmpi", "when": "%mpi"},
+    ]
+
+
+def ambiguous_openmpi_profile() -> dict[str, Any]:
+    """example-linux plus a second openmpi version: same provider name twice."""
+    profile, _stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    profile["mpi_providers"].append(
+        {
+            "name": "openmpi",
+            "version": "5.0.3",
+            "provider_family": "site",
+            "prefix": "/opt/site/openmpi/5.0.3-aocc-4.2.0",
+            "compiler": "aocc@4.2.0",
+        }
+    )
+    return profile
+
+
+def test_ambiguous_platform_mpi_without_version_is_a_hard_error() -> None:
+    profile = ambiguous_openmpi_profile()
+    _, stack = fixture_context("example-linux")
+    stack["builds"] = [{"name": "mpi", "kind": "mpi", "specs": ["hdf5+mpi"]}]
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    # Ambiguity is an authoring defect in profile+stack input, not a missing
+    # capability: it hard-errors even though the build is not marked required,
+    # instead of silently picking one version or silently skipping the build.
+    ambiguous = [issue for issue in issues if issue.code == "mpi_ambiguous"]
+    assert len(ambiguous) == 1
+    assert ambiguous[0].severity == "error"
+    assert "4.1.6" in ambiguous[0].message and "5.0.3" in ambiguous[0].message
+    assert not any(lane["kind"] == "mpi" for lane in lanes)
+
+
+def test_mpi_version_pin_disambiguates_and_versions_toolchain_names(tmp_path: Path) -> None:
+    profile = ambiguous_openmpi_profile()
+    stack = {
+        "schema_version": 1,
+        "name": "pinned-mpi",
+        "profile_contract": {"schema_version": 1},
+        "templates": {"set": "v6"},
+        "builds": [
+            {
+                "name": "mpi",
+                "kind": "mpi",
+                "compilers": ["aocc"],
+                "mpi": {"provider": "openmpi", "source": "platform", "version": "5.0.3"},
+                "specs": ["hdf5+mpi"],
+            }
+        ],
+    }
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+    env = load_yaml(workspace / "environments" / "aocc" / "mpi-openmpi" / "spack.yaml")
+    assert env["spack"]["specs"] == ["hdf5+mpi %aocc_openmpi_5.0.3"]
+
+    # Both pairings render as a catalog, each under a version-qualified name;
+    # the bare (collision-prone) name must not appear as a key.
+    toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
+    assert set(toolchains["toolchains"]) == {"aocc_openmpi_4.1.6", "aocc_openmpi_5.0.3"}
+    assert {"spec": "%mpi=openmpi@5.0.3", "when": "%mpi"} in toolchains["toolchains"][
+        "aocc_openmpi_5.0.3"
+    ]
+    assert {"spec": "%mpi=openmpi@4.1.6", "when": "%mpi"} in toolchains["toolchains"][
+        "aocc_openmpi_4.1.6"
+    ]
+
+
+def test_single_version_provider_keeps_unversioned_toolchain_name() -> None:
+    # Regression guard: adding a second version of one provider must not
+    # rename toolchains of a different, unambiguous provider elsewhere.
+    profile, stack = fixture_context("example-linux")
+    stack["builds"] = [
+        {
+            "name": "mpi",
+            "kind": "mpi",
+            "compilers": ["aocc"],
+            "mpi": {"provider": "openmpi", "source": "platform"},
+            "specs": ["hdf5+mpi"],
+        }
+    ]
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    assert issues == []
+    lane = lane_by_name(lanes, "aocc-mpi-openmpi")
+    assert lane["toolchain"] == "aocc_openmpi"
+    assert lane["mpi_version"] == "4.1.6"
+
+
+def test_platform_mpi_without_compiler_metadata_still_defines_lane_toolchain(
+    tmp_path: Path,
+) -> None:
+    # An OS-packaged MPI may carry no compiler tag, flavors, or compatibility
+    # list. The lane's decorated toolchain must still be defined in the scope.
+    profile, _stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    profile["mpi_providers"] = [
+        {
+            "name": "openmpi",
+            "version": "4.1.7",
+            "provider_family": "system",
+            "prefix": "/usr",
+        }
+    ]
+    stack = {
+        "schema_version": 1,
+        "name": "system-mpi",
+        "profile_contract": {"schema_version": 1},
+        "templates": {"set": "v6"},
+        "builds": [
+            {
+                "name": "mpi",
+                "kind": "mpi",
+                "compilers": ["gcc"],
+                "mpi": {"provider": "openmpi", "source": "platform"},
+                "specs": ["hdf5+mpi"],
+            }
+        ],
+    }
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+    env = load_yaml(workspace / "environments" / "gcc" / "mpi-openmpi" / "spack.yaml")
+    assert env["spack"]["specs"] == ["hdf5+mpi %gcc_openmpi"]
+    toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
+    assert toolchains["toolchains"]["gcc_openmpi"] == [
+        {"spec": "%c=gcc@11.4.0", "when": "%c"},
+        {"spec": "%cxx=gcc@11.4.0", "when": "%cxx"},
+        {"spec": "%fortran=gcc@11.4.0", "when": "%fortran"},
+        {"spec": "%mpi=openmpi@4.1.7", "when": "%mpi"},
+    ]
+
+
+def test_build_sourced_mpi_packages_yaml_is_buildable(tmp_path: Path) -> None:
+    workspace = render_build_sourced_openmpi(tmp_path)
+
+    packages = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "packages.yaml")
+    assert packages["packages"]["openmpi"] == {"buildable": True}
+    assert packages["packages"]["mpi"] == {"require": ["openmpi"]}
 
 
 def fixture_context(profile_name: str) -> tuple[dict[str, Any], dict[str, Any]]:

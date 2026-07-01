@@ -50,6 +50,20 @@ Primary planning docs:
 - Docker/Spack smoke path using `cse-stack/docker/smoke/run-smoke.sh` passes
   profile -> render -> Spack 1.1.1 concretize/fetch/install/verify for the
   Stack Content smoke lane.
+- Spack-native toolchains: every MPI lane's `%<compiler>_<provider>` spec
+  decoration is defined by a `toolchains.yaml` in that lane's included
+  `configs/mpi/<provider>` scope (platform lanes pin `%mpi=<provider>@<ver>`,
+  build-sourced lanes pin `%mpi=<provider>` unversioned with `buildable: true`
+  + an `mpi` requirement in the scope's packages.yaml). Same-name multi-version
+  platform MPI is a hard render error unless the build sets `mpi.version`;
+  when versions coexist, toolchain names carry the version
+  (`aocc_openmpi_5.0.3`). `stack-composer show` lists the toolchain identities.
+- Manual/Tier-0 verification (2026-07-01): rendered the smoke workspace, then
+  hand-authored a standalone `spack.yaml` that `include:`s the rendered
+  `configs/{common,os/rhel9,target/x86_64_v4,vendor/linux,mpi/openmpi}` scopes
+  and a spec `hdf5+mpi %gcc_openmpi`; verified every `%name` referenced by the
+  specs is a key in an included `toolchains.yaml` (structural check — no local
+  Spack; re-run with `spack -e <env> concretize` on a system with Spack).
 
 ## Deferred / open
 
