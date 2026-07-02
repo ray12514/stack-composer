@@ -243,7 +243,9 @@ def lane_mpi_toolchains(
         name = lane["toolchain"]
         if name in emitted_names:
             continue
-        compiler_provider = compiler_provider_for(profile, lane["compiler"])
+        compiler_provider = compiler_provider_for(
+            profile, lane.get("compiler_ref") or lane["compiler"]
+        )
         if not compiler_provider:
             continue
         emitted_names.add(name)

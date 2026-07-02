@@ -14,7 +14,7 @@
     },
     "compilers": {
       "$ref": "#/$defs/compiler_selection",
-      "description": "Which compilers to build lanes for, from what the profile reports. 'all' = every reported; a list pins families (resolved against the profile)."
+      "description": "Which compilers to build lanes for, from what the profile reports. 'all' = every reported; a list may pin families or exact name@version providers. Bare duplicate families are rejected until an exact version is selected."
     },
     "mpi": {
       "$ref": "#/$defs/mpi_selection",
@@ -62,7 +62,7 @@
         { "const": "all" },
         { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true }
       ],
-      "description": "baseline (gcc-or-first, the lean default), all (fan out), or an explicit list."
+      "description": "baseline (gcc-or-first, the lean default), all (fan out), or an explicit list of compiler families or exact name@version providers."
     },
     "mpi_selection": {
       "type": "object",

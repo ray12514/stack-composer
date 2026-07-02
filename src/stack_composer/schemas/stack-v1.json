@@ -228,7 +228,7 @@
               "uniqueItems": true
             }
           ],
-          "description": "Optional per-build override of defaults.yaml compilers: baseline (gcc-or-first), all (fan out), or a subset of the compilers the profile reports."
+          "description": "Optional per-build override of defaults.yaml compilers: baseline (gcc-or-first), all (fan out), or a subset of the compilers the profile reports. Use exact name@version when the profile reports multiple versions of one compiler family."
         },
         "mpi": {
           "type": "object",

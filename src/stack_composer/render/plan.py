@@ -4,8 +4,13 @@ from typing import Any
 
 from stack_composer.errors import Issue
 from stack_composer.render.mpi import (
+    compiler_fragment_name_version,
+    compiler_provider_ref,
+    compiler_ref_axis,
+    compiler_ref_name,
     is_renderable_mpi_provider,
     mpi_toolchain_name_for_profile,
+    select_compiler_provider,
     select_platform_mpi,
 )
 from stack_composer.render.spack_specs import is_renderable_external_name_version
@@ -18,7 +23,7 @@ _BASELINE_TARGET = "x86_64_v3"
 # required. These mark input-authoring defects (an ambiguous or nonexistent
 # MPI version selection), not "this system lacks that lane" — silently
 # skipping them would be as surprising as silently picking a version.
-_HARD_REASON_CODES = {"mpi_ambiguous", "mpi_version_unresolved"}
+_HARD_REASON_CODES = {"mpi_ambiguous", "mpi_version_unresolved", "compiler_ambiguous"}
 
 
 def plan_lanes(
@@ -87,7 +92,9 @@ def lane_candidates_for_build(
         which = "GPU" if want_gpu else "CPU"
         return [], "nodes_unmatched", f"profile has no runtime {which} node type"
 
-    compilers, missing, explicit = resolve_compilers(profile, stack, build)
+    compilers, missing, explicit, compiler_error = resolve_compilers(profile, stack, build)
+    if compiler_error:
+        return [], compiler_error["code"], compiler_error["message"]
     if missing:
         return (
             [],
@@ -122,7 +129,11 @@ def lane_candidates_for_build(
         if mpi_source == "platform" and not explicit:
             compatible = mpi_compatible_compilers(mpi_record)
             if compatible:
-                compilers = [c for c in compilers if c in compatible]
+                compilers = [
+                    c
+                    for c in compilers
+                    if any(compiler_ref_matches(c, compat) for compat in compatible)
+                ]
                 if not compilers:
                     return (
                         [],
@@ -196,9 +207,17 @@ def profile_compilers(profile: dict[str, Any]) -> list[str]:
     return found
 
 
+def renderable_compiler_providers(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        provider
+        for provider in profile.get("compiler_providers") or []
+        if is_renderable_external_name_version(provider.get("name"), provider.get("version"))
+    ]
+
+
 def resolve_compilers(
     profile: dict[str, Any], stack: dict[str, Any], build: dict[str, Any]
-) -> tuple[list[str], list[str], bool]:
+) -> tuple[list[str], list[str], bool, dict[str, str] | None]:
     """Return (selected_compilers, missing, explicit). Selection = per-build
     override, else site default, else 'baseline'.
 
@@ -213,14 +232,79 @@ def resolve_compilers(
     selection = build.get("compilers") or stack.get("compilers") or "baseline"
     if selection == "baseline":
         if "gcc" in available:
-            return ["gcc"], [], False
-        return available[:1], [], False
+            refs, missing, error = resolve_compiler_refs(profile, ["gcc"])
+            return refs, missing, False, error
+        if not available:
+            return [], [], False, None
+        refs, missing, error = resolve_compiler_refs(profile, [available[0]])
+        return refs, missing, False, error
     if selection == "all":
-        return available, [], False
-    selected_set = {name for name in selection if name in set(available)}
-    missing = [name for name in selection if name not in set(available)]
-    selected = [name for name in available if name in selected_set]
-    return selected, missing, True
+        duplicate_names = compiler_duplicate_names(profile)
+        return [
+            compiler_provider_ref(provider)
+            if provider["name"] in duplicate_names
+            else str(provider["name"])
+            for provider in renderable_compiler_providers(profile)
+        ], [], False, None
+    selected, missing, error = resolve_compiler_refs(profile, selection)
+    return selected, missing, True, error
+
+
+def resolve_compiler_refs(
+    profile: dict[str, Any], selection: list[str]
+) -> tuple[list[str], list[str], dict[str, str] | None]:
+    selected: list[str] = []
+    missing: list[str] = []
+    for requested in selection:
+        candidates = compiler_provider_candidates(profile, requested)
+        if not candidates:
+            missing.append(requested)
+            continue
+        requested_name, requested_version = compiler_fragment_name_version(requested)
+        if requested_version:
+            selected.append(compiler_provider_ref(candidates[0]))
+            continue
+        if len(candidates) > 1:
+            available = ", ".join(
+                sorted(compiler_provider_ref(provider) for provider in candidates)
+            )
+            return [], [], {
+                "code": "compiler_ambiguous",
+                "message": (
+                    f"compiler {requested_name!r} is ambiguous: the profile reports "
+                    f"{available}; set compilers to an exact version such as "
+                    f"{compiler_provider_ref(candidates[0])}"
+                ),
+            }
+        selected.append(requested_name)
+    return selected, missing, None
+
+
+def compiler_duplicate_names(profile: dict[str, Any]) -> set[str]:
+    counts: dict[str, int] = {}
+    for provider in renderable_compiler_providers(profile):
+        counts[str(provider["name"])] = counts.get(str(provider["name"]), 0) + 1
+    return {name for name, count in counts.items() if count > 1}
+
+
+def compiler_provider_candidates(profile: dict[str, Any], requested: str) -> list[dict[str, Any]]:
+    requested_name, requested_version = compiler_fragment_name_version(requested)
+    candidates = [
+        provider
+        for provider in renderable_compiler_providers(profile)
+        if provider.get("name") == requested_name
+    ]
+    if requested_version:
+        return [provider for provider in candidates if provider.get("version") == requested_version]
+    return candidates
+
+
+def compiler_ref_matches(compiler: str, compatible: str) -> bool:
+    compiler_name, compiler_version = compiler_fragment_name_version(compiler)
+    compatible_name, compatible_version = compiler_fragment_name_version(compatible)
+    if compiler_name != compatible_name:
+        return False
+    return compatible_version is None or compiler_version == compatible_version
 
 
 def mpi_compatible_compilers(provider: dict[str, Any] | None) -> set[str]:
@@ -236,10 +320,7 @@ def mpi_compatible_compilers(provider: dict[str, Any] | None) -> set[str]:
 
 
 def compiler_provider_metadata(profile: dict[str, Any], compiler_name: str) -> dict[str, Any]:
-    for provider in profile.get("compiler_providers") or []:
-        if provider.get("name") == compiler_name:
-            return provider
-    return {}
+    return select_compiler_provider(profile, compiler_name) or {}
 
 
 def vendor_scope_for(profile: dict[str, Any], stack: dict[str, Any], compiler_name: str) -> str:
@@ -375,15 +456,20 @@ def make_lane(
     # Key the lane on the build name so two builds of the same kind (e.g. two
     # cpu builds) never collide; the env template is still chosen by kind.
     lane_suffix = build["name"]
+    compiler_name = compiler_ref_name(compiler)
+    compiler_axis = compiler_ref_axis(compiler)
     if mpi_provider:
         lane_suffix += "-" + mpi_provider.replace("-", "")
     if gpu_arch:
         lane_suffix += "-" + gpu_arch
-    name = f"{compiler}-{lane_suffix}"
+    name = f"{compiler_axis}-{lane_suffix}"
     return {
         "name": name,
         "source_build": build["name"],
-        "compiler": compiler,
+        "compiler": compiler_name,
+        "compiler_ref": compiler,
+        "compiler_axis": compiler_axis,
+        "compiler_version": compiler_fragment_name_version(compiler)[1],
         "vendor_scope": vendor_scope_for(profile, stack, compiler),
         "lane": lane_suffix,
         "kind": kind,
@@ -396,7 +482,7 @@ def make_lane(
         "mpi_source": mpi_source,
         "mpi_version": mpi_record.get("version") if mpi_record else None,
         "toolchain": toolchain_for(profile, compiler, mpi_provider, mpi_record),
-        "env_path": f"environments/{compiler}/{lane_suffix}",
+        "env_path": f"environments/{compiler_axis}/{lane_suffix}",
         "spec_source": spec_source_id(build),
     }
 

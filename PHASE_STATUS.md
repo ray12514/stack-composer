@@ -72,7 +72,9 @@ Primary planning docs:
 Blueback run #1 is ready to resume. The spec-native toolchain rework landed and
 is pushed: every MPI lane's `%<toolchain_name>` decoration is defined in an
 included scope; same-name multi-version platform MPI hard-errors unless the
-build pins `mpi.version`; toolchain names are spec-token-safe versioned slugs.
+build pins `mpi.version`; same-family multi-version compiler selections
+hard-error unless the build pins `name@version`; toolchain names are
+spec-token-safe versioned slugs.
 Next step on the box (per
 `stack-content/systems/blueback/runbook-notes.md`): pull all three repos,
 rebuild the pyz, `show` against the fresh profile, validate, render, oracle-diff
@@ -84,11 +86,6 @@ binding), not version-exact.
 
 ## Deferred / open
 
-- Compiler same-family multi-version disambiguation: two versions of one
-  compiler family in a profile still resolve by first name match
-  (`compiler_provider_for`); needs the same treatment MPI provider selection
-  already has (candidates -> pin or hard error -> version-qualified identity).
-  Prerequisite for the committed multi-CPE v1 goal.
 - CPE-locked GPU/MPI pairing validation: profile facts (`cpe_version`,
   per-MPI GPU-runtime linkage) plus a render preflight that refuses
   cross-major toolkit/MPI pairings. Findings and sources:

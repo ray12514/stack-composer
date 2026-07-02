@@ -93,6 +93,22 @@ def compiler_fragment_name_version(compiler: str) -> tuple[str, str | None]:
     return name, version
 
 
+def compiler_provider_ref(provider: dict[str, Any]) -> str:
+    return f"{provider['name']}@{provider['version']}"
+
+
+def compiler_ref_name(compiler: str) -> str:
+    name, _version = compiler_fragment_name_version(compiler)
+    return name
+
+
+def compiler_ref_axis(compiler: str) -> str:
+    name, version = compiler_fragment_name_version(compiler)
+    if not version:
+        return name
+    return slug_token(name) + slug_token(version)
+
+
 def select_compiler_provider(
     profile: dict[str, Any], compiler: str
 ) -> dict[str, Any] | None:

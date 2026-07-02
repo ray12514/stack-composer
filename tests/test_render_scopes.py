@@ -869,6 +869,78 @@ def test_single_version_provider_uses_versioned_spec_safe_toolchain_name() -> No
     assert lane["mpi_version"] == "4.1.6"
 
 
+def test_ambiguous_compiler_family_without_version_is_a_hard_error() -> None:
+    profile, stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    profile["compiler_providers"].append(
+        {
+            "name": "aocc",
+            "version": "5.1.0",
+            "prefix": "/opt/AMD/aocc-compiler-5.1.0",
+            "provider_family": "site",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["aocc/5.1.0"],
+        }
+    )
+    stack["builds"] = [{"name": "mpi", "kind": "mpi", "compilers": ["aocc"], "specs": ["hdf5+mpi"]}]
+    stack["per_system"] = {}
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    ambiguous = [issue for issue in issues if issue.code == "compiler_ambiguous"]
+    assert lanes == []
+    assert len(ambiguous) == 1
+    assert "aocc@4.2.0" in ambiguous[0].message
+    assert "aocc@5.1.0" in ambiguous[0].message
+
+
+def test_explicit_compiler_version_binds_matching_toolchain(tmp_path: Path) -> None:
+    profile, _stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    profile["compiler_providers"].append(
+        {
+            "name": "aocc",
+            "version": "5.1.0",
+            "prefix": "/opt/AMD/aocc-compiler-5.1.0",
+            "provider_family": "site",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["aocc/5.1.0"],
+        }
+    )
+    stack = {
+        "schema_version": 1,
+        "name": "pinned-compiler",
+        "profile_contract": {"schema_version": 1},
+        "templates": {"set": "v6"},
+        "builds": [
+            {
+                "name": "mpi",
+                "kind": "mpi",
+                "compilers": ["aocc@4.2.0"],
+                "mpi": {"provider": "openmpi", "source": "platform"},
+                "specs": ["hdf5+mpi"],
+            }
+        ],
+    }
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+    env = load_yaml(workspace / "environments" / "aocc420" / "mpi-openmpi" / "spack.yaml")
+    assert env["spack"]["specs"] == ["hdf5+mpi %aocc420_openmpi416"]
+
+    toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
+    assert toolchains["toolchains"]["aocc420_openmpi416"] == [
+        {"spec": "%c=aocc@4.2.0", "when": "%c"},
+        {"spec": "%cxx=aocc@4.2.0", "when": "%cxx"},
+        {"spec": "%fortran=aocc@4.2.0", "when": "%fortran"},
+        {"spec": "%mpi=openmpi@4.1.6", "when": "%mpi"},
+    ]
+
+
 def test_platform_mpi_without_compiler_metadata_still_defines_lane_toolchain(
     tmp_path: Path,
 ) -> None:

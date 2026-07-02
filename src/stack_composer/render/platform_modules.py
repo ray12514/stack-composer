@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from stack_composer.errors import Issue
+from stack_composer.render.mpi import compiler_fragment_name_version
 
 
 def platform_module_prereqs_for_lane(
@@ -37,12 +38,16 @@ def platform_module_prereqs_for_lane(
 def _compiler_modules(
     lane: dict[str, Any], profile: dict[str, Any], lane_path: str, issues: list[Issue]
 ) -> list[str]:
-    compiler = lane.get("compiler")
+    compiler = lane.get("compiler_ref") or lane.get("compiler")
     if not compiler:
         return []
+    wanted_name, wanted_version = compiler_fragment_name_version(compiler)
     for provider in profile.get("compiler_providers") or []:
-        if provider.get("name") == compiler:
-            return list(provider.get("modules") or [])
+        if provider.get("name") != wanted_name:
+            continue
+        if wanted_version and provider.get("version") != wanted_version:
+            continue
+        return list(provider.get("modules") or [])
     issues.append(
         Issue(
             "error",
