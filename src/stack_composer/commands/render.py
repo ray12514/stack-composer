@@ -4,7 +4,7 @@ from pathlib import Path
 
 import click
 
-from stack_composer.errors import ValidationFailed
+from stack_composer.errors import ValidationFailed, format_issues
 from stack_composer.render.engine import render_workspace
 from stack_composer.render.release import ReleaseVars, SourceRepo
 
@@ -46,5 +46,5 @@ def run(
             package_repos_dir=package_repos_dir,
         )
     except ValidationFailed as exc:
-        raise click.ClickException(str(exc)) from exc
+        raise click.ClickException(format_issues(exc.issues)) from exc
     click.echo(str(workspace))

@@ -20,7 +20,7 @@ from stack_composer.commands import (
 )
 from stack_composer.commands._stub import command_error_handler
 from stack_composer.commands.licenses import print_licenses
-from stack_composer.errors import ValidationFailed
+from stack_composer.errors import ValidationFailed, format_issues
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]}, invoke_without_command=True)
@@ -168,7 +168,7 @@ def validate(
             report=report,
         )
     except ValidationFailed as exc:
-        raise click.ClickException(str(exc)) from exc
+        raise click.ClickException(format_issues(exc.issues)) from exc
 
 
 @cli.command("publish-manifest")

@@ -47,12 +47,14 @@ def run(
 
     # Build the "you would build" probe: a real stack if given, else one build
     # per kind so the lane counts are visible.
+    stack_name = "generated defaults-only preview"
     if stack_path:
         raw_stack, stack_issues = load_stack(Path(stack_path))
         if stack_issues:
             raise click.ClickException("; ".join(i.message for i in stack_issues))
         probe = merge_defaults(defaults, raw_stack)
         probe.setdefault("name", "show")
+        stack_name = str(probe.get("name") or Path(stack_path).stem)
     else:
         probe = merge_defaults(
             defaults,
@@ -65,9 +67,9 @@ def run(
                 ],
             },
         )
-    lanes, _, _, _ = plan_lanes(profile_data, probe)
+    lanes, _, _, plan_issues = plan_lanes(profile_data, probe)
 
-    out = render_menu(profile_data, defaults, lanes)
+    out = render_menu(profile_data, defaults, lanes, stack_name=stack_name, issues=plan_issues)
     click.echo(out)
 
 
@@ -88,7 +90,12 @@ def _load_defaults(
 
 
 def render_menu(
-    profile: dict[str, Any], defaults: dict[str, Any], lanes: list[dict[str, Any]]
+    profile: dict[str, Any],
+    defaults: dict[str, Any],
+    lanes: list[dict[str, Any]],
+    *,
+    stack_name: str,
+    issues: list[Any],
 ) -> str:
     lines: list[str] = []
     system = profile.get("system", {}).get("name", "?")
@@ -104,6 +111,7 @@ def render_menu(
     if platform_families:
         lines.append(f"platform families: {', '.join(platform_families)}")
     lines.append(f"targets: {targets}")
+    lines.append(f"preview stack: {stack_name}")
     lines.append("")
 
     compilers = compiler_entries(profile)
@@ -151,6 +159,11 @@ def render_menu(
     for kind, lane_compilers in by_kind.items():
         detail = " · ".join(sorted(set(lane_compilers))) if lane_compilers else ""
         lines.append(f"  {kind} → {len(lane_compilers)} lanes    {detail}".rstrip())
+    if issues:
+        lines.append("")
+        lines.append(f"planning issues ({len(issues)})")
+        for issue in issues:
+            lines.append(f"  [{issue.severity}] {issue.code}: {issue.message}")
     if lanes:
         lines.append("")
         lines.append("resolved lanes")

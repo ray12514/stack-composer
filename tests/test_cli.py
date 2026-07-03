@@ -39,6 +39,7 @@ def test_show_command_prints_provider_families_and_module_chains() -> None:
     assert result.exit_code == 0, result.output
     assert "provider families: platform" in result.output
     assert "platform families: cray-pe" in result.output
+    assert "preview stack: science-stack" in result.output
     assert "family=platform/cray-pe" in result.output
     assert "modules=PrgEnv-gnu, gcc-native/13" in result.output
     assert "gcc      modules=cray-mpich/8.1.29" in result.output
@@ -121,6 +122,9 @@ def test_show_command_marks_ambiguous_mpi_versions(tmp_path) -> None:
     assert result.exit_code == 0, result.output
     # Each version gets its own line and its own version-qualified toolchain
     # identity, plus the pointer to the disambiguating stack.yaml field.
+    assert "preview stack: generated defaults-only preview" in result.output
+    assert "planning issues" in result.output
+    assert "mpi_ambiguous" in result.output
     assert "aocc420_openmpi416" in result.output
     assert "aocc420_openmpi503" in result.output
     assert "mpi.version" in result.output
@@ -182,6 +186,71 @@ def test_render_command_writes_workspace(tmp_path) -> None:
     workspace = tmp_path / "example-cray" / "science-stack" / "2026.06"
     assert workspace.as_posix() in result.output
     assert (workspace / "release-manifest.yaml").exists()
+
+
+def test_render_command_reports_validation_issue_details(tmp_path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "render",
+            "--profile",
+            str(fixture_path("profiles", "example-cray", "profile.yaml")),
+            "--deployment",
+            str(fixture_path("deployments", "example-cray.yaml")),
+            "--stack",
+            str(fixture_path("stacks", "science-stack", "stack.yaml")),
+            "--templates",
+            str(fixture_path("template-sets")),
+            "--package-sets",
+            str(fixture_path("package-sets")),
+            "--package-repos",
+            str(fixture_path("package-repos")),
+            "--output-root",
+            str(tmp_path),
+            "--release",
+            "2026.06",
+            "--rendered-at",
+            "2026-06-19T00:00:00Z",
+            "--source-repo",
+            "git@example:stacks/science-stack",
+            "--source-commit",
+            "0375b16fdeadbeef0123456789abcdef01234567",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    second = CliRunner().invoke(
+        cli,
+        [
+            "render",
+            "--profile",
+            str(fixture_path("profiles", "example-cray", "profile.yaml")),
+            "--deployment",
+            str(fixture_path("deployments", "example-cray.yaml")),
+            "--stack",
+            str(fixture_path("stacks", "science-stack", "stack.yaml")),
+            "--templates",
+            str(fixture_path("template-sets")),
+            "--package-sets",
+            str(fixture_path("package-sets")),
+            "--package-repos",
+            str(fixture_path("package-repos")),
+            "--output-root",
+            str(tmp_path),
+            "--release",
+            "2026.06",
+            "--rendered-at",
+            "2026-06-19T00:00:00Z",
+            "--source-repo",
+            "git@example:stacks/science-stack",
+            "--source-commit",
+            "0375b16fdeadbeef0123456789abcdef01234567",
+        ],
+    )
+
+    assert second.exit_code != 0
+    assert "workspace-exists" in second.output
+    assert "workspace already exists" in second.output
 
 
 def test_publish_manifest_missing_workspace_returns_clear_error() -> None:
