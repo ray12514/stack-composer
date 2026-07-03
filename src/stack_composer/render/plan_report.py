@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from stack_composer.render.fabric import (
+    observed_fabric_userspace,
+    selected_common_scope_fabric_userspace,
+    unselected_fabric_userspace,
+)
 from stack_composer.render.release import ReleaseVars
 
 
@@ -45,7 +50,7 @@ def render_plan_report(
         "deployment_roots": deployment.get("roots", {}),
         "rendered_scopes": rendered_scopes,
         "lanes": [lane_report(lane) for lane in lanes],
-        "network_plan": network_plan(lanes),
+        "network_plan": network_plan(profile, stack, lanes),
         "module_plan": module_plan,
         "skipped_builds": skipped_builds,
         "applied_narrowing": applied_narrowing,
@@ -84,8 +89,10 @@ def lane_report(lane: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
-def network_plan(lanes: list[dict[str, Any]]) -> dict[str, Any]:
-    """Summarize MPI/toolchain decisions for lanes that use a network provider."""
+def network_plan(
+    profile: dict[str, Any], stack: dict[str, Any], lanes: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Summarize MPI/toolchain and fabric/runtime decisions."""
     providers: dict[tuple[str, str | None, str | None], dict[str, Any]] = {}
     for lane in lanes:
         provider = lane.get("mpi_provider")
@@ -124,4 +131,15 @@ def network_plan(lanes: list[dict[str, Any]]) -> dict[str, Any]:
     )
     for entry in provider_entries:
         entry["toolchains"].sort(key=lambda item: item["name"])
-    return {"mpi_providers": provider_entries}
+
+    fabric_mode = (stack.get("externals") or {}).get("fabric_userspace", "prefer_platform")
+    selected_fabric = selected_common_scope_fabric_userspace(profile, fabric_mode)
+    return {
+        "mpi_providers": provider_entries,
+        "fabric_userspace": {
+            "mode": fabric_mode,
+            "observed": observed_fabric_userspace(profile),
+            "rendered_common_externals": selected_fabric,
+            "not_rendered": unselected_fabric_userspace(profile, selected_fabric),
+        },
+    }

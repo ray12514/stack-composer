@@ -56,6 +56,28 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
             ],
         }
     ]
+    assert render_plan["network_plan"]["fabric_userspace"] == {
+        "mode": "prefer_platform",
+        "observed": [
+            {
+                "name": "libfabric",
+                "version": "1.20",
+                "prefix": "/opt/cray/libfabric/1.20",
+                "modules": [],
+            },
+            {"name": "ucx", "version": "1.15", "prefix": "/usr", "modules": []},
+        ],
+        "rendered_common_externals": [
+            {
+                "name": "libfabric",
+                "version": "1.20",
+                "prefix": "/opt/cray/libfabric/1.20",
+                "modules": [],
+            },
+            {"name": "ucx", "version": "1.15", "prefix": "/usr", "modules": []},
+        ],
+        "not_rendered": [],
+    }
     assert render_plan["module_plan"]["exposure"] == "front_door"
     assert render_plan["module_plan"]["enabled"] is True
 

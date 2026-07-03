@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from stack_composer.render.fabric import selected_common_scope_fabric_userspace
 from stack_composer.render.mpi import (
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
@@ -353,16 +354,9 @@ def common_external_packages(
     packages: dict[str, dict[str, Any]] = {}
 
     fabric_names: set[str] = set()
-    fabric_by_name: dict[str, list[dict[str, Any]]] = {}
-    if fabric_policy in {"prefer_platform", "mixed"}:
-        for userspace in (profile.get("fabric") or {}).get("userspace") or []:
-            fabric_by_name.setdefault(userspace["name"], []).append(userspace)
-        for name, entries in fabric_by_name.items():
-            ranked = sorted(entries, key=lambda entry: fabric_userspace_sort_key(profile, entry))
-            selected = ranked if fabric_policy == "mixed" else ranked[:1]
-            for userspace in selected:
-                add_external(packages, userspace)
-            fabric_names.add(name)
+    for userspace in selected_common_scope_fabric_userspace(profile, fabric_policy):
+        add_external(packages, userspace)
+        fabric_names.add(userspace["name"])
 
     for external in profile.get("system_externals") or []:
         if external_policy.get(external["name"]) != "system":
@@ -396,15 +390,6 @@ def add_external(packages: dict[str, dict[str, Any]], external: dict[str, Any]) 
             "modules": external.get("modules") or [],
         }
     )
-
-
-def fabric_userspace_sort_key(profile: dict[str, Any], entry: dict[str, Any]) -> tuple[int, str]:
-    prefix = entry.get("prefix", "")
-    is_cray_platform = (
-        (profile.get("fabric") or {}).get("type") == "slingshot"
-        and prefix.startswith("/opt/cray/")
-    )
-    return (0 if is_cray_platform else 1, entry.get("name", ""))
 
 
 def required_scopes(profile: dict[str, Any], rendered_lanes: list[dict[str, Any]]) -> list[str]:

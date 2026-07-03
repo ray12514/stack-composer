@@ -568,6 +568,55 @@ def test_common_scope_mixed_fabric_userspace_keeps_duplicates_under_one_key(
     ]
 
 
+def test_cray_runtime_fabric_userspace_is_reported_but_not_rendered_by_default(
+    tmp_path: Path,
+) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["fabric"]["userspace"].extend(
+        [
+            {
+                "name": "cray-gtl",
+                "version": "9.1.0",
+                "prefix": "/opt/cray/pe/mpich/9.1.0/gtl",
+            },
+            {
+                "name": "cray-pmi",
+                "version": "6.1.15",
+                "prefix": "/opt/cray/pe/pmi/6.1.15",
+            },
+            {
+                "name": "cray-pals",
+                "version": "1.4.0",
+                "prefix": "/opt/cray/pe/pals/1.4.0",
+            },
+        ]
+    )
+
+    workspace = render_profile(tmp_path / "out", write_profile(tmp_path, profile))
+
+    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "cray-gtl:" not in common_text
+    assert "cray-pmi:" not in common_text
+    assert "cray-pals:" not in common_text
+
+    render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
+    fabric_plan = render_plan["network_plan"]["fabric_userspace"]
+    assert {"cray-gtl", "cray-pmi", "cray-pals"} <= {
+        item["name"] for item in fabric_plan["observed"]
+    }
+    assert {"cray-gtl", "cray-pmi", "cray-pals"} <= {
+        item["name"] for item in fabric_plan["not_rendered"]
+    }
+    assert all(
+        item["reason"] == "requires_explicit_package_repo_policy"
+        for item in fabric_plan["not_rendered"]
+        if item["name"] in {"cray-gtl", "cray-pmi", "cray-pals"}
+    )
+
+
 def test_stack_built_system_external_policy_does_not_render_external(tmp_path: Path) -> None:
     profile, _stack = fixture_context("example-cray")
     profile = deepcopy(profile)
