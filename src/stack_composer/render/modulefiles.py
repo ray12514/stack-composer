@@ -16,6 +16,7 @@ def render_front_door_modules(
     stack: dict[str, Any],
     lanes: list[dict[str, Any]],
     release_tag: str,
+    module_plan: dict[str, Any] | None = None,
 ) -> None:
     """Render Tcl front-door modulefiles.
 
@@ -24,13 +25,85 @@ def render_front_door_modules(
     module establishes the compiler/foundation layer and exposes lane modules;
     each lane module exposes only that lane's package-module root.
     """
+    module_plan = module_plan or build_front_door_module_plan(
+        profile=profile,
+        stack=stack,
+        lanes=lanes,
+        release_tag=release_tag,
+    )
+    if not module_plan["enabled"]:
+        return
+
+    core_by_compiler = {
+        lane["compiler"]: lane
+        for lane in lanes
+        if lane.get("kind") == "cpu" and lane.get("lane") == "core"
+    }
+    public_lanes = [
+        lane
+        for lane in lanes
+        if lane.get("publish", True) and not is_compiler_init_lane(lane)
+    ]
+
+    for init_entry in module_plan["init_modules"]:
+        compiler = init_entry["compiler"]
+        content = compiler_init_module_text(
+            init_module_name=init_entry["name"],
+            module_root=module_plan["module_root"],
+            compiler=compiler,
+            release_tag=release_tag,
+            prereqs=init_entry["prereqs"],
+            core_lane=core_by_compiler.get(compiler),
+            lane_module_root=init_entry["lane_module_root"],
+        )
+        path = pending / init_entry["file"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+    for lane_entry in module_plan["lane_modules"]:
+        lane = lane_by_name(public_lanes, lane_entry["lane"])
+        content = lane_module_text(
+            module_root=module_plan["module_root"],
+            lane=lane,
+            public_name=lane_entry["public_name"],
+            release_tag=release_tag,
+            prereqs=lane_entry["prereqs"],
+            conflicts=lane_entry["conflicts"],
+        )
+        path = pending / lane_entry["file"]
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+
+
+def build_front_door_module_plan(
+    *,
+    profile: dict[str, Any],
+    stack: dict[str, Any],
+    lanes: list[dict[str, Any]],
+    release_tag: str,
+) -> dict[str, Any]:
+    """Describe stack-owned module exposure for the current front-door model.
+
+    Spack owns package modulefiles. Stack Composer owns the presentation layer
+    that lets a user reach those package modules: compiler init modules and lane
+    selector modules. This plan is the explicit contract shared by reports and
+    the modulefile emitter.
+    """
     modules = stack.get("modules") or {}
-    if modules.get("exposure", "front_door") != "front_door":
-        return
+    exposure = modules.get("exposure", "front_door")
     module_root = modules.get("module_root")
-    if not module_root:
-        return
     init_module = modules.get("init_module")
+    plan: dict[str, Any] = {
+        "exposure": exposure,
+        "enabled": False,
+        "module_root": module_root,
+        "release": release_tag,
+        "init_modules": [],
+        "lane_modules": [],
+    }
+    if exposure != "front_door" or not module_root or not init_module:
+        return plan
+
     core_by_compiler = {
         lane["compiler"]: lane
         for lane in lanes
@@ -44,49 +117,58 @@ def render_front_door_modules(
     public_names = lane_public_names(public_lanes)
 
     for compiler in sorted({lane["compiler"] for lane in lanes if lane.get("publish", True)}):
-        if not init_module:
-            continue
         fake_lane = {"name": f"{compiler}-init", "compiler": compiler}
         prereqs, issues = platform_module_prereqs_for_lane(fake_lane, profile)
         if issues:
             raise ValidationFailed(issues)
-        lane_root = lane_module_root_for_compiler(compiler, lanes)
-        content = compiler_init_module_text(
-            init_module_name=compiler_init_module_name(init_module, compiler),
-            module_root=module_root,
-            compiler=compiler,
-            release_tag=release_tag,
-            prereqs=prereqs,
-            core_lane=core_by_compiler.get(compiler),
-            lane_module_root=lane_root,
+        name = compiler_init_module_name(init_module, compiler)
+        core_lane = core_by_compiler.get(compiler)
+        plan["init_modules"].append(
+            {
+                "name": name,
+                "compiler": compiler,
+                "file": posixpath.join("modulefiles", name),
+                "prereqs": prereqs,
+                "core_lane": core_lane["name"] if core_lane else None,
+                "core_view_root": core_lane["view_root"] if core_lane else None,
+                "lane_module_root": lane_module_root_for_compiler(compiler, lanes),
+            }
         )
-        path = pending / "modulefiles" / compiler_init_module_name(init_module, compiler)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
 
     for lane in public_lanes:
-        if not lane.get("publish", True):
-            continue
         prereqs, issues = platform_module_prereqs_for_lane(lane, profile)
         if issues:
             raise ValidationFailed(issues)
         public_name = public_names[lane["name"]]
-        content = lane_module_text(
-            module_root=module_root,
-            lane=lane,
-            public_name=public_name,
-            release_tag=release_tag,
-            prereqs=prereqs,
-            conflicts=[
-                f"{module_root}/{name}"
-                for lane_name, name in sorted(public_names.items())
-                if lane_name != lane["name"]
-                and lane_by_name(public_lanes, lane_name)["compiler"] == lane["compiler"]
-            ],
+        conflicts = [
+            f"{module_root}/{name}"
+            for lane_name, name in sorted(public_names.items())
+            if lane_name != lane["name"]
+            and lane_by_name(public_lanes, lane_name)["compiler"] == lane["compiler"]
+        ]
+        plan["lane_modules"].append(
+            {
+                "lane": lane["name"],
+                "lane_id": lane["lane"],
+                "compiler": lane["compiler"],
+                "kind": lane["kind"],
+                "public_name": public_name,
+                "file": posixpath.join(
+                    "modulefiles",
+                    lane["compiler"],
+                    "lanes",
+                    module_root,
+                    public_name,
+                ),
+                "prereqs": prereqs,
+                "conflicts": conflicts,
+                "view_root": lane["view_root"],
+                "package_module_root": lane["package_module_root"],
+            }
         )
-        path = pending / "modulefiles" / lane["compiler"] / "lanes" / module_root / public_name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+
+    plan["enabled"] = bool(plan["init_modules"] or plan["lane_modules"])
+    return plan
 
 
 def is_compiler_init_lane(lane: dict[str, Any]) -> bool:

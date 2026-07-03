@@ -33,6 +33,31 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     assert manifest["phase"] == "draft"
     assert manifest["templates"]["render_tool"]["name"] == "stack-composer render"
     assert {lane["kind"] for lane in manifest["lanes"]} == {"cpu", "mpi", "gpu"}
+    render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
+    assert render_plan["system"]["name"] == "example-cray"
+    assert render_plan["stack"]["name"] == "science-stack"
+    assert {lane["kind"] for lane in render_plan["lanes"]} == {"cpu", "mpi", "gpu"}
+    assert render_plan["network_plan"]["mpi_providers"] == [
+        {
+            "provider": "cray-mpich",
+            "version": "8.1.29",
+            "source": "platform",
+            "toolchains": [
+                {
+                    "name": "cce1701_craympich8129",
+                    "compiler": "cce",
+                    "compiler_ref": "cce",
+                },
+                {
+                    "name": "gcc1330_craympich8129",
+                    "compiler": "gcc",
+                    "compiler_ref": "gcc",
+                },
+            ],
+        }
+    ]
+    assert render_plan["module_plan"]["exposure"] == "front_door"
+    assert render_plan["module_plan"]["enabled"] is True
 
 
 def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None:
@@ -76,6 +101,41 @@ def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None
         'prepend-path MODULEPATH "/shared/stack/modules/2026.06/example-cray/'
         'science-stack/gcc/core"'
     ) not in text
+
+    render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
+    module_plan = render_plan["module_plan"]
+    assert module_plan["module_root"] == "science"
+    gcc_init = next(
+        entry for entry in module_plan["init_modules"] if entry["name"] == "science_init_gcc"
+    )
+    assert gcc_init == {
+        "name": "science_init_gcc",
+        "compiler": "gcc",
+        "file": "modulefiles/science_init_gcc",
+        "prereqs": ["PrgEnv-gnu", "gcc-native/13"],
+        "core_lane": "gcc-core",
+        "core_view_root": "/shared/stack/views/2026.06/example-cray/science-stack/gcc/core",
+        "lane_module_root": (
+            "/shared/stack/modules/2026.06/example-cray/science-stack/gcc/lanes"
+        ),
+    }
+    gpu_module = next(
+        entry for entry in module_plan["lane_modules"] if entry["lane_id"] == "gpu-craympich-gfx90a"
+    )
+    assert gpu_module["public_name"] == "gpu"
+    assert gpu_module["file"] == "modulefiles/gcc/lanes/science/gpu"
+    assert gpu_module["prereqs"] == [
+        "PrgEnv-gnu",
+        "gcc-native/13",
+        "cray-mpich/8.1.29",
+        "rocm/6.0.0",
+    ]
+    assert "science/mpi" in gpu_module["conflicts"]
+    assert "science/serial" in gpu_module["conflicts"]
+    assert gpu_module["package_module_root"] == (
+        "/shared/stack/modules/2026.06/example-cray/science-stack/"
+        "gcc/gpu-craympich-gfx90a"
+    )
 
 
 def test_render_workspace_uses_build_names_when_lane_names_collide(tmp_path: Path) -> None:
@@ -168,6 +228,11 @@ def test_render_workspace_skips_front_door_modules_for_direct_exposure(tmp_path:
     )
 
     assert not (workspace / "modulefiles").exists()
+    render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
+    assert render_plan["module_plan"]["exposure"] == "direct"
+    assert render_plan["module_plan"]["enabled"] is False
+    assert render_plan["module_plan"]["init_modules"] == []
+    assert render_plan["module_plan"]["lane_modules"] == []
 
 
 def test_render_workspace_handles_generic_linux_without_gpu(tmp_path: Path) -> None:

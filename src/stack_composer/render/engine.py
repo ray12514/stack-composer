@@ -9,8 +9,12 @@ from stack_composer.manifest.draft import draft_manifest
 from stack_composer.render.context import build_render_context
 from stack_composer.render.deployment import materialize_lane_paths
 from stack_composer.render.environments import render_lane_environment
-from stack_composer.render.modulefiles import render_front_door_modules
+from stack_composer.render.modulefiles import (
+    build_front_door_module_plan,
+    render_front_door_modules,
+)
 from stack_composer.render.plan import plan_lanes
+from stack_composer.render.plan_report import render_plan_report
 from stack_composer.render.release import ReleaseVars
 from stack_composer.render.scopes import (
     make_jinja_environment,
@@ -58,11 +62,18 @@ def render_workspace(
         deployment=deployment,
         release_tag=release_vars.release_tag,
     )
+    module_plan = build_front_door_module_plan(
+        profile=profile,
+        stack=stack,
+        lanes=rendered_lanes,
+        release_tag=release_vars.release_tag,
+    )
     render_context = build_render_context(
         base_context=context,
         rendered_lanes=rendered_lanes,
         skipped_builds=skipped_builds,
         applied_narrowing=applied_narrowing,
+        module_plan=module_plan,
         release_vars=release_vars,
         renderer_identity={"name": "stack-composer render", "version": __version__},
     )
@@ -108,6 +119,21 @@ def render_workspace(
             stack=stack,
             lanes=rendered_lanes,
             release_tag=release_vars.release_tag,
+            module_plan=render_context["module_plan"],
+        )
+        write_yaml(
+            pending / "reports" / "render-plan.yaml",
+            render_plan_report(
+                profile=profile,
+                stack=stack,
+                deployment=deployment,
+                lanes=rendered_lanes,
+                skipped_builds=skipped_builds,
+                applied_narrowing=applied_narrowing,
+                release_vars=release_vars,
+                module_plan=render_context["module_plan"],
+                rendered_scopes=rendered_scopes,
+            ),
         )
         rendered_issues = validate_rendered_workspace(pending)
         if rendered_issues:

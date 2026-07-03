@@ -12,6 +12,7 @@ def build_render_context(
     rendered_lanes: list[dict[str, Any]],
     skipped_builds: list[dict[str, str]],
     applied_narrowing: dict[str, Any] | None,
+    module_plan: dict[str, Any],
     release_vars: ReleaseVars,
     renderer_identity: dict[str, str],
 ) -> MappingProxyType:
@@ -26,6 +27,7 @@ def build_render_context(
         "rendered_lanes": rendered_lanes,
         "skipped_builds": skipped_builds,
         "applied_narrowing": applied_narrowing,
+        "module_plan": module_plan,
         "release_vars": release_vars_dict(release_vars, profile["system"]["name"]),
         "renderer_identity": renderer_identity,
     }
