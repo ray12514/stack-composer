@@ -14,6 +14,7 @@ from stack_composer.render.mpi import (
     select_compiler_provider,
 )
 from stack_composer.render.plan import vendor_scope_for_provider
+from stack_composer.render.platform import selected_system_externals
 from stack_composer.render.spack_specs import (
     external_spec,
     is_absolute_prefix,
@@ -358,7 +359,7 @@ def common_external_packages(
         add_external(packages, userspace)
         fabric_names.add(userspace["name"])
 
-    for external in profile.get("system_externals") or []:
+    for external in selected_system_externals(profile, stack):
         if external_policy.get(external["name"]) != "system":
             continue
         if fabric_policy == "prefer_platform" and external["name"] in fabric_names:

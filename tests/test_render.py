@@ -37,6 +37,15 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     assert render_plan["system"]["name"] == "example-cray"
     assert render_plan["stack"]["name"] == "science-stack"
     assert {lane["kind"] for lane in render_plan["lanes"]} == {"cpu", "mpi", "gpu"}
+    assert render_plan["platform_plan"] == {
+        "family": "cray-pe",
+        "release_policy": {
+            "selector": "latest",
+            "scope": "platform_system_externals",
+        },
+        "selected_system_externals": [],
+        "ignored_system_externals": [],
+    }
     assert render_plan["network_plan"]["mpi_providers"] == [
         {
             "provider": "cray-mpich",

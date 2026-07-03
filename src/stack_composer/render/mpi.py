@@ -16,6 +16,7 @@ from stack_composer.render.spack_specs import (
     is_compiler_fragment,
     is_renderable_external_name_version,
 )
+from stack_composer.render.versioning import version_key
 
 _TOKEN_RE = re.compile(r"[^A-Za-z0-9]+")
 
@@ -175,6 +176,12 @@ def select_platform_mpi(
             f"system; profile reports version(s): {available}",
         )
     if len(candidates) > 1:
+        if all(candidate.get("provider_family") == "platform" for candidate in candidates):
+            selected = max(
+                candidates,
+                key=lambda candidate: version_key(candidate["version"]),
+            )
+            return selected, None, None
         available = ", ".join(sorted({str(c.get("version")) for c in candidates}))
         return (
             None,

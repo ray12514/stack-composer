@@ -468,6 +468,79 @@ def test_rendered_common_scope_uses_arbitrary_system_external_policy(tmp_path: P
     }
 
 
+def test_platform_system_external_policy_renders_latest_generation(
+    tmp_path: Path,
+) -> None:
+    profile, _stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["system_externals"].extend(
+        [
+            {
+                "name": "cray-libsci",
+                "version": "24.03.0",
+                "prefix": "/opt/cray/pe/libsci/24.03.0/CRAY/17.0/x86_64",
+                "provider_family": "platform",
+                "modules": ["cray-libsci/24.03.0"],
+            },
+            {
+                "name": "cray-libsci",
+                "version": "26.03.0",
+                "prefix": "/opt/cray/pe/libsci/26.03.0/CRAY/20.0/x86_64",
+                "provider_family": "platform",
+                "modules": ["cray-libsci/26.03.0"],
+            },
+            {
+                "name": "cray-libsci",
+                "version": "26.03.0",
+                "prefix": "/opt/cray/pe/libsci/26.03.0/GNU/12.3/x86_64",
+                "provider_family": "platform",
+                "modules": ["cray-libsci/26.03.0"],
+            },
+        ]
+    )
+    workspace = render_profile(tmp_path / "out", write_profile(tmp_path, profile))
+
+    common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
+    externals = common["packages"]["cray-libsci"]["externals"]
+    assert [external["spec"] for external in externals] == [
+        "cray-libsci@26.03.0",
+        "cray-libsci@26.03.0",
+    ]
+    assert {external["prefix"] for external in externals} == {
+        "/opt/cray/pe/libsci/26.03.0/CRAY/20.0/x86_64",
+        "/opt/cray/pe/libsci/26.03.0/GNU/12.3/x86_64",
+    }
+
+    render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
+    platform_plan = render_plan["platform_plan"]
+    assert platform_plan["release_policy"]["selector"] == "latest"
+    assert {
+        (item["name"], item["version"], item["prefix"])
+        for item in platform_plan["selected_system_externals"]
+    } == {
+        (
+            "cray-libsci",
+            "26.03.0",
+            "/opt/cray/pe/libsci/26.03.0/CRAY/20.0/x86_64",
+        ),
+        (
+            "cray-libsci",
+            "26.03.0",
+            "/opt/cray/pe/libsci/26.03.0/GNU/12.3/x86_64",
+        ),
+    }
+    assert platform_plan["ignored_system_externals"] == [
+        {
+            "name": "cray-libsci",
+            "version": "24.03.0",
+            "prefix": "/opt/cray/pe/libsci/24.03.0/CRAY/17.0/x86_64",
+            "modules": ["cray-libsci/24.03.0"],
+            "reason": "older_than_selected_platform_version",
+            "selected_version": "26.03.0",
+        }
+    ]
+
+
 def test_invalid_system_external_is_not_rendered(tmp_path: Path) -> None:
     profile, _stack = fixture_context("example-cray")
     profile = deepcopy(profile)
@@ -894,6 +967,42 @@ def test_mpi_version_pin_disambiguates_and_versions_toolchain_names(tmp_path: Pa
     assert {"spec": "%mpi=openmpi@4.1.6", "when": "%mpi"} in toolchains["toolchains"][
         "aocc420_openmpi416"
     ]
+
+
+def test_platform_mpi_multiple_versions_defaults_to_latest() -> None:
+    profile, stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["mpi_providers"].append(
+        {
+            "name": "cray-mpich",
+            "version": "9.1.0",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "compatibility": {"compilers": ["gcc"]},
+            "flavors": {
+                "gcc": {
+                    "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3",
+                    "modules": ["cray-mpich/9.1.0"],
+                }
+            },
+        }
+    )
+    stack["builds"] = [
+        {
+            "name": "mpi",
+            "kind": "mpi",
+            "compilers": ["gcc"],
+            "mpi": {"provider": "cray-mpich", "source": "platform"},
+            "specs": ["hdf5+mpi"],
+        }
+    ]
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    assert issues == []
+    lane = lane_by_name(lanes, "gcc-mpi-craympich")
+    assert lane["mpi_version"] == "9.1.0"
+    assert lane["toolchain"] == "gcc1330_craympich910"
 
 
 def test_single_version_provider_uses_versioned_spec_safe_toolchain_name() -> None:

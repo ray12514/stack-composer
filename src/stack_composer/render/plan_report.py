@@ -7,6 +7,7 @@ from stack_composer.render.fabric import (
     selected_common_scope_fabric_userspace,
     unselected_fabric_userspace,
 )
+from stack_composer.render.platform import platform_plan
 from stack_composer.render.release import ReleaseVars
 
 
@@ -50,6 +51,7 @@ def render_plan_report(
         "deployment_roots": deployment.get("roots", {}),
         "rendered_scopes": rendered_scopes,
         "lanes": [lane_report(lane) for lane in lanes],
+        "platform_plan": platform_plan(profile, stack),
         "network_plan": network_plan(profile, stack, lanes),
         "module_plan": module_plan,
         "skipped_builds": skipped_builds,
