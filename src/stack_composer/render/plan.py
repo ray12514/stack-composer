@@ -14,6 +14,7 @@ from stack_composer.render.mpi import (
     select_platform_mpi,
 )
 from stack_composer.render.spack_specs import is_renderable_external_name_version
+from stack_composer.render.versioning import version_key
 from stack_composer.resolve.build_kind import normalize_builds
 
 # Conservative shared target for `target: baseline`.
@@ -50,8 +51,7 @@ def plan_lanes(
         if had_candidates_before_narrowing:
             reason_code = "per_system_empty"
             reason = (
-                f"per_system.{system_name} narrowing dropped every lane "
-                f"for build {build['name']!r}"
+                f"per_system.{system_name} narrowing dropped every lane for build {build['name']!r}"
             )
         if build.get("required", False) or reason_code in _HARD_REASON_CODES:
             issues.append(
@@ -115,9 +115,7 @@ def lane_candidates_for_build(
             )
         if mpi_source == "platform":
             mpi_config = build.get("mpi") or stack.get("mpi") or {}
-            requested_version = (
-                mpi_config.get("version") if isinstance(mpi_config, dict) else None
-            )
+            requested_version = mpi_config.get("version") if isinstance(mpi_config, dict) else None
             mpi_record, error_code, error = select_platform_mpi(
                 profile, mpi_provider, requested_version
             )
@@ -162,9 +160,17 @@ def lane_candidates_for_build(
                     continue
                 lanes.append(
                     make_lane(
-                        profile, stack, build, kind, compiler,
-                        mpi_provider, mpi_source, mpi_record,
-                        target_for(target_policy, node), node_name, arch,
+                        profile,
+                        stack,
+                        build,
+                        kind,
+                        compiler,
+                        mpi_provider,
+                        mpi_source,
+                        mpi_record,
+                        target_for(target_policy, node),
+                        node_name,
+                        arch,
                     )
                 )
     else:
@@ -173,8 +179,17 @@ def lane_candidates_for_build(
         for compiler in compilers:
             lanes.append(
                 make_lane(
-                    profile, stack, build, kind, compiler,
-                    mpi_provider, mpi_source, mpi_record, target, node_name, None,
+                    profile,
+                    stack,
+                    build,
+                    kind,
+                    compiler,
+                    mpi_provider,
+                    mpi_source,
+                    mpi_record,
+                    target,
+                    node_name,
+                    None,
                 )
             )
     return lanes, "no_candidates", "no lane candidates produced"
@@ -232,6 +247,14 @@ def resolve_compilers(
     selection = build.get("compilers") or stack.get("compilers") or "baseline"
     if selection == "baseline":
         if "gcc" in available:
+            candidates = compiler_provider_candidates(profile, "gcc")
+            if len(candidates) > 1:
+                return (
+                    [compiler_provider_ref(preferred_baseline_compiler_provider(candidates))],
+                    [],
+                    False,
+                    None,
+                )
             refs, missing, error = resolve_compiler_refs(profile, ["gcc"])
             return refs, missing, False, error
         if not available:
@@ -240,12 +263,17 @@ def resolve_compilers(
         return refs, missing, False, error
     if selection == "all":
         duplicate_names = compiler_duplicate_names(profile)
-        return [
-            compiler_provider_ref(provider)
-            if provider["name"] in duplicate_names
-            else str(provider["name"])
-            for provider in renderable_compiler_providers(profile)
-        ], [], False, None
+        return (
+            [
+                compiler_provider_ref(provider)
+                if provider["name"] in duplicate_names
+                else str(provider["name"])
+                for provider in renderable_compiler_providers(profile)
+            ],
+            [],
+            False,
+            None,
+        )
     selected, missing, error = resolve_compiler_refs(profile, selection)
     return selected, missing, True, error
 
@@ -268,14 +296,18 @@ def resolve_compiler_refs(
             available = ", ".join(
                 sorted(compiler_provider_ref(provider) for provider in candidates)
             )
-            return [], [], {
-                "code": "compiler_ambiguous",
-                "message": (
-                    f"compiler {requested_name!r} is ambiguous: the profile reports "
-                    f"{available}; set compilers to an exact version such as "
-                    f"{compiler_provider_ref(candidates[0])}"
-                ),
-            }
+            return (
+                [],
+                [],
+                {
+                    "code": "compiler_ambiguous",
+                    "message": (
+                        f"compiler {requested_name!r} is ambiguous: the profile reports "
+                        f"{available}; set compilers to an exact version such as "
+                        f"{compiler_provider_ref(candidates[0])}"
+                    ),
+                },
+            )
         selected.append(requested_name)
     return selected, missing, None
 
@@ -297,6 +329,23 @@ def compiler_provider_candidates(profile: dict[str, Any], requested: str) -> lis
     if requested_version:
         return [provider for provider in candidates if provider.get("version") == requested_version]
     return candidates
+
+
+def preferred_baseline_compiler_provider(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pick a deterministic lean default from duplicate same-name compilers.
+
+    `baseline` is policy, not an explicit user request. Prefer the platform
+    provider when the profile has one, otherwise site, otherwise system; within
+    each bucket choose the newest version.
+    """
+    family_rank = {"platform": 3, "site": 2, "system": 1}
+    return max(
+        candidates,
+        key=lambda provider: (
+            family_rank.get(str(provider.get("provider_family")), 0),
+            version_key(str(provider.get("version", ""))),
+        ),
+    )
 
 
 def compiler_ref_matches(compiler: str, compatible: str) -> bool:

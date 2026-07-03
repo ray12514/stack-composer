@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, merge_defaults
 from stack_composer.render.plan import plan_lanes
@@ -88,3 +90,42 @@ def test_per_build_compiler_override_narrows_lanes() -> None:
     lanes, _, _, issues = plan_lanes(profile, stack)
     assert issues == []
     assert {lane["compiler"] for lane in lanes} == {"gcc"}
+
+
+def test_baseline_prefers_latest_platform_gcc_when_gcc_is_duplicated() -> None:
+    profile, _ = load_profile(fixture_path("profiles", "example-cray", "profile.yaml"))
+    profile = deepcopy(profile)
+    profile["compiler_providers"].insert(
+        0,
+        {
+            "name": "gcc",
+            "version": "13.3.1",
+            "prefix": "/usr",
+            "provider_family": "system",
+            "languages": ["c", "c++", "fortran"],
+        },
+    )
+    profile["compiler_providers"].append(
+        {
+            "name": "gcc",
+            "version": "14.3.0",
+            "prefix": "/opt/cray/pe/gcc-native/14",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["PrgEnv-gnu", "gcc-native/14"],
+        }
+    )
+    stack = merge_defaults(
+        _v6_defaults(),
+        {
+            "name": "science-stack",
+            "builds": [{"name": "serial", "kind": "cpu", "specs": ["cmake"]}],
+        },
+    )
+
+    lanes, _, _, issues = plan_lanes(profile, stack)
+
+    assert issues == []
+    assert {lane["compiler"] for lane in lanes} == {"gcc"}
+    assert {lane["compiler_ref"] for lane in lanes} == {"gcc@14.3.0"}
