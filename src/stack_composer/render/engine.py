@@ -115,8 +115,6 @@ def render_workspace(
             )
         render_front_door_modules(
             pending=pending,
-            profile=profile,
-            stack=stack,
             lanes=rendered_lanes,
             release_tag=release_vars.release_tag,
             module_plan=render_context["module_plan"],

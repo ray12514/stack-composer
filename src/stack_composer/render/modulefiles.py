@@ -12,25 +12,21 @@ from stack_composer.render.platform_modules import platform_module_prereqs_for_l
 def render_front_door_modules(
     *,
     pending: Path,
-    profile: dict[str, Any],
-    stack: dict[str, Any],
     lanes: list[dict[str, Any]],
     release_tag: str,
-    module_plan: dict[str, Any] | None = None,
+    module_plan: dict[str, Any],
 ) -> None:
-    """Render Tcl front-door modulefiles.
+    """Render Tcl front-door modulefiles from an already-built module plan.
 
     Spack still generates package modulefiles. The stack-owned front door is a
     compiler init module plus one short lane module per published lane. The init
     module establishes the compiler/foundation layer and exposes lane modules;
     each lane module exposes only that lane's package-module root.
+
+    The plan is required, never rebuilt here: the same object must feed this
+    emitter and reports/render-plan.yaml, or the report can lie about the
+    modulefiles on disk.
     """
-    module_plan = module_plan or build_front_door_module_plan(
-        profile=profile,
-        stack=stack,
-        lanes=lanes,
-        release_tag=release_tag,
-    )
     if not module_plan["enabled"]:
         return
 
