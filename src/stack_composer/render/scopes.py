@@ -13,6 +13,7 @@ from stack_composer.render.mpi import (
     compiler_provider_ref,
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
+    select_flavor_compiler,
 )
 from stack_composer.render.plan import vendor_scope_for_provider
 from stack_composer.render.platform import selected_system_externals
@@ -161,7 +162,11 @@ def mpi_provider_externals(
         for compiler, flavor in sorted(provider.get("flavors", {}).items()):
             if not is_compiler_fragment(compiler) or not is_absolute_prefix(flavor.get("prefix")):
                 continue
-            compiler_provider = select_compiler_provider(profile, compiler)
+            # Bind the flavor to the compiler the lane will actually use, not
+            # the product-tree baseline in the flavor key. A flavor whose family
+            # has no rendered compiler is an orphan and is dropped rather than
+            # emitted as a dangling %<compiler> external.
+            compiler_provider = select_flavor_compiler(profile, compiler, provider)
             if not compiler_provider:
                 continue
             compiler_ref = compiler_provider_ref(compiler_provider)

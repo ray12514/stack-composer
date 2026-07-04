@@ -176,6 +176,32 @@ def compiler_ref_satisfies_flavor(
     return compiler_version_matches(compiler_version, flavor_version)
 
 
+def select_flavor_compiler(
+    profile: dict[str, Any], flavor_compiler: str, provider: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """The rendered compiler an MPI flavor binds to under its flavor policy.
+
+    A product-tree flavor key advertises a compiler baseline (`gcc@12.3`).
+    Return the newest rendered compiler provider of that family that satisfies
+    the baseline (family_min_version for Cray MPICH, exact otherwise), or None
+    when no compiler of that family is present. None means the flavor is an
+    orphan on this system and must not be emitted as a dangling external.
+    """
+    flavor_name, _flavor_version = compiler_fragment_name_version(flavor_compiler)
+    satisfying = [
+        candidate
+        for candidate in profile.get("compiler_providers") or []
+        if candidate.get("name") == flavor_name
+        and is_renderable_external_name_version(candidate.get("name"), candidate.get("version"))
+        and compiler_ref_satisfies_flavor(
+            compiler_provider_ref(candidate), flavor_compiler, provider
+        )
+    ]
+    if not satisfying:
+        return None
+    return max(satisfying, key=lambda candidate: version_key(str(candidate["version"])))
+
+
 def mpi_toolchain_name_for_profile(
     profile: dict[str, Any],
     compiler: str,

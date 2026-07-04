@@ -996,6 +996,68 @@ def test_platform_mpi_multiple_versions_defaults_to_latest() -> None:
     assert lane["toolchain"] == "gcc1330_craympich910"
 
 
+def test_cray_mpich_external_binds_newer_compiler_and_drops_orphan_flavor(
+    tmp_path: Path,
+) -> None:
+    # Blueback reality: the only gcc is newer than the cray-mpich gnu flavor
+    # baseline, and there is no aocc compiler at all. The gnu flavor external
+    # must bind the actual gcc (family_min_version), and the aocc flavor must
+    # be dropped rather than emitted as a dangling %aocc reference.
+    profile, stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    for provider in profile["compiler_providers"]:
+        if provider["name"] == "gcc":
+            provider["version"] = "14.3.0"
+            provider["prefix"] = "/opt/cray/pe/gcc-native/14"
+            provider["modules"] = ["PrgEnv-gnu", "gcc-native/14"]
+    profile["mpi_providers"].append(
+        {
+            "name": "cray-mpich",
+            "version": "9.1.0",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "compatibility": {"compilers": ["gcc", "aocc"]},
+            "flavors": {
+                "gcc@12.3": {
+                    "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3",
+                    "modules": ["cray-mpich/9.1.0"],
+                },
+                "aocc@4.1": {
+                    "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/aocc/4.1",
+                    "modules": ["cray-mpich/9.1.0"],
+                },
+            },
+        }
+    )
+    stack = {
+        "schema_version": 1,
+        "name": "science-stack",
+        "profile_contract": {"schema_version": 1},
+        "templates": {"set": "v6"},
+        "spack": {"version": ">=1.1.1,<1.2"},
+        "builds": [
+            {
+                "name": "mpi",
+                "kind": "mpi",
+                "compilers": ["gcc"],
+                "mpi": {"provider": "cray-mpich", "source": "platform", "version": "9.1.0"},
+                "specs": ["hdf5+mpi"],
+            }
+        ],
+    }
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        write_profile(tmp_path / "profile", profile),
+        write_stack(tmp_path / "stack", stack),
+    )
+
+    cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
+    specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
+    assert "cray-mpich@9.1.0 %gcc@14.3.0" in specs
+    assert not any("aocc" in spec for spec in specs)
+
+
 def test_cray_mpi_baseline_renders_newer_lane_compiler_toolchain(tmp_path: Path) -> None:
     profile, stack = fixture_context("example-cray")
     profile = deepcopy(profile)
@@ -1057,7 +1119,11 @@ def test_cray_mpi_baseline_renders_newer_lane_compiler_toolchain(tmp_path: Path)
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert "cray-mpich@9.1.0 %gcc@12.3.0" in mpich_specs
+    # The external binds the compiler the lane/toolchain actually uses
+    # (gcc@14.3.0), not the older baseline-matched compiler — external and
+    # toolchain must name the same compiler.
+    assert "cray-mpich@9.1.0 %gcc@14.3.0" in mpich_specs
+    assert "cray-mpich@9.1.0 %gcc@12.3.0" not in mpich_specs
 
     toolchains = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml")
     assert toolchains["toolchains"]["gcc1430_craympich910"] == [
