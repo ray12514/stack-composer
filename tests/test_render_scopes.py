@@ -1058,6 +1058,78 @@ def test_cray_mpich_external_binds_newer_compiler_and_drops_orphan_flavor(
     assert not any("aocc" in spec for spec in specs)
 
 
+def test_cray_mpich_scope_renders_only_selected_provider_version(tmp_path: Path) -> None:
+    profile, stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["compiler_providers"] = [
+        {
+            "name": "gcc",
+            "version": "14.3.0",
+            "prefix": "/opt/cray/pe/gcc-native/14",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["PrgEnv-gnu", "gcc-native/14"],
+        }
+    ]
+    profile["mpi_providers"] = [
+        {
+            "name": "cray-mpich",
+            "version": "8.1.32",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "compatibility": {"compilers": ["gcc"]},
+            "flavors": {
+                "gcc@12.3": {
+                    "prefix": "/opt/cray/pe/mpich/8.1.32/ofi/gnu/12.3",
+                    "modules": ["cray-mpich/8.1.32-gcc-14.3.0-qv5sd67"],
+                }
+            },
+        },
+        {
+            "name": "cray-mpich",
+            "version": "9.1.0",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "compatibility": {"compilers": ["gcc"]},
+            "flavors": {
+                "gcc@12.3": {
+                    "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3",
+                    "modules": ["cray-mpich/9.1.0"],
+                }
+            },
+        },
+    ]
+    stack = {
+        "schema_version": 1,
+        "name": "science-stack",
+        "profile_contract": {"schema_version": 1},
+        "templates": {"set": "v6"},
+        "spack": {"version": ">=1.1.1,<1.2"},
+        "builds": [
+            {
+                "name": "gpu",
+                "kind": "gpu",
+                "mpi": {"provider": "cray-mpich", "source": "platform", "version": "9.1.0"},
+                "package_set": "science-full",
+            }
+        ],
+    }
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        write_profile(tmp_path / "profile", profile),
+        write_stack(tmp_path / "stack", stack),
+    )
+
+    cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
+    specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
+    assert specs == ["cray-mpich@9.1.0 %gcc@14.3.0"]
+
+    toolchains = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml")
+    assert set(toolchains["toolchains"]) == {"gcc1430_craympich910"}
+
+
 def test_cray_mpi_baseline_renders_newer_lane_compiler_toolchain(tmp_path: Path) -> None:
     profile, stack = fixture_context("example-cray")
     profile = deepcopy(profile)

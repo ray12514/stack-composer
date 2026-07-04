@@ -132,11 +132,11 @@ def compiler_commands(provider: dict[str, Any]) -> dict[str, str] | None:
     }
 
 
-def mpi_external_packages(profile: dict[str, Any], provider_name: str) -> list[dict[str, Any]]:
+def mpi_external_packages(
+    profile: dict[str, Any], provider_name: str, rendered_lanes: list[dict[str, Any]] | None = None
+) -> list[dict[str, Any]]:
     packages: dict[str, dict[str, Any]] = {}
-    for provider in profile.get("mpi_providers") or []:
-        if provider.get("name") != provider_name:
-            continue
+    for provider in selected_mpi_providers(profile, provider_name, rendered_lanes):
         if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
             continue
         variants = _MPI_PROVIDER_VARIANTS.get(provider_name)
@@ -152,6 +152,28 @@ def mpi_external_packages(profile: dict[str, Any], provider_name: str) -> list[d
             )
             package["externals"].append(external)
     return list(packages.values())
+
+
+def selected_mpi_providers(
+    profile: dict[str, Any], provider_name: str, rendered_lanes: list[dict[str, Any]] | None
+) -> list[dict[str, Any]]:
+    providers = [
+        provider
+        for provider in profile.get("mpi_providers") or []
+        if provider.get("name") == provider_name
+    ]
+    if not rendered_lanes:
+        return providers
+    if not any(provider.get("platform_family") == "cray-pe" for provider in providers):
+        return providers
+    selected_versions = {
+        str(lane["mpi_version"])
+        for lane in rendered_lanes
+        if lane.get("mpi_provider") == provider_name and lane.get("mpi_version")
+    }
+    if not selected_versions:
+        return providers
+    return [provider for provider in providers if str(provider.get("version")) in selected_versions]
 
 
 def mpi_provider_externals(
@@ -202,9 +224,7 @@ def mpi_toolchains(
     profile: dict[str, Any], rendered_lanes: list[dict[str, Any]], provider_name: str
 ) -> list[dict[str, Any]]:
     toolchains: list[dict[str, Any]] = []
-    for provider in profile.get("mpi_providers") or []:
-        if provider.get("name") != provider_name:
-            continue
+    for provider in selected_mpi_providers(profile, provider_name, rendered_lanes):
         if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
             continue
         for compiler in mpi_toolchain_compilers(provider):
