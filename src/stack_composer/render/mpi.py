@@ -142,6 +142,40 @@ def compiler_version_matches(provider_version: str, requested_version: str) -> b
     return provider_version.startswith(requested_version + ".")
 
 
+def compiler_version_at_least(provider_version: str, baseline_version: str) -> bool:
+    return version_key(provider_version) >= version_key(baseline_version)
+
+
+def mpi_flavor_compiler_policy(provider: dict[str, Any] | None) -> str:
+    """How a platform MPI flavor compiler fragment constrains a lane compiler.
+
+    Generic MPI providers default to exact-ish compiler matching. Cray MPICH
+    product-tree flavor paths advertise a compiler baseline for that family
+    (`ofi/gnu/12.3`), not an exact lane compiler pin.
+    """
+    if not provider:
+        return "exact"
+    if provider.get("name") == "cray-mpich" and provider.get("provider_family") == "platform":
+        return "family_min_version"
+    return "exact"
+
+
+def compiler_ref_satisfies_flavor(
+    compiler: str, flavor_compiler: str, provider: dict[str, Any] | None
+) -> bool:
+    compiler_name, compiler_version = compiler_fragment_name_version(compiler)
+    flavor_name, flavor_version = compiler_fragment_name_version(flavor_compiler)
+    if compiler_name != flavor_name:
+        return False
+    if flavor_version is None:
+        return True
+    if compiler_version is None:
+        return True
+    if mpi_flavor_compiler_policy(provider) == "family_min_version":
+        return compiler_version_at_least(compiler_version, flavor_version)
+    return compiler_version_matches(compiler_version, flavor_version)
+
+
 def mpi_toolchain_name_for_profile(
     profile: dict[str, Any],
     compiler: str,

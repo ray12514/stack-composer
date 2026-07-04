@@ -996,6 +996,83 @@ def test_platform_mpi_multiple_versions_defaults_to_latest() -> None:
     assert lane["toolchain"] == "gcc1330_craympich910"
 
 
+def test_cray_mpi_baseline_renders_newer_lane_compiler_toolchain(tmp_path: Path) -> None:
+    profile, stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["compiler_providers"].insert(
+        0,
+        {
+            "name": "gcc",
+            "version": "12.3.0",
+            "prefix": "/usr",
+            "provider_family": "system",
+            "languages": ["c", "c++", "fortran"],
+        },
+    )
+    profile["compiler_providers"].append(
+        {
+            "name": "gcc",
+            "version": "14.3.0",
+            "prefix": "/opt/cray/pe/gcc-native/14",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["PrgEnv-gnu", "gcc-native/14"],
+        }
+    )
+    profile["mpi_providers"].append(
+        {
+            "name": "cray-mpich",
+            "version": "9.1.0",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "compatibility": {"compilers": ["gcc"]},
+            "flavors": {
+                "gcc@12.3": {
+                    "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3",
+                    "modules": ["cray-mpich/9.1.0"],
+                }
+            },
+        }
+    )
+    stack = {
+        "schema_version": 1,
+        "name": "science-stack",
+        "profile_contract": {"schema_version": 1},
+        "templates": {"set": "v6"},
+        "spack": {"version": ">=1.1.1,<1.2"},
+        "builds": [
+            {
+                "name": "gpu",
+                "kind": "gpu",
+                "mpi": {"provider": "cray-mpich", "source": "platform", "version": "9.1.0"},
+                "package_set": "science-full",
+            }
+        ],
+    }
+
+    profile_path = write_profile(tmp_path, profile)
+    stack_path = write_stack(tmp_path, stack)
+    workspace = render_profile_with_stack(tmp_path / "out", profile_path, stack_path)
+
+    cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
+    mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
+    assert "cray-mpich@9.1.0 %gcc@12.3.0" in mpich_specs
+
+    toolchains = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml")
+    assert toolchains["toolchains"]["gcc1430_craympich910"] == [
+        {"spec": "%c=gcc@14.3.0", "when": "%c"},
+        {"spec": "%cxx=gcc@14.3.0", "when": "%cxx"},
+        {"spec": "%fortran=gcc@14.3.0", "when": "%fortran"},
+        {"spec": "%mpi=cray-mpich@9.1.0", "when": "%mpi"},
+    ]
+
+    gpu_env = load_yaml(
+        workspace / "environments" / "gcc1430" / "gpu-craympich-gfx90a" / "spack.yaml"
+    )
+    assert all(spec.endswith(" %gcc1430_craympich910") for spec in gpu_env["spack"]["specs"])
+
+
 def test_single_version_provider_uses_versioned_spec_safe_toolchain_name() -> None:
     # Toolchain identity is stable and Spack-token-safe even when the provider
     # is unambiguous. It names the actual compiler/MPI versions being bound.

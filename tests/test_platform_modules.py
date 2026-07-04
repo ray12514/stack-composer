@@ -25,6 +25,39 @@ def test_returns_compiler_mpi_and_gpu_modules_for_cray_amd_lane() -> None:
     assert modules == ["PrgEnv-gnu", "gcc-native/13", "cray-mpich/8.1.29", "rocm/6.0.0"]
 
 
+def test_cray_mpi_baseline_flavor_matches_newer_same_family_lane_compiler() -> None:
+    lane = {
+        "name": "gcc-gpu",
+        "compiler": "gcc",
+        "compiler_ref": "gcc@14.3.0",
+        "mpi_provider": "cray-mpich",
+        "mpi_source": "platform",
+        "mpi_version": "9.1.0",
+        "gpu_arch": "gfx942",
+    }
+    profile = {
+        "compiler_providers": [
+            {"name": "gcc", "version": "14.3.0", "modules": ["PrgEnv-gnu", "gcc-native/14"]},
+        ],
+        "mpi_providers": [
+            {
+                "name": "cray-mpich",
+                "version": "9.1.0",
+                "provider_family": "platform",
+                "flavors": {
+                    "gcc@12.3": {
+                        "modules": ["cray-mpich/9.1.0"],
+                    }
+                },
+            }
+        ],
+        "gpu_toolkit_modules": {"rocm": {"module": "rocm/7.0.0"}},
+    }
+    modules, issues = platform_module_prereqs_for_lane(lane, profile)
+    assert issues == []
+    assert modules == ["PrgEnv-gnu", "gcc-native/14", "cray-mpich/9.1.0", "rocm/7.0.0"]
+
+
 def test_dedupes_modules_while_preserving_order() -> None:
     lane = {
         "name": "x",
@@ -103,9 +136,7 @@ def test_unknown_compiler_raises_unresolved() -> None:
     profile = {"compiler_providers": [{"name": "gcc", "modules": ["gcc/12"]}]}
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
     assert modules == []
-    assert any(
-        i.code == "unresolved-platform-module" and "'ghost'" in i.message for i in issues
-    )
+    assert any(i.code == "unresolved-platform-module" and "'ghost'" in i.message for i in issues)
 
 
 def test_amd_lane_without_rocm_toolkit_raises_unresolved() -> None:

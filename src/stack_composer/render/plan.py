@@ -4,11 +4,12 @@ from typing import Any
 
 from stack_composer.errors import Issue
 from stack_composer.render.mpi import (
-    compiler_version_matches,
     compiler_fragment_name_version,
     compiler_provider_ref,
     compiler_ref_axis,
     compiler_ref_name,
+    compiler_ref_satisfies_flavor,
+    compiler_version_matches,
     is_renderable_mpi_provider,
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
@@ -131,7 +132,7 @@ def lane_candidates_for_build(
                 narrowed = [
                     c
                     for c in compilers
-                    if any(compiler_ref_matches(c, compat) for compat in compatible)
+                    if any(compiler_ref_matches(c, compat, mpi_record) for compat in compatible)
                 ]
                 if not narrowed:
                     narrowed, _missing, error = resolve_compiler_refs(profile, sorted(compatible))
@@ -358,16 +359,10 @@ def preferred_baseline_compiler_provider(candidates: list[dict[str, Any]]) -> di
     )
 
 
-def compiler_ref_matches(compiler: str, compatible: str) -> bool:
-    compiler_name, compiler_version = compiler_fragment_name_version(compiler)
-    compatible_name, compatible_version = compiler_fragment_name_version(compatible)
-    if compiler_name != compatible_name:
-        return False
-    if compatible_version is None:
-        return True
-    if compiler_version is None:
-        return True
-    return compiler_version_matches(compiler_version, compatible_version)
+def compiler_ref_matches(
+    compiler: str, compatible: str, provider: dict[str, Any] | None = None
+) -> bool:
+    return compiler_ref_satisfies_flavor(compiler, compatible, provider)
 
 
 def mpi_compatible_compilers(provider: dict[str, Any] | None) -> set[str]:

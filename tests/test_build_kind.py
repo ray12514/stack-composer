@@ -131,7 +131,7 @@ def test_baseline_prefers_latest_platform_gcc_when_gcc_is_duplicated() -> None:
     assert {lane["compiler_ref"] for lane in lanes} == {"gcc@14.3.0"}
 
 
-def test_platform_mpi_narrows_duplicate_gcc_to_matching_flavor_version() -> None:
+def test_cray_mpi_baseline_accepts_newer_same_family_platform_compiler() -> None:
     profile, _ = load_profile(fixture_path("profiles", "example-cray", "profile.yaml"))
     profile = deepcopy(profile)
     profile["compiler_providers"].insert(
@@ -156,8 +156,8 @@ def test_platform_mpi_narrows_duplicate_gcc_to_matching_flavor_version() -> None
         }
     )
     profile["mpi_providers"][0]["flavors"] = {
-        "gcc@13.3": {
-            "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/13.3",
+        "gcc@12.3": {
+            "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3",
             "modules": ["cray-mpich/9.1.0"],
         }
     }
@@ -174,5 +174,5 @@ def test_platform_mpi_narrows_duplicate_gcc_to_matching_flavor_version() -> None
 
     assert issues == []
     assert {lane["compiler"] for lane in lanes} == {"gcc"}
-    assert {lane["compiler_ref"] for lane in lanes} == {"gcc@13.3.0"}
-    assert {lane["toolchain"] for lane in lanes} == {"gcc1330_craympich910"}
+    assert {lane["compiler_ref"] for lane in lanes} == {"gcc@14.3.0"}
+    assert {lane["toolchain"] for lane in lanes} == {"gcc1430_craympich910"}
