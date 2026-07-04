@@ -10,6 +10,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from stack_composer.render.fabric import selected_common_scope_fabric_userspace
 from stack_composer.render.mpi import (
+    compiler_provider_ref,
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
 )
@@ -93,9 +94,7 @@ def compiler_external_packages(
         version = provider.get("version")
         if not is_renderable_external_name_version(name, version):
             continue
-        package = packages.setdefault(
-            name, {"name": name, "buildable": False, "externals": []}
-        )
+        package = packages.setdefault(name, {"name": name, "buildable": False, "externals": []})
         package["externals"].append(compiler_external(provider))
     return list(packages.values())
 
@@ -140,7 +139,7 @@ def mpi_external_packages(profile: dict[str, Any], provider_name: str) -> list[d
         if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
             continue
         variants = _MPI_PROVIDER_VARIANTS.get(provider_name)
-        for external in mpi_provider_externals(provider):
+        for external in mpi_provider_externals(profile, provider):
             package = packages.setdefault(
                 provider_name,
                 {
@@ -154,15 +153,23 @@ def mpi_external_packages(profile: dict[str, Any], provider_name: str) -> list[d
     return list(packages.values())
 
 
-def mpi_provider_externals(provider: dict[str, Any]) -> list[dict[str, Any]]:
+def mpi_provider_externals(
+    profile: dict[str, Any], provider: dict[str, Any]
+) -> list[dict[str, Any]]:
     if provider.get("flavors"):
         externals = []
         for compiler, flavor in sorted(provider.get("flavors", {}).items()):
             if not is_compiler_fragment(compiler) or not is_absolute_prefix(flavor.get("prefix")):
                 continue
+            compiler_provider = select_compiler_provider(profile, compiler)
+            if not compiler_provider:
+                continue
+            compiler_ref = compiler_provider_ref(compiler_provider)
             externals.append(
                 {
-                    "spec": external_spec(provider["name"], provider["version"], f"%{compiler}"),
+                    "spec": external_spec(
+                        provider["name"], provider["version"], f"%{compiler_ref}"
+                    ),
                     "prefix": flavor["prefix"],
                     "modules": flavor.get("modules") or [],
                 }
@@ -174,7 +181,9 @@ def mpi_provider_externals(provider: dict[str, Any]) -> list[dict[str, Any]]:
     compiler = provider.get("compiler")
     if compiler and not is_compiler_fragment(compiler):
         return []
-    suffix = f"%{compiler}" if compiler else ""
+    compiler_provider = select_compiler_provider(profile, compiler) if compiler else None
+    compiler_ref = compiler_provider_ref(compiler_provider) if compiler_provider else compiler
+    suffix = f"%{compiler_ref}" if compiler_ref else ""
     return [
         {
             "spec": external_spec(provider["name"], provider["version"], suffix),
@@ -373,14 +382,9 @@ def add_external(packages: dict[str, dict[str, Any]], external: dict[str, Any]) 
     name = external.get("name")
     version = external.get("version")
     prefix = external.get("prefix")
-    if not (
-        is_renderable_external_name_version(name, version)
-        and is_absolute_prefix(prefix)
-    ):
+    if not (is_renderable_external_name_version(name, version) and is_absolute_prefix(prefix)):
         return
-    package = packages.setdefault(
-        name, {"name": name, "buildable": False, "externals": []}
-    )
+    package = packages.setdefault(name, {"name": name, "buildable": False, "externals": []})
     spec = external_spec(name, version)
     if external.get("variants"):
         spec += f" {external['variants']}"

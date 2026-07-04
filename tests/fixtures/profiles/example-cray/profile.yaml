@@ -190,15 +190,15 @@ mpi_providers:
     - gcc
     - rocmcc
   flavors:
-    cce:
+    cce@17.0:
       prefix: /opt/cray/pe/mpich/8.1.29/ofi/cray/17.0
       modules:
       - cray-mpich/8.1.29
-    gcc:
+    gcc@13.3:
       prefix: /opt/cray/pe/mpich/8.1.29/ofi/gnu/13.3
       modules:
       - cray-mpich/8.1.29
-    rocmcc:
+    rocmcc@6.0:
       prefix: /opt/cray/pe/mpich/8.1.29/ofi/amd/6.0
       modules:
       - cray-mpich/8.1.29

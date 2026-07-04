@@ -110,9 +110,7 @@ def compiler_ref_axis(compiler: str) -> str:
     return slug_token(name) + slug_token(version)
 
 
-def select_compiler_provider(
-    profile: dict[str, Any], compiler: str
-) -> dict[str, Any] | None:
+def select_compiler_provider(profile: dict[str, Any], compiler: str) -> dict[str, Any] | None:
     """Select the compiler provider named by a lane or MPI compiler fragment.
 
     A compiler fragment may be bare (`gcc`) or versioned (`gcc@13.3.0`). Exact
@@ -128,10 +126,20 @@ def select_compiler_provider(
     ]
     if wanted_version:
         return next(
-            (provider for provider in candidates if provider.get("version") == wanted_version),
+            (
+                provider
+                for provider in candidates
+                if compiler_version_matches(str(provider.get("version")), wanted_version)
+            ),
             None,
         )
     return candidates[0] if candidates else None
+
+
+def compiler_version_matches(provider_version: str, requested_version: str) -> bool:
+    if provider_version == requested_version:
+        return True
+    return provider_version.startswith(requested_version + ".")
 
 
 def mpi_toolchain_name_for_profile(

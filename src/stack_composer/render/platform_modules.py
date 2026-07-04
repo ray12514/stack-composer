@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from stack_composer.errors import Issue
-from stack_composer.render.mpi import compiler_fragment_name_version
+from stack_composer.render.mpi import compiler_fragment_name_version, compiler_version_matches
 
 
 def platform_module_prereqs_for_lane(
@@ -76,8 +76,7 @@ def _mpi_modules(
         (
             p
             for p in profile.get("mpi_providers") or []
-            if p.get("name") == provider
-            and (version is None or p.get("version") == version)
+            if p.get("name") == provider and (version is None or p.get("version") == version)
         ),
         None,
     )
@@ -93,7 +92,7 @@ def _mpi_modules(
         return []
     flavors = entry.get("flavors")
     if isinstance(flavors, dict):
-        flavor = flavors.get(lane.get("compiler", ""))
+        flavor = mpi_flavor_for_lane(flavors, lane)
         if isinstance(flavor, dict):
             return list(flavor.get("modules") or [])
         issues.append(
@@ -108,6 +107,24 @@ def _mpi_modules(
         )
         return []
     return list(entry.get("modules") or [])
+
+
+def mpi_flavor_for_lane(flavors: dict[str, Any], lane: dict[str, Any]) -> dict[str, Any] | None:
+    lane_compiler = lane.get("compiler_ref") or lane.get("compiler") or ""
+    lane_name, lane_version = compiler_fragment_name_version(lane_compiler)
+    name_matches: list[dict[str, Any]] = []
+    for flavor_ref, flavor in flavors.items():
+        flavor_name, flavor_version = compiler_fragment_name_version(str(flavor_ref))
+        if flavor_name != lane_name:
+            continue
+        name_matches.append(flavor)
+        if flavor_version is None:
+            return flavor
+        if lane_version and compiler_version_matches(lane_version, flavor_version):
+            return flavor
+    if lane_version is None and len(name_matches) == 1:
+        return name_matches[0]
+    return None
 
 
 def _gpu_toolkit_modules(

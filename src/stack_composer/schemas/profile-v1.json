@@ -329,10 +329,10 @@
         },
         "flavors": {
           "type": "object",
-          "description": "Per-compiler builds at distinct prefixes (e.g. cray-mpich). Keys are compiler names.",
+          "description": "Per-compiler builds at distinct prefixes (e.g. cray-mpich). Keys are compiler fragments: compiler name, optionally with @version-prefix.",
           "minProperties": 1,
           "patternProperties": {
-            "^[a-z][a-z0-9_]*$": {
+            "^[a-z][a-z0-9_]*(@[A-Za-z0-9][A-Za-z0-9._+-]*)?$": {
               "type": "object",
               "properties": {
                 "prefix": { "type": "string", "pattern": "^/" },

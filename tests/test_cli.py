@@ -42,7 +42,7 @@ def test_show_command_prints_provider_families_and_module_chains() -> None:
     assert "preview stack: science-stack" in result.output
     assert "family=platform/cray-pe" in result.output
     assert "modules=PrgEnv-gnu, gcc-native/13" in result.output
-    assert "gcc      modules=cray-mpich/8.1.29" in result.output
+    assert "gcc@13.3 modules=cray-mpich/8.1.29" in result.output
     assert "components=8: hip, hsa-rocr-dev, comgr" in result.output
     assert "system externals (2 candidates)" in result.output
     assert "openssl" in result.output
@@ -93,8 +93,7 @@ def test_show_command_prints_toolchain_names() -> None:
     assert result.exit_code == 0, result.output
     # The provider line names the toolchains a manual user can decorate with.
     assert (
-        "toolchains: cce1701_craympich8129, gcc1330_craympich8129, "
-        "rocmcc600_craympich8129"
+        "toolchains: cce1701_craympich8129, gcc1330_craympich8129, rocmcc600_craympich8129"
     ) in result.output
     # Each resolved lane shows the decoration it will apply.
     assert "toolchain=gcc1330_craympich8129" in result.output

@@ -129,3 +129,50 @@ def test_baseline_prefers_latest_platform_gcc_when_gcc_is_duplicated() -> None:
     assert issues == []
     assert {lane["compiler"] for lane in lanes} == {"gcc"}
     assert {lane["compiler_ref"] for lane in lanes} == {"gcc@14.3.0"}
+
+
+def test_platform_mpi_narrows_duplicate_gcc_to_matching_flavor_version() -> None:
+    profile, _ = load_profile(fixture_path("profiles", "example-cray", "profile.yaml"))
+    profile = deepcopy(profile)
+    profile["compiler_providers"].insert(
+        0,
+        {
+            "name": "gcc",
+            "version": "12.3.0",
+            "prefix": "/usr",
+            "provider_family": "system",
+            "languages": ["c", "c++", "fortran"],
+        },
+    )
+    profile["compiler_providers"].append(
+        {
+            "name": "gcc",
+            "version": "14.3.0",
+            "prefix": "/opt/cray/pe/gcc-native/14",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["PrgEnv-gnu", "gcc-native/14"],
+        }
+    )
+    profile["mpi_providers"][0]["flavors"] = {
+        "gcc@13.3": {
+            "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/13.3",
+            "modules": ["cray-mpich/9.1.0"],
+        }
+    }
+    profile["mpi_providers"][0]["version"] = "9.1.0"
+    stack = merge_defaults(
+        _v6_defaults(),
+        {
+            "name": "science-stack",
+            "builds": [{"name": "mpi", "kind": "mpi", "package_set": "science-full"}],
+        },
+    )
+
+    lanes, _, _, issues = plan_lanes(profile, stack)
+
+    assert issues == []
+    assert {lane["compiler"] for lane in lanes} == {"gcc"}
+    assert {lane["compiler_ref"] for lane in lanes} == {"gcc@13.3.0"}
+    assert {lane["toolchain"] for lane in lanes} == {"gcc1330_craympich910"}

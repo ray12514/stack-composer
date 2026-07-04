@@ -4,6 +4,7 @@ from typing import Any
 
 from stack_composer.errors import Issue
 from stack_composer.render.mpi import (
+    compiler_version_matches,
     compiler_fragment_name_version,
     compiler_provider_ref,
     compiler_ref_axis,
@@ -127,11 +128,16 @@ def lane_candidates_for_build(
         if mpi_source == "platform" and not explicit:
             compatible = mpi_compatible_compilers(mpi_record)
             if compatible:
-                compilers = [
+                narrowed = [
                     c
                     for c in compilers
                     if any(compiler_ref_matches(c, compat) for compat in compatible)
                 ]
+                if not narrowed:
+                    narrowed, _missing, error = resolve_compiler_refs(profile, sorted(compatible))
+                    if error:
+                        return [], error["code"], error["message"]
+                compilers = narrowed
                 if not compilers:
                     return (
                         [],
@@ -327,7 +333,11 @@ def compiler_provider_candidates(profile: dict[str, Any], requested: str) -> lis
         if provider.get("name") == requested_name
     ]
     if requested_version:
-        return [provider for provider in candidates if provider.get("version") == requested_version]
+        return [
+            provider
+            for provider in candidates
+            if compiler_version_matches(str(provider.get("version")), requested_version)
+        ]
     return candidates
 
 
@@ -353,7 +363,11 @@ def compiler_ref_matches(compiler: str, compatible: str) -> bool:
     compatible_name, compatible_version = compiler_fragment_name_version(compatible)
     if compiler_name != compatible_name:
         return False
-    return compatible_version is None or compiler_version == compatible_version
+    if compatible_version is None:
+        return True
+    if compiler_version is None:
+        return True
+    return compiler_version_matches(compiler_version, compatible_version)
 
 
 def mpi_compatible_compilers(provider: dict[str, Any] | None) -> set[str]:
@@ -363,8 +377,9 @@ def mpi_compatible_compilers(provider: dict[str, Any] | None) -> set[str]:
     so an unrelated same-name entry can't contribute its compatibility."""
     if not provider:
         return set()
+    if provider.get("flavors"):
+        return set(provider.get("flavors") or {})
     compatible = set((provider.get("compatibility") or {}).get("compilers") or [])
-    compatible |= set((provider.get("flavors") or {}).keys())
     return compatible
 
 

@@ -377,9 +377,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
         "PrgEnv-gnu",
         "gcc-native/13",
     ]
-    assert platform_scope["packages"]["cce"]["externals"][0]["extra_attributes"][
-        "compilers"
-    ] == {
+    assert platform_scope["packages"]["cce"]["externals"][0]["extra_attributes"]["compilers"] == {
         "c": "/opt/cray/pe/cce/17.0.1/bin/craycc",
         "cxx": "/opt/cray/pe/cce/17.0.1/bin/craycxx",
         "fortran": "/opt/cray/pe/cce/17.0.1/bin/crayftn",
@@ -393,8 +391,9 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     }
     assert cray_mpich["packages"]["cray-mpich"]["variants"] == "+wrappers"
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert "cray-mpich@8.1.29 %gcc" in mpich_specs
-    assert "cray-mpich@8.1.29 %cce" in mpich_specs
+    assert "cray-mpich@8.1.29 %gcc@13.3.0" in mpich_specs
+    assert "cray-mpich@8.1.29 %cce@17.0.1" in mpich_specs
+    assert "cray-mpich@8.1.29 %rocmcc@6.0.0" in mpich_specs
 
     cray_mpich_toolchains = load_yaml(
         workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml"
@@ -568,9 +567,7 @@ def test_invalid_system_external_is_not_rendered(tmp_path: Path) -> None:
         stack_path=write_stack(tmp_path / "stack", stack),
     )
 
-    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(
-        encoding="utf-8"
-    )
+    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(encoding="utf-8")
     assert "bad/pkg" not in common_text
     assert "openssl@3.0.7" in common_text
 
@@ -588,9 +585,7 @@ def test_common_scope_prefers_platform_fabric_userspace_duplicates(tmp_path: Pat
     )
     workspace = render_profile(tmp_path / "out", write_profile(tmp_path, profile))
 
-    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(
-        encoding="utf-8"
-    )
+    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(encoding="utf-8")
     assert common_text.count("\n  libfabric:") == 1
     common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
     assert common["packages"]["libfabric"]["externals"] == [
@@ -630,9 +625,7 @@ def test_common_scope_mixed_fabric_userspace_keeps_duplicates_under_one_key(
         stack_path=write_stack(tmp_path / "stack", stack),
     )
 
-    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(
-        encoding="utf-8"
-    )
+    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(encoding="utf-8")
     assert common_text.count("\n  libfabric:") == 1
     common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
     assert [external["prefix"] for external in common["packages"]["libfabric"]["externals"]] == [
@@ -668,9 +661,7 @@ def test_cray_runtime_fabric_userspace_is_reported_but_not_rendered_by_default(
 
     workspace = render_profile(tmp_path / "out", write_profile(tmp_path, profile))
 
-    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(
-        encoding="utf-8"
-    )
+    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(encoding="utf-8")
     assert "cray-gtl:" not in common_text
     assert "cray-pmi:" not in common_text
     assert "cray-pals:" not in common_text
@@ -803,9 +794,9 @@ def test_rendered_cray_nvidia_workspace_uses_current_cpe_names(tmp_path: Path) -
         "modules": ["cuda/12.4.1"],
     }
 
-    gpu_env = (
-        workspace / "environments" / "gcc" / "gpu-craympich-sm_80" / "spack.yaml"
-    ).read_text(encoding="utf-8")
+    gpu_env = (workspace / "environments" / "gcc" / "gpu-craympich-sm_80" / "spack.yaml").read_text(
+        encoding="utf-8"
+    )
     assert "../../../configs/gpu/nvidia-cuda" in gpu_env
     assert "kokkos+cuda cuda_arch=80" in gpu_env
     assert "raja+cuda cuda_arch=80" in gpu_env
@@ -813,9 +804,9 @@ def test_rendered_cray_nvidia_workspace_uses_current_cpe_names(tmp_path: Path) -
     assert "amdgpu_target" not in gpu_env
     assert "+gpu" not in gpu_env
     assert "PrgEnv-nvhpc" not in gpu_env
-    platform_scope_text = (
-        workspace / "configs" / "vendor" / "cray" / "packages.yaml"
-    ).read_text(encoding="utf-8")
+    platform_scope_text = (workspace / "configs" / "vendor" / "cray" / "packages.yaml").read_text(
+        encoding="utf-8"
+    )
     assert "PrgEnv-nvhpc" not in platform_scope_text
 
 
@@ -833,9 +824,9 @@ def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
     assert (workspace / "configs" / "gpu" / "amd-rocm" / "packages.yaml").exists()
     assert (workspace / "configs" / "gpu" / "nvidia-cuda" / "packages.yaml").exists()
 
-    amd_env = (
-        workspace / "environments" / "gcc" / "gpu-openmpi-gfx90a" / "spack.yaml"
-    ).read_text(encoding="utf-8")
+    amd_env = (workspace / "environments" / "gcc" / "gpu-openmpi-gfx90a" / "spack.yaml").read_text(
+        encoding="utf-8"
+    )
     assert "../../../configs/vendor/linux" in amd_env
     assert "../../../configs/vendor/cray" not in amd_env
     assert "../../../configs/gpu/amd-rocm" in amd_env
