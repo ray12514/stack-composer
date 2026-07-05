@@ -9,6 +9,7 @@ from stack_composer.manifest.draft import draft_manifest
 from stack_composer.render.context import build_render_context
 from stack_composer.render.deployment import materialize_lane_paths
 from stack_composer.render.environments import render_lane_environment
+from stack_composer.render.gpu import build_gpu_plan
 from stack_composer.render.modulefiles import (
     build_front_door_module_plan,
     render_front_door_modules,
@@ -70,6 +71,7 @@ def render_workspace(
         release_tag=release_vars.release_tag,
     )
     mpi_plan = build_mpi_plan(profile, rendered_lanes)
+    gpu_plan = build_gpu_plan(profile)
     render_context = build_render_context(
         base_context=context,
         rendered_lanes=rendered_lanes,
@@ -77,6 +79,7 @@ def render_workspace(
         applied_narrowing=applied_narrowing,
         module_plan=module_plan,
         mpi_plan=mpi_plan,
+        gpu_plan=gpu_plan,
         release_vars=release_vars,
         renderer_identity={"name": "stack-composer render", "version": __version__},
     )

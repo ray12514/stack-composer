@@ -52,9 +52,9 @@ def make_jinja_environment(template_dir: Path) -> Environment:
     env.globals["spack_spec"] = spack_spec
     env.globals["compiler_providers_for_scope"] = compiler_providers_for_scope
     env.globals["compiler_external_packages"] = compiler_external_packages
-    # MPI selection is resolved once into mpi_plan (render/network.py) and read
-    # from the context; templates no longer call the selection policy directly.
-    env.globals["gpu_external_packages"] = gpu_external_packages
+    # MPI and GPU selection are resolved once into mpi_plan (render/network.py)
+    # and gpu_plan (render/gpu.py) and read from the context; templates no
+    # longer call that selection policy directly.
     env.globals["common_external_packages"] = common_external_packages
     return env
 
