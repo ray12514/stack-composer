@@ -370,6 +370,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
 
     platform_scope = load_yaml(workspace / "configs" / "vendor" / "cray" / "packages.yaml")
     assert platform_scope["packages"]["gcc"]["buildable"] is False
+    assert platform_scope["packages"]["gcc"]["externals"][0]["spec"] == "gcc@13.3.0"
     assert platform_scope["packages"]["gcc"]["externals"][0]["prefix"] == (
         "/opt/cray/pe/gcc-native/13"
     )

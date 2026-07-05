@@ -102,9 +102,8 @@ def compiler_external_packages(
 
 def compiler_external(provider: dict[str, Any]) -> dict[str, Any]:
     name = provider["name"]
-    languages = ",".join(provider.get("languages") or [])
     external: dict[str, Any] = {
-        "spec": external_spec(name, provider["version"], f"languages='{languages}'"),
+        "spec": external_spec(name, provider["version"]),
         "prefix": provider["prefix"],
         "modules": provider.get("modules") or [],
     }
