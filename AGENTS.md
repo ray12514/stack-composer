@@ -43,6 +43,17 @@ current model is spec-native plus defaults and provider facts.
   downstream via `spacktools`, `spack-build`, Ansible, or bare Spack.
 - Do not add project-owned personal-GitHub import paths or docs dependencies.
 
+## Commit hygiene
+
+All commits must be authored and committed as:
+
+- `Ravon Venters <ray12514@gmail.com>`
+
+Do not add assistant/tool attribution to commit messages, trailers, file
+headers, generated docs, or comments. Do not include automated co-author
+trailers, generated-by footers, assistant signatures, or similar tool stamps.
+If a tool proposes one, remove it before committing.
+
 ## Validation before claiming done
 
 ```bash
