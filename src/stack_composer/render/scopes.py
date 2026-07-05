@@ -50,12 +50,10 @@ def make_jinja_environment(template_dir: Path) -> Environment:
     env.globals["to_yaml"] = to_yaml
     env.globals["path_join"] = path_join
     env.globals["spack_spec"] = spack_spec
-    env.globals["compiler_providers_for_scope"] = compiler_providers_for_scope
-    env.globals["compiler_external_packages"] = compiler_external_packages
-    # MPI, GPU, and common-scope selection are resolved once into the render
-    # context (render/network.py, render/gpu.py, render/common.py) and read as
-    # mpi_plan / gpu_plan / common_plan; templates no longer call that selection
-    # policy directly.
+    # All external/toolchain selection is resolved once into the render context
+    # (render/{network,gpu,common,compilers}.py) and read as
+    # mpi_plan / gpu_plan / common_plan / compiler_plan. Templates receive only
+    # formatting helpers here — they no longer call selection policy.
     return env
 
 

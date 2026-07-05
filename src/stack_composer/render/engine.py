@@ -7,6 +7,7 @@ from stack_composer import __version__
 from stack_composer.errors import Issue, ValidationFailed
 from stack_composer.manifest.draft import draft_manifest
 from stack_composer.render.common import build_common_plan
+from stack_composer.render.compilers import build_compiler_plan
 from stack_composer.render.context import build_render_context
 from stack_composer.render.deployment import materialize_lane_paths
 from stack_composer.render.environments import render_lane_environment
@@ -74,6 +75,7 @@ def render_workspace(
     mpi_plan = build_mpi_plan(profile, rendered_lanes)
     gpu_plan = build_gpu_plan(profile)
     common_plan = build_common_plan(profile, stack, rendered_lanes)
+    compiler_plan = build_compiler_plan(profile, stack, rendered_lanes)
     render_context = build_render_context(
         base_context=context,
         rendered_lanes=rendered_lanes,
@@ -83,6 +85,7 @@ def render_workspace(
         mpi_plan=mpi_plan,
         gpu_plan=gpu_plan,
         common_plan=common_plan,
+        compiler_plan=compiler_plan,
         release_vars=release_vars,
         renderer_identity={"name": "stack-composer render", "version": __version__},
     )
