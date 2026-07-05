@@ -371,10 +371,6 @@ def compiler_provider_for(profile: dict[str, Any], compiler: str) -> dict[str, A
     return select_compiler_provider(profile, compiler)
 
 
-def compiler_name_from_fragment(compiler: str) -> str:
-    return compiler.split("@", 1)[0]
-
-
 def compiler_name(provider: dict[str, Any]) -> str:
     return str(provider["name"])
 

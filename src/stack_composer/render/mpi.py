@@ -52,11 +52,6 @@ def platform_mpi_candidates(profile: dict[str, Any], provider_name: str) -> list
     ]
 
 
-def mpi_provider_is_ambiguous(profile: dict[str, Any], provider_name: str) -> bool:
-    """More than one profile entry answers to this provider name."""
-    return len(platform_mpi_candidates(profile, provider_name)) > 1
-
-
 def slug_token(value: object) -> str:
     """Return a Spack-spec-token-safe identifier fragment.
 
