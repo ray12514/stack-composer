@@ -162,6 +162,10 @@ def selected_mpi_providers(
     ]
     if not rendered_lanes:
         return providers
+    # Cray PE flavors of one version share a single package prefix tree and must
+    # collapse to the lane-selected version, or Spack sees duplicate externals.
+    # Non-Cray providers of *different* versions are distinguishable (openmpi@X
+    # vs @Y) and render as a version-qualified catalog, so no filtering there.
     if not any(provider.get("platform_family") == "cray-pe" for provider in providers):
         return providers
     selected_versions = {
