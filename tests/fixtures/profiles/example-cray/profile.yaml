@@ -51,7 +51,7 @@ gpu_toolkit_modules:
     prefix: /opt/rocm-6.0.0
     spack_components:
     - package: hip
-      prefix: /opt/rocm-6.0.0/hip
+      prefix: /opt/rocm-6.0.0
     - package: hsa-rocr-dev
       prefix: /opt/rocm-6.0.0
     - package: comgr

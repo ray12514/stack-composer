@@ -414,7 +414,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     assert rocm["packages"]["hip"]["buildable"] is False
     assert rocm["packages"]["hip"]["externals"][0] == {
         "spec": "hip@6.0.0",
-        "prefix": "/opt/rocm-6.0.0/hip",
+        "prefix": "/opt/rocm-6.0.0",
         "modules": ["rocm/6.0.0"],
     }
 
@@ -1521,7 +1521,7 @@ def generic_linux_gpu_profile(profile: dict[str, Any]) -> dict[str, Any]:
             "module": "rocm/6.0.0",
             "prefix": "/opt/rocm-6.0.0",
             "spack_components": [
-                {"package": "hip", "prefix": "/opt/rocm-6.0.0/hip"},
+                {"package": "hip", "prefix": "/opt/rocm-6.0.0"},
             ],
         },
         "cudatoolkit": {
