@@ -13,6 +13,7 @@ from stack_composer.render.modulefiles import (
     build_front_door_module_plan,
     render_front_door_modules,
 )
+from stack_composer.render.network import build_mpi_plan
 from stack_composer.render.plan import plan_lanes
 from stack_composer.render.plan_report import render_plan_report
 from stack_composer.render.release import ReleaseVars
@@ -68,12 +69,14 @@ def render_workspace(
         lanes=rendered_lanes,
         release_tag=release_vars.release_tag,
     )
+    mpi_plan = build_mpi_plan(profile, rendered_lanes)
     render_context = build_render_context(
         base_context=context,
         rendered_lanes=rendered_lanes,
         skipped_builds=skipped_builds,
         applied_narrowing=applied_narrowing,
         module_plan=module_plan,
+        mpi_plan=mpi_plan,
         release_vars=release_vars,
         renderer_identity={"name": "stack-composer render", "version": __version__},
     )

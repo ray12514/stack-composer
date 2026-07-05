@@ -13,6 +13,7 @@ def build_render_context(
     skipped_builds: list[dict[str, str]],
     applied_narrowing: dict[str, Any] | None,
     module_plan: dict[str, Any],
+    mpi_plan: dict[str, Any],
     release_vars: ReleaseVars,
     renderer_identity: dict[str, str],
 ) -> MappingProxyType:
@@ -28,6 +29,7 @@ def build_render_context(
         "skipped_builds": skipped_builds,
         "applied_narrowing": applied_narrowing,
         "module_plan": module_plan,
+        "mpi_plan": mpi_plan,
         "release_vars": release_vars_dict(release_vars, profile["system"]["name"]),
         "renderer_identity": renderer_identity,
     }
