@@ -392,9 +392,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     }
     assert cray_mpich["packages"]["cray-mpich"]["variants"] == "+wrappers"
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert "cray-mpich@8.1.29 %gcc@13.3.0" in mpich_specs
-    assert "cray-mpich@8.1.29 %cce@17.0.1" in mpich_specs
-    assert "cray-mpich@8.1.29 %rocmcc@6.0.0" in mpich_specs
+    assert mpich_specs == ["cray-mpich@8.1.29"]
 
     cray_mpich_toolchains = load_yaml(
         workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml"
@@ -1000,10 +998,10 @@ def test_platform_mpi_multiple_versions_defaults_to_latest() -> None:
 def test_cray_mpich_external_binds_newer_compiler_and_drops_orphan_flavor(
     tmp_path: Path,
 ) -> None:
-    # Blueback reality: the only gcc is newer than the cray-mpich gnu flavor
-    # baseline, and there is no aocc compiler at all. The gnu flavor external
-    # must bind the actual gcc (family_min_version), and the aocc flavor must
-    # be dropped rather than emitted as a dangling %aocc reference.
+    # Blueback reality: the lane gcc is newer than the cray-mpich gnu flavor
+    # baseline, and there is no aocc lane. The gnu flavor external must be
+    # selected by the lane compiler, but the external spec itself stays plain;
+    # compiler binding belongs in toolchains.yaml.
     profile, stack = fixture_context("example-cray")
     profile = deepcopy(profile)
     for provider in profile["compiler_providers"]:
@@ -1055,7 +1053,7 @@ def test_cray_mpich_external_binds_newer_compiler_and_drops_orphan_flavor(
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert "cray-mpich@9.1.0 %gcc@14.3.0" in specs
+    assert specs == ["cray-mpich@9.1.0"]
     assert not any("aocc" in spec for spec in specs)
 
 
@@ -1094,10 +1092,14 @@ def test_cray_mpich_scope_renders_only_selected_provider_version(tmp_path: Path)
             "platform_family": "cray-pe",
             "compatibility": {"compilers": ["gcc"]},
             "flavors": {
+                "aocc@4.1": {
+                    "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/aocc/4.1",
+                    "modules": ["cray-mpich/9.1.0"],
+                },
                 "gcc@12.3": {
                     "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3",
                     "modules": ["cray-mpich/9.1.0"],
-                }
+                },
             },
         },
     ]
@@ -1125,7 +1127,10 @@ def test_cray_mpich_scope_renders_only_selected_provider_version(tmp_path: Path)
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert specs == ["cray-mpich@9.1.0 %gcc@14.3.0"]
+    assert specs == ["cray-mpich@9.1.0"]
+    assert cray_mpich["packages"]["cray-mpich"]["externals"][0]["prefix"] == (
+        "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3"
+    )
 
     toolchains = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml")
     assert set(toolchains["toolchains"]) == {"gcc1430_craympich910"}
@@ -1192,11 +1197,9 @@ def test_cray_mpi_baseline_renders_newer_lane_compiler_toolchain(tmp_path: Path)
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    # The external binds the compiler the lane/toolchain actually uses
-    # (gcc@14.3.0), not the older baseline-matched compiler — external and
-    # toolchain must name the same compiler.
-    assert "cray-mpich@9.1.0 %gcc@14.3.0" in mpich_specs
-    assert "cray-mpich@9.1.0 %gcc@12.3.0" not in mpich_specs
+    # The external selects the lane's Cray MPICH flavor, but does not add a
+    # compiler suffix. The toolchain below binds the compiler version.
+    assert mpich_specs == ["cray-mpich@9.1.0"]
 
     toolchains = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml")
     assert toolchains["toolchains"]["gcc1430_craympich910"] == [

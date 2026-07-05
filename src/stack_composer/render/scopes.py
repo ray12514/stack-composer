@@ -11,6 +11,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from stack_composer.render.fabric import selected_common_scope_fabric_userspace
 from stack_composer.render.mpi import (
     compiler_provider_ref,
+    compiler_ref_satisfies_flavor,
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
     select_flavor_compiler,
@@ -139,7 +140,7 @@ def mpi_external_packages(
         if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
             continue
         variants = _MPI_PROVIDER_VARIANTS.get(provider_name)
-        for external in mpi_provider_externals(profile, provider):
+        for external in mpi_provider_externals(profile, provider, rendered_lanes):
             package = packages.setdefault(
                 provider_name,
                 {
@@ -176,26 +177,35 @@ def selected_mpi_providers(
 
 
 def mpi_provider_externals(
-    profile: dict[str, Any], provider: dict[str, Any]
+    profile: dict[str, Any],
+    provider: dict[str, Any],
+    rendered_lanes: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     if provider.get("flavors"):
         externals = []
+        selected_refs = selected_mpi_lane_compiler_refs(provider, rendered_lanes)
+        seen_specs: set[str] = set()
         for compiler, flavor in sorted(provider.get("flavors", {}).items()):
             if not is_compiler_fragment(compiler) or not is_absolute_prefix(flavor.get("prefix")):
                 continue
-            # Bind the flavor to the compiler the lane will actually use, not
-            # the product-tree baseline in the flavor key. A flavor whose family
-            # has no rendered compiler is an orphan and is dropped rather than
-            # emitted as a dangling %<compiler> external.
+            if selected_refs is not None and not any(
+                compiler_ref_satisfies_flavor(ref, compiler, provider) for ref in selected_refs
+            ):
+                continue
+            # Resolve the product-tree flavor baseline to the compiler the lane
+            # will actually use. A flavor whose family has no rendered compiler
+            # is an orphan and is dropped rather than emitted as a dangling
+            # %<compiler> external.
             compiler_provider = select_flavor_compiler(profile, compiler, provider)
             if not compiler_provider:
                 continue
-            compiler_ref = compiler_provider_ref(compiler_provider)
+            spec = flavored_mpi_external_spec(provider, compiler_provider, selected_refs)
+            if spec in seen_specs:
+                continue
+            seen_specs.add(spec)
             externals.append(
                 {
-                    "spec": external_spec(
-                        provider["name"], provider["version"], f"%{compiler_ref}"
-                    ),
+                    "spec": spec,
                     "prefix": flavor["prefix"],
                     "modules": flavor.get("modules") or [],
                 }
@@ -219,17 +229,71 @@ def mpi_provider_externals(
     ]
 
 
+def selected_mpi_lane_compiler_refs(
+    provider: dict[str, Any], rendered_lanes: list[dict[str, Any]] | None
+) -> set[str] | None:
+    """Compiler refs from lanes that consume this selected platform MPI record.
+
+    A Cray MPICH product tree may contain many compiler-flavor directories for
+    one MPI version. A rendered workspace should only expose the flavor(s) its
+    lanes actually use; otherwise Spack sees duplicate externals and fails
+    before it reaches the toolchain policy.
+    """
+    if provider.get("platform_family") != "cray-pe" or not rendered_lanes:
+        return None
+    provider_name = provider.get("name")
+    provider_version = str(provider.get("version"))
+    refs = {
+        str(lane.get("compiler_ref") or lane.get("compiler"))
+        for lane in rendered_lanes
+        if lane.get("mpi_provider") == provider_name
+        and str(lane.get("mpi_version")) == provider_version
+        and (lane.get("compiler_ref") or lane.get("compiler"))
+    }
+    return refs
+
+
+def flavored_mpi_external_spec(
+    provider: dict[str, Any],
+    compiler_provider: dict[str, Any],
+    selected_refs: set[str] | None,
+) -> str:
+    if provider.get("platform_family") == "cray-pe" and selected_refs is not None:
+        return external_spec(provider["name"], provider["version"])
+    compiler_ref = compiler_provider_ref(compiler_provider)
+    return external_spec(provider["name"], provider["version"], f"%{compiler_ref}")
+
+
 def mpi_toolchains(
     profile: dict[str, Any], rendered_lanes: list[dict[str, Any]], provider_name: str
 ) -> list[dict[str, Any]]:
     toolchains: list[dict[str, Any]] = []
+    emitted_names: set[str] = set()
     for provider in selected_mpi_providers(profile, provider_name, rendered_lanes):
         if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
             continue
+        selected_refs = selected_mpi_lane_compiler_refs(provider, rendered_lanes)
         for compiler in mpi_toolchain_compilers(provider):
-            compiler_provider = compiler_provider_for(profile, compiler)
+            if selected_refs is not None and not any(
+                compiler_ref_satisfies_flavor(ref, compiler, provider) for ref in selected_refs
+            ):
+                continue
+            compiler_provider = (
+                select_flavor_compiler(profile, compiler, provider)
+                if provider.get("flavors")
+                else compiler_provider_for(profile, compiler)
+            )
             if not compiler_provider:
                 continue
+            name = mpi_toolchain_name_for_profile(
+                profile,
+                compiler_provider_ref(compiler_provider),
+                provider_name,
+                str(provider["version"]),
+            )
+            if name in emitted_names:
+                continue
+            emitted_names.add(name)
             entries = compiler_toolchain_entries(compiler_provider)
             entries.append(
                 {
@@ -239,12 +303,7 @@ def mpi_toolchains(
             )
             toolchains.append(
                 {
-                    "name": mpi_toolchain_name_for_profile(
-                        profile,
-                        compiler,
-                        provider_name,
-                        str(provider["version"]),
-                    ),
+                    "name": name,
                     "entries": entries,
                 }
             )
