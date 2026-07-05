@@ -15,6 +15,7 @@ def build_render_context(
     module_plan: dict[str, Any],
     mpi_plan: dict[str, Any],
     gpu_plan: dict[str, Any],
+    common_plan: dict[str, Any],
     release_vars: ReleaseVars,
     renderer_identity: dict[str, str],
 ) -> MappingProxyType:
@@ -32,6 +33,7 @@ def build_render_context(
         "module_plan": module_plan,
         "mpi_plan": mpi_plan,
         "gpu_plan": gpu_plan,
+        "common_plan": common_plan,
         "release_vars": release_vars_dict(release_vars, profile["system"]["name"]),
         "renderer_identity": renderer_identity,
     }
