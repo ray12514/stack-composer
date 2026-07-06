@@ -74,6 +74,43 @@ def test_show_command_prints_generic_provider_families() -> None:
     assert "scope=vendor/linux" in result.output
 
 
+def test_show_command_lists_all_compiler_provider_versions(tmp_path) -> None:
+    import yaml
+
+    profile_path = fixture_path("profiles", "example-linux", "profile.yaml")
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    profile["compiler_providers"].extend(
+        [
+            {
+                "name": "gcc",
+                "version": "13.3.1",
+                "prefix": "/opt/rh/gcc-toolset-13/root/usr",
+                "provider_family": "site",
+                "languages": ["c", "c++", "fortran"],
+                "modules": ["devel/gcc/13.3"],
+            },
+            {
+                "name": "intel",
+                "version": "2025.1.3",
+                "prefix": "/p/app/compilers/intel/oneapi-2025.1.3/compiler/2025.1",
+                "provider_family": "site",
+                "languages": ["c", "c++", "fortran"],
+                "modules": ["intel/oneapi-2025.1.3-all"],
+            },
+        ]
+    )
+    profile_with_versions = tmp_path / "profile.yaml"
+    profile_with_versions.write_text(yaml.safe_dump(profile), encoding="utf-8")
+
+    result = CliRunner().invoke(cli, ["show", "--profile", str(profile_with_versions)])
+
+    assert result.exit_code == 0, result.output
+    assert "compilers (4 available)" in result.output
+    assert "gcc      11.4.0" in result.output
+    assert "gcc      13.3.1" in result.output
+    assert "intel    2025.1.3" in result.output
+
+
 def test_show_command_prints_toolchain_names() -> None:
     result = CliRunner().invoke(
         cli,

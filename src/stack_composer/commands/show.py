@@ -202,12 +202,20 @@ def provider_platform_families(profile: dict[str, Any]) -> list[str]:
 
 
 def compiler_entries(profile: dict[str, Any]) -> list[dict[str, Any]]:
-    entries: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    entries: OrderedDict[tuple[Any, ...], dict[str, Any]] = OrderedDict()
     for provider in profile.get("compiler_providers") or []:
         name = provider.get("name")
         if not name:
             continue
-        entries[name] = provider
+        key = (
+            name,
+            provider.get("version"),
+            provider.get("provider_family"),
+            provider.get("platform_family"),
+            provider.get("prefix"),
+            tuple(provider.get("modules") or []),
+        )
+        entries[key] = provider
     return list(entries.values())
 
 
