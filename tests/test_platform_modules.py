@@ -18,7 +18,7 @@ def test_returns_compiler_mpi_and_gpu_modules_for_cray_amd_lane() -> None:
         "mpi_providers": [
             {"name": "cray-mpich", "flavors": {"gcc": {"modules": ["cray-mpich/8.1.29"]}}},
         ],
-        "gpu_toolkit_modules": {"rocm": {"module": "rocm/6.0.0"}},
+        "gpu_toolkit_modules": {"rocm": [{"module": "rocm/6.0.0"}]},
     }
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
     assert issues == []
@@ -51,7 +51,7 @@ def test_cray_mpi_baseline_flavor_matches_newer_same_family_lane_compiler() -> N
                 },
             }
         ],
-        "gpu_toolkit_modules": {"rocm": {"module": "rocm/7.0.0"}},
+        "gpu_toolkit_modules": {"rocm": [{"module": "rocm/7.0.0"}]},
     }
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
     assert issues == []
@@ -156,8 +156,8 @@ def test_nvidia_lane_uses_cuda_toolkit_for_nvhpc_compiler() -> None:
     profile = {
         "compiler_providers": [{"name": "nvhpc", "modules": ["PrgEnv-nvidia", "nvidia/25.3"]}],
         "gpu_toolkit_modules": {
-            "cudatoolkit": {"module": "cuda/12.4"},
-            "nvhpc": {"module": "nvhpc/24.3"},
+            "cudatoolkit": [{"module": "cuda/12.4"}],
+            "nvhpc": [{"module": "nvhpc/24.3"}],
         },
     }
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
@@ -169,7 +169,7 @@ def test_nvidia_lane_picks_cuda_toolkit_for_non_nvhpc_compiler() -> None:
     lane = {"name": "gcc-gpu", "compiler": "gcc", "mpi_provider": None, "gpu_arch": "sm_90"}
     profile = {
         "compiler_providers": [{"name": "gcc", "modules": []}],
-        "gpu_toolkit_modules": {"cudatoolkit": {"module": "cuda/12.4"}},
+        "gpu_toolkit_modules": {"cudatoolkit": [{"module": "cuda/12.4"}]},
     }
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
     assert issues == []

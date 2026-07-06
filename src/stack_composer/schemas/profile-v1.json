@@ -124,11 +124,11 @@
     },
     "gpu_toolkit_modules": {
       "type": "object",
-      "description": "Standalone GPU toolkit modules separable from compiler/MPI provider modules. Used by GPU lanes when the toolkit is exposed independently.",
+      "description": "Standalone GPU toolkit modules separable from compiler/MPI provider modules. Each family is a list of every installed generation; the renderer selects one per GPU lane.",
       "properties": {
-        "rocm": { "$ref": "#/$defs/rocm_toolkit_module" },
-        "cudatoolkit": { "$ref": "#/$defs/cuda_toolkit_module" },
-        "nvhpc": { "$ref": "#/$defs/nvhpc_toolkit_module" }
+        "rocm": { "type": "array", "items": { "$ref": "#/$defs/rocm_toolkit_module" }, "minItems": 1 },
+        "cudatoolkit": { "type": "array", "items": { "$ref": "#/$defs/cuda_toolkit_module" }, "minItems": 1 },
+        "nvhpc": { "type": "array", "items": { "$ref": "#/$defs/nvhpc_toolkit_module" }, "minItems": 1 }
       },
       "additionalProperties": false
     },

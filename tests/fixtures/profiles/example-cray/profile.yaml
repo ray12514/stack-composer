@@ -46,7 +46,7 @@ system_externals:
     source: rpm
 gpu_toolkit_modules:
   rocm:
-    version: 6.0.0
+  - version: 6.0.0
     module: rocm/6.0.0
     prefix: /opt/rocm-6.0.0
     spack_components:

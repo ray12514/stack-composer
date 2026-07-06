@@ -422,7 +422,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
 def test_invalid_gpu_toolkit_component_is_not_rendered(tmp_path: Path) -> None:
     profile, _stack = fixture_context("example-cray")
     profile = deepcopy(profile)
-    profile["gpu_toolkit_modules"]["rocm"]["spack_components"].insert(
+    profile["gpu_toolkit_modules"]["rocm"][0]["spack_components"].insert(
         0,
         {
             "package": "roc/solver",
@@ -1478,11 +1478,13 @@ def cray_nvidia_profile(profile: dict[str, Any]) -> dict[str, Any]:
             }
             mpi.setdefault("compatibility", {}).setdefault("compilers", []).append("nvhpc")
     profile["gpu_toolkit_modules"] = {
-        "cudatoolkit": {
-            "version": "12.4.1",
-            "module": "cuda/12.4.1",
-            "prefix": "/opt/nvidia/cuda/12.4.1",
-        }
+        "cudatoolkit": [
+            {
+                "version": "12.4.1",
+                "module": "cuda/12.4.1",
+                "prefix": "/opt/nvidia/cuda/12.4.1",
+            }
+        ]
     }
     profile["node_types"] = {
         "login": profile["node_types"]["login"],
@@ -1516,19 +1518,23 @@ def generic_linux_gpu_profile(profile: dict[str, Any]) -> dict[str, Any]:
     profile["system"]["name"] = "example-linux-gpu"
     profile["system"]["description"] = "Generic Linux HPC with AMD and NVIDIA GPUs"
     profile["gpu_toolkit_modules"] = {
-        "rocm": {
-            "version": "6.0.0",
-            "module": "rocm/6.0.0",
-            "prefix": "/opt/rocm-6.0.0",
-            "spack_components": [
-                {"package": "hip", "prefix": "/opt/rocm-6.0.0"},
-            ],
-        },
-        "cudatoolkit": {
-            "version": "12.4.1",
-            "module": "cuda/12.4.1",
-            "prefix": "/opt/nvidia/cuda/12.4.1",
-        },
+        "rocm": [
+            {
+                "version": "6.0.0",
+                "module": "rocm/6.0.0",
+                "prefix": "/opt/rocm-6.0.0",
+                "spack_components": [
+                    {"package": "hip", "prefix": "/opt/rocm-6.0.0"},
+                ],
+            }
+        ],
+        "cudatoolkit": [
+            {
+                "version": "12.4.1",
+                "module": "cuda/12.4.1",
+                "prefix": "/opt/nvidia/cuda/12.4.1",
+            }
+        ],
     }
     profile["node_types"]["gpu_compute_mi250x"] = {
         "role": "runtime",

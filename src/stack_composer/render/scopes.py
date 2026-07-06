@@ -24,6 +24,7 @@ from stack_composer.render.spack_specs import (
     is_compiler_fragment,
     is_renderable_external_name_version,
 )
+from stack_composer.render.versioning import version_key
 
 _COMPILER_COMMANDS = {
     "aocc": {"c": "clang", "cxx": "clang++", "fortran": "flang"},
@@ -396,13 +397,25 @@ def compiler_toolchain_entries(provider: dict[str, Any]) -> list[dict[str, str]]
     return entries
 
 
+def select_gpu_toolkit(profile: dict[str, Any], family: str) -> dict[str, Any]:
+    """Choose one GPU toolkit generation to render from the reported inventory.
+
+    Cluster Inspector reports every installed generation as a list; the render
+    selects one. Default policy is latest version. Compatibility-matrix-driven
+    selection (matching the GPU-runtime major to the lane's MPI/CPE — see
+    cpe_rocm_compatibility_note) is a documented follow-up.
+    """
+    toolkits = (profile.get("gpu_toolkit_modules") or {}).get(family) or []
+    if not toolkits:
+        return {}
+    return max(toolkits, key=lambda toolkit: version_key(str(toolkit.get("version") or "0")))
+
+
 def gpu_external_packages(profile: dict[str, Any], toolkit: str) -> list[dict[str, Any]]:
     if toolkit == "rocm":
-        return rocm_external_packages((profile.get("gpu_toolkit_modules") or {}).get("rocm") or {})
+        return rocm_external_packages(select_gpu_toolkit(profile, "rocm"))
     if toolkit == "cuda":
-        return cuda_external_packages(
-            (profile.get("gpu_toolkit_modules") or {}).get("cudatoolkit") or {}
-        )
+        return cuda_external_packages(select_gpu_toolkit(profile, "cudatoolkit"))
     return []
 
 

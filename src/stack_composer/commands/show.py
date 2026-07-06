@@ -293,23 +293,28 @@ def gpu_arches(profile: dict[str, Any]) -> list[str]:
 
 
 def gpu_toolkit_lines(profile: dict[str, Any]) -> list[str]:
+    # Each family lists every installed generation; show them all so a manual
+    # user sees the full inventory the render selects one from.
     lines: list[str] = []
-    for name, toolkit in sorted((profile.get("gpu_toolkit_modules") or {}).items()):
-        if not isinstance(toolkit, dict):
+    for name, toolkits in sorted((profile.get("gpu_toolkit_modules") or {}).items()):
+        if not isinstance(toolkits, list):
             continue
-        version = toolkit.get("version") or "(version n/a)"
-        module = toolkit.get("module")
-        prefix = toolkit.get("prefix")
-        details = [f"{name} {version}"]
-        if module:
-            details.append(f"module={module}")
-        if prefix:
-            details.append(f"prefix={prefix}")
-        components = toolkit.get("spack_components") or []
-        if components:
-            packages = [component.get("package", "?") for component in components]
-            details.append(f"components={len(packages)}: {', '.join(packages)}")
-        lines.append(" ".join(details))
+        for toolkit in toolkits:
+            if not isinstance(toolkit, dict):
+                continue
+            version = toolkit.get("version") or "(version n/a)"
+            module = toolkit.get("module")
+            prefix = toolkit.get("prefix")
+            details = [f"{name} {version}"]
+            if module:
+                details.append(f"module={module}")
+            if prefix:
+                details.append(f"prefix={prefix}")
+            components = toolkit.get("spack_components") or []
+            if components:
+                packages = [component.get("package", "?") for component in components]
+                details.append(f"components={len(packages)}: {', '.join(packages)}")
+            lines.append(" ".join(details))
     return lines
 
 

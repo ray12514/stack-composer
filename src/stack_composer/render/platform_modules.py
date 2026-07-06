@@ -4,6 +4,7 @@ from typing import Any
 
 from stack_composer.errors import Issue
 from stack_composer.render.mpi import compiler_fragment_name_version, compiler_ref_satisfies_flavor
+from stack_composer.render.scopes import select_gpu_toolkit
 
 
 def platform_module_prereqs_for_lane(
@@ -135,9 +136,8 @@ def _gpu_toolkit_modules(
     arch = lane.get("gpu_arch")
     if not arch:
         return []
-    toolkits = profile.get("gpu_toolkit_modules") or {}
     if arch.startswith("gfx"):
-        module = (toolkits.get("rocm") or {}).get("module")
+        module = select_gpu_toolkit(profile, "rocm").get("module")
         if module:
             return [module]
         issues.append(
@@ -151,7 +151,7 @@ def _gpu_toolkit_modules(
         )
         return []
     if arch.startswith("sm_"):
-        module = (toolkits.get("cudatoolkit") or {}).get("module")
+        module = select_gpu_toolkit(profile, "cudatoolkit").get("module")
         if module:
             return [module]
         issues.append(
