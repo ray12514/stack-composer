@@ -67,17 +67,17 @@ def plan_lanes(
             continue
         skipped.append({"build": build["name"], "reason_code": reason_code, "reason": reason})
 
-    if not lanes:
-        issues.append(
-            Issue(
-                "error",
-                "no-rendered-lanes",
-                "stack.builds",
-                f"no stack builds can render for profile {system_name}",
-            )
-        )
-    lanes.sort(key=lambda lane: (lane["compiler"], lane["lane"], lane["source_build"]))
     skipped.sort(key=lambda entry: entry["build"])
+    if not lanes:
+        message = f"no stack builds can render for profile {system_name}"
+        if skipped:
+            details = "; ".join(
+                f"{entry['build']}: {entry['reason_code']} — {entry['reason']}"
+                for entry in skipped
+            )
+            message += f" (skipped: {details})"
+        issues.append(Issue("error", "no-rendered-lanes", "stack.builds", message))
+    lanes.sort(key=lambda lane: (lane["compiler"], lane["lane"], lane["source_build"]))
     return lanes, skipped, applied_narrowing, issues
 
 

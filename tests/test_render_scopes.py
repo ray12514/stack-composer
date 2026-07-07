@@ -918,6 +918,24 @@ def test_ambiguous_platform_mpi_without_version_is_a_hard_error() -> None:
     assert not any(lane["kind"] == "mpi" for lane in lanes)
 
 
+def test_no_rendered_lanes_names_each_skipped_build_reason() -> None:
+    # When nothing renders, the blocking issue must carry the per-build skip
+    # reasons; a bare "no stack builds can render" is undiagnosable on a real
+    # system (Raider, 2026-07-07).
+    profile, stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    profile["compiler_providers"] = []
+    stack["builds"] = [{"name": "mpi", "kind": "mpi", "specs": ["hdf5+mpi"]}]
+
+    _lanes, skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    assert skipped and skipped[0]["reason_code"] == "compiler_unavailable"
+    blocking = [issue for issue in issues if issue.code == "no-rendered-lanes"]
+    assert len(blocking) == 1
+    assert "mpi: compiler_unavailable" in blocking[0].message
+    assert "no compilers" in blocking[0].message
+
+
 def test_mpi_version_pin_disambiguates_and_versions_toolchain_names(tmp_path: Path) -> None:
     profile = ambiguous_openmpi_profile()
     stack = {
