@@ -72,7 +72,12 @@
         "version": {
           "type": "string",
           "minLength": 1,
-          "description": "Selects one platform MPI when the profile reports the same provider name at more than one version. Required in that case; ignored when the provider name is unambiguous."
+          "description": "Selects one platform MPI when the profile reports the same provider name at more than one version. Required in that case unless version_policy is newest; ignored when the provider name is unambiguous."
+        },
+        "version_policy": {
+          "type": "string",
+          "enum": ["explicit", "newest"],
+          "description": "How one provider name reported at multiple versions resolves: explicit (default) requires mpi.version and hard-errors otherwise; newest selects the highest version. Platform-family providers (one coherent product tree, e.g. Cray PE) always resolve newest."
         },
         "provider_family_priority": {
           "type": "array",

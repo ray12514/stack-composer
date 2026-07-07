@@ -217,13 +217,16 @@ def mpi_toolchain_name_for_profile(
 
 
 def select_platform_mpi(
-    profile: dict[str, Any], provider_name: str, version: str | None
+    profile: dict[str, Any],
+    provider_name: str,
+    version: str | None,
+    version_policy: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
     """Pick the provider/version identity a platform lane binds to.
 
     Returns (record, error_code, error_message). More than one candidate with
     nothing to tell them apart is an input-authoring defect, never a silent
-    first-match pick.
+    first-match pick — unless the site declared version_policy: newest.
     """
     candidates = platform_mpi_candidates(profile, provider_name)
     if not candidates:
@@ -243,7 +246,12 @@ def select_platform_mpi(
     if len(versions) == 1:
         return merge_mpi_variant_records(candidates), None, None
     if len(candidates) > 1:
-        if all(candidate.get("provider_family") == "platform" for candidate in candidates):
+        # Platform families (e.g. Cray PE) publish one coherent product tree,
+        # so newest is always safe there; site externals opt in through the
+        # declared defaults policy.
+        if version_policy == "newest" or all(
+            candidate.get("provider_family") == "platform" for candidate in candidates
+        ):
             selected_version = max(versions, key=version_key)
             selected = [
                 candidate
@@ -256,7 +264,8 @@ def select_platform_mpi(
             None,
             "mpi_ambiguous",
             f"platform MPI {provider_name!r} is ambiguous: the profile reports "
-            f"versions {available}; set mpi.version to select one",
+            f"versions {available}; set mpi.version to select one, or declare "
+            f"mpi.version_policy: newest in defaults",
         )
     return candidates[0], None, None
 

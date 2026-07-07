@@ -118,8 +118,14 @@ def lane_candidates_for_build(
         if mpi_source == "platform":
             mpi_config = build.get("mpi") or stack.get("mpi") or {}
             requested_version = mpi_config.get("version") if isinstance(mpi_config, dict) else None
+            # version_policy is site policy: it comes from the merged defaults,
+            # never from a per-build override (those pin exact versions).
+            stack_mpi = stack.get("mpi")
+            version_policy = (
+                stack_mpi.get("version_policy") if isinstance(stack_mpi, dict) else None
+            )
             mpi_record, error_code, error = select_platform_mpi(
-                profile, mpi_provider, requested_version
+                profile, mpi_provider, requested_version, version_policy
             )
             if error_code:
                 return [], error_code, error
@@ -443,16 +449,24 @@ def resolve_mpi(
             for provider in providers
             if provider.get("provider_family") == family
         ]
-        platform_provider = (prioritized[0] if prioritized else providers[0]).get("name")
-        if explicit_requested:
-            requested_provider = next(
+        # The policy-named provider (defaults.mpi.provider) is a preference:
+        # when the profile reports it, it beats profile order; when it does
+        # not, auto falls back to whatever MPI the system has.
+        requested_reported = None
+        if requested:
+            requested_reported = next(
                 (
                     provider.get("name")
                     for provider in providers
-                    if provider.get("name") == explicit_requested
+                    if provider.get("name") == requested
                 ),
                 None,
             )
+        platform_provider = requested_reported or (
+            prioritized[0] if prioritized else providers[0]
+        ).get("name")
+        if explicit_requested:
+            requested_provider = requested_reported
     if source == "build":
         return requested, "build"
     if source == "platform":
