@@ -73,3 +73,14 @@ Docker/Spack smoke path from `~/Development/cse-stack/scripts` when feasible.
 - Keep render policy in `defaults.yaml`, provider facts, deployment, and
   templates.
 - Avoid vendor-specific render branches where provider-family facts would work.
+
+## Model and agent usage
+
+Conserve usage credits when working in this repo:
+
+- Use a cheaper, faster model or agent for research, fact-gathering, code
+  search, and claim verification.
+- Reserve the strongest available model for implementation, design judgment,
+  and hard debugging.
+- Do not start queued or speculative work until the owner green-lights the
+  spend.
