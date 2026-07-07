@@ -902,6 +902,9 @@ def test_ambiguous_platform_mpi_without_version_is_a_hard_error() -> None:
     profile = ambiguous_openmpi_profile()
     _, stack = fixture_context("example-linux")
     stack["builds"] = [{"name": "mpi", "kind": "mpi", "specs": ["hdf5+mpi"]}]
+    # The v6 template-set defaults ship version_policy: newest; this test pins
+    # the undeclared-policy behavior, so drop it.
+    stack["mpi"] = {"provider": "openmpi", "source": "auto"}
 
     lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
 
