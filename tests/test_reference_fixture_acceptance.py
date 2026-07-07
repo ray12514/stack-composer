@@ -28,7 +28,6 @@ EXPECTED_LANES = {
         "aocc-mpi-openmpi",
         "aocc-serial",
         "gcc-core",
-        "gcc-mpi-openmpi",
         "gcc-serial",
     ],
 }

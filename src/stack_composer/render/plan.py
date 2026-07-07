@@ -375,6 +375,8 @@ def mpi_compatible_compilers(provider: dict[str, Any] | None) -> set[str]:
     if provider.get("flavors"):
         return set(provider.get("flavors") or {})
     compatible = set((provider.get("compatibility") or {}).get("compilers") or [])
+    if provider.get("compiler"):
+        compatible.add(str(provider["compiler"]))
     return compatible
 
 

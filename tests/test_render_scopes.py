@@ -733,8 +733,8 @@ def test_rendered_generic_linux_workspace_contains_site_mpi_without_cray(
         }
     )
     # Two openmpi versions on one system: the stack must pin one per build
-    # (unpinned ambiguity is a hard render error, covered elsewhere). Both
-    # externals still render — they are system facts; the pin picks the lane's.
+    # (unpinned ambiguity is a hard render error, covered elsewhere). The
+    # managed workspace renders only the lane-selected MPI record.
     raw_stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
     for build in raw_stack["builds"]:
         if build["kind"] in ("mpi", "gpu"):
@@ -756,12 +756,7 @@ def test_rendered_generic_linux_workspace_contains_site_mpi_without_cray(
             "spec": "openmpi@4.1.6 %aocc@4.2.0",
             "prefix": "/opt/site/openmpi/4.1.6-aocc-4.2.0",
             "modules": [],
-        },
-        {
-            "spec": "openmpi@4.1.7",
-            "prefix": "/opt/site/openmpi/4.1.7",
-            "modules": ["openmpi/4.1.7"],
-        },
+        }
     ]
 
     mpi_env = (workspace / "environments" / "aocc" / "mpi-openmpi" / "spack.yaml").read_text(
@@ -823,7 +818,7 @@ def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
     assert (workspace / "configs" / "gpu" / "amd-rocm" / "packages.yaml").exists()
     assert (workspace / "configs" / "gpu" / "nvidia-cuda" / "packages.yaml").exists()
 
-    amd_env = (workspace / "environments" / "gcc" / "gpu-openmpi-gfx90a" / "spack.yaml").read_text(
+    amd_env = (workspace / "environments" / "aocc" / "gpu-openmpi-gfx90a" / "spack.yaml").read_text(
         encoding="utf-8"
     )
     assert "../../../configs/vendor/linux" in amd_env
@@ -834,7 +829,7 @@ def test_rendered_generic_linux_gpu_workspace_uses_gpu_scopes_without_cray(
     assert "+gpu" not in amd_env
 
     nvidia_env = (
-        workspace / "environments" / "gcc" / "gpu-openmpi-sm_80" / "spack.yaml"
+        workspace / "environments" / "aocc" / "gpu-openmpi-sm_80" / "spack.yaml"
     ).read_text(encoding="utf-8")
     assert "../../../configs/vendor/linux" in nvidia_env
     assert "../../../configs/vendor/cray" not in nvidia_env
@@ -947,15 +942,82 @@ def test_mpi_version_pin_disambiguates_and_versions_toolchain_names(tmp_path: Pa
     env = load_yaml(workspace / "environments" / "aocc" / "mpi-openmpi" / "spack.yaml")
     assert env["spack"]["specs"] == ["hdf5+mpi %aocc420_openmpi503"]
 
-    # Both pairings render as a catalog, each under a version-qualified name;
-    # the bare (collision-prone) name must not appear as a key.
+    # The managed workspace renders only the selected MPI version/toolchain.
     toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
-    assert set(toolchains["toolchains"]) == {"aocc420_openmpi416", "aocc420_openmpi503"}
+    assert set(toolchains["toolchains"]) == {"aocc420_openmpi503"}
     assert {"spec": "%mpi=openmpi@5.0.3", "when": "%mpi"} in toolchains["toolchains"][
         "aocc420_openmpi503"
     ]
-    assert {"spec": "%mpi=openmpi@4.1.6", "when": "%mpi"} in toolchains["toolchains"][
-        "aocc420_openmpi416"
+
+
+def test_same_mpi_version_variants_render_only_lane_compiler_variant(tmp_path: Path) -> None:
+    profile, _stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    profile["mpi_providers"] = [
+        {
+            "name": "openmpi",
+            "version": "5.0.8",
+            "provider_family": "site",
+            "prefix": "/p/app/penguin/openmpi/5.0.8/gcc-11.4.0",
+            "compiler": "gcc@11.4.0",
+            "modules": ["penguin/openmpi/5.0.8/gcc-11.4.0"],
+        },
+        {
+            "name": "openmpi",
+            "version": "5.0.8",
+            "provider_family": "site",
+            "prefix": "/p/app/penguin/openmpi/5.0.8/aocc-4.2.0",
+            "compiler": "aocc@4.2.0",
+            "modules": ["penguin/openmpi/5.0.8/aocc-4.2.0"],
+        },
+    ]
+    stack = {
+        "schema_version": 1,
+        "name": "variant-mpi",
+        "profile_contract": {"schema_version": 1},
+        "templates": {"set": "v6"},
+        "builds": [
+            {
+                "name": "mpi",
+                "kind": "mpi",
+                "compilers": ["gcc"],
+                "mpi": {"provider": "openmpi", "source": "platform"},
+                "specs": ["hdf5+mpi"],
+            }
+        ],
+    }
+
+    workspace = render_profile_with_stack(
+        tmp_path / "out",
+        profile_path=write_profile(tmp_path / "profile", profile),
+        stack_path=write_stack(tmp_path / "stack", stack),
+    )
+
+    env = load_yaml(workspace / "environments" / "gcc" / "mpi-openmpi" / "spack.yaml")
+    assert env["spack"]["specs"] == ["hdf5+mpi %gcc1140_openmpi508"]
+
+    packages = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "packages.yaml")
+    assert packages["packages"]["openmpi"]["externals"] == [
+        {
+            "spec": "openmpi@5.0.8 %gcc@11.4.0",
+            "prefix": "/p/app/penguin/openmpi/5.0.8/gcc-11.4.0",
+            "modules": ["penguin/openmpi/5.0.8/gcc-11.4.0"],
+        }
+    ]
+
+    toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
+    assert set(toolchains["toolchains"]) == {"gcc1140_openmpi508"}
+    assert toolchains["toolchains"]["gcc1140_openmpi508"] == [
+        {"spec": "%c=gcc@11.4.0", "when": "%c"},
+        {"spec": "%cxx=gcc@11.4.0", "when": "%cxx"},
+        {"spec": "%fortran=gcc@11.4.0", "when": "%fortran"},
+        {"spec": "%mpi=openmpi@5.0.8", "when": "%mpi"},
+    ]
+
+    render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
+    assert render_plan["module_plan"]["init_modules"][0]["prereqs"] == []
+    assert render_plan["module_plan"]["lane_modules"][0]["prereqs"] == [
+        "penguin/openmpi/5.0.8/gcc-11.4.0",
     ]
 
 

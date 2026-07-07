@@ -24,7 +24,6 @@ from stack_composer.render.spack_specs import (
     is_compiler_fragment,
     is_renderable_external_name_version,
 )
-from stack_composer.render.versioning import version_key
 
 _COMPILER_COMMANDS = {
     "aocc": {"c": "clang", "cxx": "clang++", "fortran": "flang"},
@@ -163,20 +162,22 @@ def selected_mpi_providers(
     ]
     if not rendered_lanes:
         return providers
-    # Cray PE flavors of one version share a single package prefix tree and must
-    # collapse to the lane-selected version, or Spack sees duplicate externals.
-    # Non-Cray providers of *different* versions are distinguishable (openmpi@X
-    # vs @Y) and render as a version-qualified catalog, so no filtering there.
-    if not any(provider.get("platform_family") == "cray-pe" for provider in providers):
+    selected_versions = selected_mpi_lane_versions(provider_name, rendered_lanes)
+    if not selected_versions:
         return providers
-    selected_versions = {
+    return [provider for provider in providers if str(provider.get("version")) in selected_versions]
+
+
+def selected_mpi_lane_versions(
+    provider_name: str, rendered_lanes: list[dict[str, Any]] | None
+) -> set[str]:
+    if not rendered_lanes:
+        return set()
+    return {
         str(lane["mpi_version"])
         for lane in rendered_lanes
         if lane.get("mpi_provider") == provider_name and lane.get("mpi_version")
     }
-    if not selected_versions:
-        return providers
-    return [provider for provider in providers if str(provider.get("version")) in selected_versions]
 
 
 def mpi_provider_externals(
@@ -220,6 +221,11 @@ def mpi_provider_externals(
     compiler = provider.get("compiler")
     if compiler and not is_compiler_fragment(compiler):
         return []
+    selected_refs = selected_mpi_lane_compiler_refs(provider, rendered_lanes)
+    if compiler and selected_refs is not None and not any(
+        compiler_ref_satisfies_flavor(ref, compiler, provider) for ref in selected_refs
+    ):
+        return []
     compiler_provider = select_compiler_provider(profile, compiler) if compiler else None
     compiler_ref = compiler_provider_ref(compiler_provider) if compiler_provider else compiler
     suffix = f"%{compiler_ref}" if compiler_ref else ""
@@ -237,23 +243,23 @@ def selected_mpi_lane_compiler_refs(
 ) -> set[str] | None:
     """Compiler refs from lanes that consume this selected platform MPI record.
 
-    A Cray MPICH product tree may contain many compiler-flavor directories for
-    one MPI version. A rendered workspace should only expose the flavor(s) its
-    lanes actually use; otherwise Spack sees duplicate externals and fails
-    before it reaches the toolchain policy.
+    MPI providers may expose multiple compiler-specific variants for one MPI
+    version. A rendered workspace should only expose the variant(s) its lanes
+    actually use; otherwise Spack sees duplicate externals and fails before it
+    reaches the toolchain policy.
     """
-    if provider.get("platform_family") != "cray-pe" or not rendered_lanes:
+    if not rendered_lanes:
         return None
     provider_name = provider.get("name")
-    provider_version = str(provider.get("version"))
+    provider_version = str(provider.get("version")) if provider.get("version") else None
     refs = {
         str(lane.get("compiler_ref") or lane.get("compiler"))
         for lane in rendered_lanes
         if lane.get("mpi_provider") == provider_name
-        and str(lane.get("mpi_version")) == provider_version
+        and (not provider_version or str(lane.get("mpi_version")) == provider_version)
         and (lane.get("compiler_ref") or lane.get("compiler"))
     }
-    return refs
+    return refs or None
 
 
 def flavored_mpi_external_spec(
@@ -395,59 +401,6 @@ def compiler_toolchain_entries(provider: dict[str, Any]) -> list[dict[str, str]]
         if virtual:
             entries.append({"spec": f"%{virtual}={spec}", "when": f"%{virtual}"})
     return entries
-
-
-def select_gpu_toolkit(profile: dict[str, Any], family: str) -> dict[str, Any]:
-    """Choose one GPU toolkit generation to render from the reported inventory.
-
-    Cluster Inspector reports every installed generation as a list; the render
-    selects one. Default policy is latest version. Compatibility-matrix-driven
-    selection (matching the GPU-runtime major to the lane's MPI/CPE — see
-    cpe_rocm_compatibility_note) is a documented follow-up.
-    """
-    toolkits = (profile.get("gpu_toolkit_modules") or {}).get(family) or []
-    if not toolkits:
-        return {}
-    return max(toolkits, key=lambda toolkit: version_key(str(toolkit.get("version") or "0")))
-
-
-def gpu_external_packages(profile: dict[str, Any], toolkit: str) -> list[dict[str, Any]]:
-    if toolkit == "rocm":
-        return rocm_external_packages(select_gpu_toolkit(profile, "rocm"))
-    if toolkit == "cuda":
-        return cuda_external_packages(select_gpu_toolkit(profile, "cudatoolkit"))
-    return []
-
-
-def rocm_external_packages(rocm: dict[str, Any]) -> list[dict[str, Any]]:
-    packages: dict[str, dict[str, Any]] = {}
-    version = rocm.get("version")
-    module = rocm.get("module")
-    for component in rocm.get("spack_components") or []:
-        add_external(
-            packages,
-            {
-                "name": component.get("package"),
-                "version": version,
-                "prefix": component.get("prefix"),
-                "modules": [module] if module else [],
-            },
-        )
-    return list(packages.values())
-
-
-def cuda_external_packages(cuda: dict[str, Any]) -> list[dict[str, Any]]:
-    packages: dict[str, dict[str, Any]] = {}
-    add_external(
-        packages,
-        {
-            "name": "cuda",
-            "version": cuda.get("version"),
-            "prefix": cuda.get("prefix"),
-            "modules": [cuda["module"]] if cuda.get("module") else [],
-        },
-    )
-    return list(packages.values())
 
 
 def common_external_packages(

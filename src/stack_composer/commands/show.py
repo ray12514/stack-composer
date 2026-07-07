@@ -231,23 +231,39 @@ def mpi_lines(profile: dict[str, Any]) -> list[str]:
         return ["mpi   none on system — built from source per defaults"]
     lines = [f"mpi ({len(grouped)} providers)"]
     for name, entries in grouped.items():
-        # Ambiguous provider names get one line per version, each with its
-        # version-qualified toolchain identity, so the conflict is legible
-        # here instead of only failing later at render time.
-        ambiguous = len(entries) > 1
-        for entry in entries:
-            lines.extend(mpi_entry_lines(profile, name, entry, ambiguous))
+        version_groups = mpi_variant_groups(entries)
+        distinct_versions = {str(entry.get("version") or "") for entry in entries}
+        # Ambiguous provider names get one line per version/family group, each
+        # with its version-qualified toolchain identity, so the conflict is
+        # legible here instead of only failing later at render time.
+        ambiguous = len(distinct_versions) > 1
+        for group in version_groups:
+            if len(group) == 1:
+                lines.extend(mpi_entry_lines(profile, name, group[0]))
+            else:
+                lines.extend(mpi_variant_group_lines(profile, name, group))
         if ambiguous:
             lines.append(
-                f"    !! {len(entries)} versions of {name!r} on this system: "
+                f"    !! {len(distinct_versions)} versions of {name!r} on this system: "
                 "set mpi.version on the stack build to select one"
             )
     return lines
 
 
-def mpi_entry_lines(
-    profile: dict[str, Any], name: str, entry: dict[str, Any], ambiguous: bool
-) -> list[str]:
+def mpi_variant_groups(entries: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    groups: OrderedDict[tuple[Any, ...], list[dict[str, Any]]] = OrderedDict()
+    for entry in entries:
+        key = (
+            entry.get("name"),
+            entry.get("version"),
+            entry.get("provider_family"),
+            entry.get("platform_family"),
+        )
+        groups.setdefault(key, []).append(entry)
+    return list(groups.values())
+
+
+def mpi_entry_lines(profile: dict[str, Any], name: str, entry: dict[str, Any]) -> list[str]:
     version = str(entry.get("version") or "(n/a)")
     family = entry.get("provider_family") or "?"
     compilers = mpi_entry_compilers(entry)
@@ -272,6 +288,37 @@ def mpi_entry_lines(
     return lines
 
 
+def mpi_variant_group_lines(
+    profile: dict[str, Any], name: str, entries: list[dict[str, Any]]
+) -> list[str]:
+    first = entries[0]
+    version = str(first.get("version") or "(n/a)")
+    family = first.get("provider_family") or "?"
+    compiler_refs = sorted({ref for entry in entries for ref in mpi_entry_compiler_refs(entry)})
+    compiler_text = f"compilers: {_fmt_limited(compiler_refs)}" if compiler_refs else ""
+    toolchain_text = ""
+    if compiler_refs:
+        names = [
+            mpi_toolchain_name_for_profile(profile, compiler, name, str(first.get("version")))
+            for compiler in compiler_refs
+        ]
+        toolchain_text = f"toolchains: {_fmt_limited(names)}"
+    module_count = len({module for entry in entries for module in entry.get("modules") or []})
+    prefix_count = len({entry.get("prefix") for entry in entries if entry.get("prefix")})
+    parts = [
+        f"  {name:<10} {version:<12} family={family:<8}",
+        f"variants={len(entries)}",
+    ]
+    if compiler_text:
+        parts.append(compiler_text)
+    if toolchain_text:
+        parts.append(toolchain_text)
+    parts.append(f"prefixes={prefix_count}")
+    parts.append(f"modules={module_count}")
+    parts.append("[platform]")
+    return [" ".join(parts).rstrip()]
+
+
 def mpi_entry_compilers(entry: dict[str, Any]) -> list[str]:
     compilers = {
         str(compiler).split("@", 1)[0]
@@ -281,6 +328,17 @@ def mpi_entry_compilers(entry: dict[str, Any]) -> list[str]:
     if entry.get("compiler"):
         compilers.add(str(entry["compiler"]).split("@", 1)[0])
     return sorted(compilers)
+
+
+def mpi_entry_compiler_refs(entry: dict[str, Any]) -> list[str]:
+    refs = {str(compiler) for compiler in entry.get("flavors") or {}}
+    refs |= {
+        str(compiler)
+        for compiler in (entry.get("compatibility") or {}).get("compilers") or []
+    }
+    if entry.get("compiler"):
+        refs.add(str(entry["compiler"]))
+    return sorted(refs)
 
 
 def gpu_arches(profile: dict[str, Any]) -> list[str]:
@@ -361,3 +419,10 @@ def _fmt_sel(value: Any) -> str:
 
 def _fmt_modules(modules: list[str]) -> str:
     return ", ".join(modules) if modules else "none"
+
+
+def _fmt_limited(values: list[str], limit: int = 6) -> str:
+    if len(values) <= limit:
+        return ", ".join(values)
+    shown = ", ".join(values[:limit])
+    return f"{shown}, +{len(values) - limit} more"

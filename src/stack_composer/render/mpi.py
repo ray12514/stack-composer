@@ -9,6 +9,7 @@ in scopes.py cannot drift apart.
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from typing import Any
 
 from stack_composer.render.spack_specs import (
@@ -55,7 +56,7 @@ def platform_mpi_candidates(profile: dict[str, Any], provider_name: str) -> list
 def slug_token(value: object) -> str:
     """Return a Spack-spec-token-safe identifier fragment.
 
-    Toolchain names are referenced as `%name` in root specs, so do not preserve
+    Toolchain names are referenced as `%name` in root specs, so do not retain
     punctuation that is meaningful to Spack's spec parser (`.`, `-`, `@`, `/`).
     """
     return _TOKEN_RE.sub("", str(value)).lower()
@@ -218,7 +219,7 @@ def mpi_toolchain_name_for_profile(
 def select_platform_mpi(
     profile: dict[str, Any], provider_name: str, version: str | None
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
-    """Pick the one mpi_providers entry a platform lane binds to.
+    """Pick the provider/version identity a platform lane binds to.
 
     Returns (record, error_code, error_message). More than one candidate with
     nothing to tell them apart is an input-authoring defect, never a silent
@@ -229,8 +230,8 @@ def select_platform_mpi(
         return None, None, None
     if version:
         matching = [c for c in candidates if c.get("version") == version]
-        if len(matching) == 1:
-            return matching[0], None, None
+        if matching:
+            return merge_mpi_variant_records(matching), None, None
         available = ", ".join(sorted({str(c.get("version")) for c in candidates}))
         return (
             None,
@@ -238,14 +239,19 @@ def select_platform_mpi(
             f"requested platform MPI {provider_name}@{version} is not on this "
             f"system; profile reports version(s): {available}",
         )
+    versions = sorted({str(candidate.get("version")) for candidate in candidates})
+    if len(versions) == 1:
+        return merge_mpi_variant_records(candidates), None, None
     if len(candidates) > 1:
         if all(candidate.get("provider_family") == "platform" for candidate in candidates):
-            selected = max(
-                candidates,
-                key=lambda candidate: version_key(candidate["version"]),
-            )
-            return selected, None, None
-        available = ", ".join(sorted({str(c.get("version")) for c in candidates}))
+            selected_version = max(versions, key=version_key)
+            selected = [
+                candidate
+                for candidate in candidates
+                if str(candidate.get("version")) == selected_version
+            ]
+            return merge_mpi_variant_records(selected), None, None
+        available = ", ".join(versions)
         return (
             None,
             "mpi_ambiguous",
@@ -253,3 +259,42 @@ def select_platform_mpi(
             f"versions {available}; set mpi.version to select one",
         )
     return candidates[0], None, None
+
+
+def merge_mpi_variant_records(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Represent one provider/version with all compiler variants attached.
+
+    Generic Linux profiles often report one MPI version several times: one
+    physical install per compiler. Lane planning only needs the provider
+    identity, version, and compatible compiler set. Render-time scope code then
+    selects the physical variant by lane compiler.
+    """
+    if len(records) == 1:
+        return records[0]
+    merged = deepcopy(records[0])
+    compilers: set[str] = set()
+    modules: list[str] = []
+    flavors: dict[str, Any] = {}
+    for record in records:
+        compiler = record.get("compiler")
+        if compiler and is_compiler_fragment(str(compiler)):
+            compilers.add(str(compiler))
+        compilers.update(
+            str(compiler_ref)
+            for compiler_ref in (record.get("compatibility") or {}).get("compilers") or []
+            if is_compiler_fragment(str(compiler_ref))
+        )
+        if isinstance(record.get("flavors"), dict):
+            flavors.update(record["flavors"])
+        for module in record.get("modules") or []:
+            if module not in modules:
+                modules.append(module)
+    if compilers:
+        compatibility = dict(merged.get("compatibility") or {})
+        compatibility["compilers"] = sorted(compilers)
+        merged["compatibility"] = compatibility
+    if flavors:
+        merged["flavors"] = flavors
+    if modules:
+        merged["modules"] = modules
+    return merged

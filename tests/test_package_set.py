@@ -19,7 +19,7 @@ def test_expands_gpu_placeholder_for_nvidia_lane() -> None:
     assert expand_gpu_variant("kokkos+gpu", lane) == "kokkos+cuda cuda_arch=80"
 
 
-def test_preserves_existing_gpu_arch_flags() -> None:
+def test_keeps_user_authored_gpu_arch_flags() -> None:
     lane = {"kind": "gpu", "gpu_arch": "gfx90a"}
 
     assert (

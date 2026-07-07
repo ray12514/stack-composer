@@ -74,6 +74,44 @@ def test_show_command_prints_generic_provider_families() -> None:
     assert "scope=vendor/linux" in result.output
 
 
+def test_show_command_summarizes_repeated_mpi_variants(tmp_path) -> None:
+    import yaml
+
+    profile_path = fixture_path("profiles", "example-linux", "profile.yaml")
+    profile = yaml.safe_load(profile_path.read_text(encoding="utf-8"))
+    profile["mpi_providers"].extend(
+        [
+            {
+                "name": "openmpi",
+                "version": "4.1.6",
+                "provider_family": "site",
+                "prefix": "/opt/site/openmpi/4.1.6-gcc-11.4.0",
+                "compiler": "gcc@11.4.0",
+                "modules": ["openmpi/gcc/4.1.6"],
+            },
+            {
+                "name": "openmpi",
+                "version": "4.1.6",
+                "provider_family": "site",
+                "prefix": "/opt/site/openmpi/4.1.6-nvhpc-24.5",
+                "compiler": "nvhpc@24.5",
+                "modules": ["openmpi/nvhpc/4.1.6"],
+            },
+        ]
+    )
+    repeated_path = tmp_path / "profile.yaml"
+    repeated_path.write_text(yaml.safe_dump(profile), encoding="utf-8")
+
+    result = CliRunner().invoke(cli, ["show", "--profile", str(repeated_path)])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.count("openmpi    4.1.6") == 1
+    assert "variants=3" in result.output
+    assert "compilers: aocc@4.2.0, gcc@11.4.0, nvhpc@24.5" in result.output
+    assert "prefixes=3" in result.output
+    assert "modules=2" in result.output
+
+
 def test_show_command_lists_all_compiler_provider_versions(tmp_path) -> None:
     import yaml
 

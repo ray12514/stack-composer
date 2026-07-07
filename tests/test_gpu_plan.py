@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from stack_composer.render.gpu import build_gpu_plan
-from stack_composer.render.scopes import gpu_external_packages, select_gpu_toolkit
+from stack_composer.render.gpu import build_gpu_plan, gpu_external_packages, select_gpu_toolkit
 from tests.test_render_scopes import fixture_context
 
 

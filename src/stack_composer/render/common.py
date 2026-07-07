@@ -21,8 +21,8 @@ def build_common_plan(
 ) -> dict[str, Any]:
     """Resolve the common scope's externals, default MPI provider, and target.
 
-    `default_mpi_provider` preserves the existing "first lane's provider"
-    behavior — relocated here so it is visible and testable, not changed.
+    `default_mpi_provider` uses the first rendered lane's provider. Keeping
+    that rule here makes it visible and testable.
     """
     lane_providers = [
         lane["mpi_provider"] for lane in rendered_lanes if lane.get("mpi_provider")

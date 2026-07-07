@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from stack_composer.errors import Issue
+from stack_composer.render.gpu import select_gpu_toolkit
 from stack_composer.render.mpi import compiler_fragment_name_version, compiler_ref_satisfies_flavor
-from stack_composer.render.scopes import select_gpu_toolkit
+from stack_composer.render.spack_specs import is_compiler_fragment
 
 
 def platform_module_prereqs_for_lane(
@@ -73,15 +74,32 @@ def _mpi_modules(
     # Match on the lane's disambiguated version too: with two same-name
     # platform MPIs, name-only lookup would report the wrong entry's modules.
     version = lane.get("mpi_version")
-    entry = next(
-        (
-            p
-            for p in profile.get("mpi_providers") or []
-            if p.get("name") == provider and (version is None or p.get("version") == version)
-        ),
-        None,
-    )
+    entries = [
+        p
+        for p in profile.get("mpi_providers") or []
+        if p.get("name") == provider and (version is None or p.get("version") == version)
+    ]
+    entry = mpi_entry_for_lane(entries, lane)
     if entry is None:
+        if entries:
+            available = ", ".join(
+                sorted(
+                    str(entry.get("compiler"))
+                    for entry in entries
+                    if entry.get("compiler")
+                )
+            )
+            issues.append(
+                Issue(
+                    "error",
+                    "platform-mpi-compiler-incompatible",
+                    f"{lane_path}.mpi_provider",
+                    f"platform MPI {provider!r} has no entry compatible with "
+                    f"compiler {lane.get('compiler_ref') or lane.get('compiler')!r}; "
+                    f"available compilers: {available or 'none'}",
+                )
+            )
+            return []
         issues.append(
             Issue(
                 "error",
@@ -108,6 +126,27 @@ def _mpi_modules(
         )
         return []
     return list(entry.get("modules") or [])
+
+
+def mpi_entry_for_lane(
+    entries: list[dict[str, Any]], lane: dict[str, Any]
+) -> dict[str, Any] | None:
+    if not entries:
+        return None
+    lane_compiler = lane.get("compiler_ref") or lane.get("compiler") or ""
+    untagged = []
+    for entry in entries:
+        if isinstance(entry.get("flavors"), dict):
+            return entry
+        compiler = entry.get("compiler")
+        if compiler and is_compiler_fragment(str(compiler)):
+            if compiler_ref_satisfies_flavor(lane_compiler, str(compiler), entry):
+                return entry
+        else:
+            untagged.append(entry)
+    if untagged:
+        return untagged[0]
+    return None
 
 
 def mpi_flavor_for_lane(
