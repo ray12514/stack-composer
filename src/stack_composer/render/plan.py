@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from stack_composer.errors import Issue
+from stack_composer.render.gpu import build_gpu_plan
 from stack_composer.render.mpi import (
     compiler_fragment_name_version,
     compiler_provider_ref,
@@ -77,8 +78,58 @@ def plan_lanes(
             )
             message += f" (skipped: {details})"
         issues.append(Issue("error", "no-rendered-lanes", "stack.builds", message))
+    issues.extend(gpu_toolkit_issues(profile, lanes))
     lanes.sort(key=lambda lane: (lane["compiler"], lane["lane"], lane["source_build"]))
     return lanes, skipped, applied_narrowing, issues
+
+
+_GPU_ARCH_TOOLKITS = (("gfx", "rocm"), ("sm_", "cuda"))
+
+
+def gpu_toolkit_issues(profile: dict[str, Any], lanes: list[dict[str, Any]]) -> list[Issue]:
+    """Warn when a GPU lane will not get toolkit externals from the profile.
+
+    Such a lane concretizes, then surprises at fetch time with Spack building
+    the toolkit itself (Raider: cuda_12.9_linux.run). Building the toolkit is
+    legitimate, so these are warnings, never errors.
+    """
+    issues: list[Issue] = []
+    plan: dict[str, Any] | None = None
+    seen: set[tuple[str, str]] = set()
+    for lane in lanes:
+        arch = str(lane.get("gpu_arch") or "")
+        if not arch or (lane["name"], arch) in seen:
+            continue
+        seen.add((lane["name"], arch))
+        path = f"stack.builds.{lane['name']}"
+        toolkit = next(
+            (toolkit for prefix, toolkit in _GPU_ARCH_TOOLKITS if arch.startswith(prefix)), None
+        )
+        if toolkit is None:
+            issues.append(
+                Issue(
+                    "warning",
+                    "gpu_arch_unrecognized",
+                    path,
+                    f"gpu build {lane['name']!r}: arch_target {arch!r} is neither "
+                    f"gfx* nor sm_*; no GPU toolkit scope will be included",
+                )
+            )
+            continue
+        if plan is None:
+            plan = build_gpu_plan(profile)
+        if not plan.get(toolkit):
+            issues.append(
+                Issue(
+                    "warning",
+                    "gpu_toolkit_unavailable",
+                    path,
+                    f"gpu build {lane['name']!r} ({arch}): profile reports no usable "
+                    f"{toolkit} toolkit under gpu_toolkit_modules; Spack will build "
+                    f"{toolkit} from source",
+                )
+            )
+    return issues
 
 
 def lane_candidates_for_build(

@@ -936,6 +936,42 @@ def test_no_rendered_lanes_names_each_skipped_build_reason() -> None:
     assert "no compilers" in blocking[0].message
 
 
+def test_gpu_lane_without_toolkit_externals_warns() -> None:
+    # A gpu lane with no toolkit externals concretizes fine, then surprises at
+    # fetch time (Raider: Spack downloading cuda_12.9_linux.run). Building the
+    # toolkit from source is legitimate, so warn — never error.
+    profile, stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    profile["gpu_toolkit_modules"] = {}
+    stack["builds"] = [{"name": "gpu-kokkos", "kind": "gpu", "specs": ["kokkos+rocm"]}]
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    assert any(lane.get("gpu_arch") for lane in lanes)
+    warnings = [issue for issue in issues if issue.code == "gpu_toolkit_unavailable"]
+    assert warnings and warnings[0].severity == "warning"
+    assert "rocm" in warnings[0].message
+    assert "gpu-kokkos" in warnings[0].message
+
+
+def test_gpu_lane_with_unrecognized_arch_warns() -> None:
+    # gpu_scope only recognizes gfx*/sm_* arch targets; anything else renders
+    # a gpu lane with no GPU scope at all. Say so instead of silently
+    # concretizing without toolkit externals.
+    profile, stack = fixture_context("example-cray")
+    profile = deepcopy(profile)
+    for node in profile["node_types"].values():
+        if node.get("gpu"):
+            node["gpu"]["arch_target"] = "80"
+    stack["builds"] = [{"name": "gpu-kokkos", "kind": "gpu", "specs": ["kokkos+cuda"]}]
+
+    _lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    warnings = [issue for issue in issues if issue.code == "gpu_arch_unrecognized"]
+    assert warnings and warnings[0].severity == "warning"
+    assert "'80'" in warnings[0].message
+
+
 def test_mpi_version_pin_disambiguates_and_versions_toolchain_names(tmp_path: Path) -> None:
     profile = ambiguous_openmpi_profile()
     stack = {
