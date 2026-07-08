@@ -49,7 +49,7 @@ def render_workspace(
         package_sets_dir=package_sets_dir,
         package_repos_dir=package_repos_dir,
     )
-    if issues:
+    if any(issue.severity == "error" for issue in issues):
         raise ValidationFailed(issues)
     profile = context["profile"]
     deployment = context["deployment"]

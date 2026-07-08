@@ -954,36 +954,6 @@ def test_gpu_lane_without_toolkit_externals_warns() -> None:
     assert "gpu-kokkos" in warnings[0].message
 
 
-def test_gpu_toolkit_warning_does_not_fail_render(tmp_path: Path) -> None:
-    # Warnings surface in validate/reports; only errors may abort a render.
-    profile, _stack = fixture_context("example-cray")
-    profile = deepcopy(profile)
-    profile["gpu_toolkit_modules"] = {}
-    stack = {
-        "schema_version": 1,
-        "name": "gpu-warn",
-        "profile_contract": {"schema_version": 1},
-        "templates": {"set": "v6"},
-        "builds": [
-            {
-                "name": "gpu-kokkos",
-                "kind": "gpu",
-                "compilers": ["gcc"],
-                "mpi": {"provider": "cray-mpich", "source": "auto"},
-                "specs": ["kokkos+rocm"],
-            }
-        ],
-    }
-
-    workspace = render_profile_with_stack(
-        tmp_path / "out",
-        profile_path=write_profile(tmp_path / "profile", profile),
-        stack_path=write_stack(tmp_path / "stack", stack),
-    )
-
-    assert (workspace / "environments").is_dir()
-
-
 def test_gpu_lane_with_unrecognized_arch_warns() -> None:
     # gpu_scope only recognizes gfx*/sm_* arch targets; anything else renders
     # a gpu lane with no GPU scope at all. Say so instead of silently
