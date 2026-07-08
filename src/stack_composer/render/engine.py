@@ -57,7 +57,9 @@ def render_workspace(
     stack["_release_tag"] = release_vars.release_tag
     template_set = Path(context["template_set"])
     rendered_lanes, skipped_builds, applied_narrowing, plan_issues = plan_lanes(profile, stack)
-    if plan_issues:
+    # Warnings (e.g. gpu_toolkit_unavailable) surface via validate and the
+    # render-plan report; only errors abort a render.
+    if any(issue.severity == "error" for issue in plan_issues):
         raise ValidationFailed(plan_issues)
     rendered_lanes = materialize_lane_paths(
         rendered_lanes,
