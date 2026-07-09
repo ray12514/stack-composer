@@ -10,6 +10,9 @@ from stack_composer.commands import (
     render as render_command,
 )
 from stack_composer.commands import (
+    render_static as render_static_command,
+)
+from stack_composer.commands import (
     show as show_command,
 )
 from stack_composer.commands import (
@@ -135,6 +138,43 @@ def render(
         overwrite=overwrite,
         package_sets=package_sets,
         package_repos=package_repos,
+    )
+
+
+@cli.command("render-static")
+@click.option("--profile", required=True, help="profile.yaml path.")
+@click.option("--templates", required=True, help="Root directory containing template sets.")
+@click.option("--template-set", "template_set_name", default="v6", show_default=True)
+@click.option("--output-root", required=True, help="Static catalog output root.")
+@click.option("--release", required=True, help="Static catalog release tag.")
+@click.option("--rendered-at", required=True, help="Explicit UTC render timestamp.")
+@click.option("--source-repo", required=True, help="Source repository URL or identifier.")
+@click.option("--source-commit", required=True, help="Source commit hex digest.")
+@click.option("--source-dirty", is_flag=True, help="Record source tree as dirty.")
+@click.option("--overwrite", is_flag=True, help="Replace an existing static catalog path.")
+def render_static(
+    profile: str,
+    templates: str,
+    template_set_name: str,
+    output_root: str,
+    release: str,
+    rendered_at: str,
+    source_repo: str,
+    source_commit: str,
+    source_dirty: bool,
+    overwrite: bool,
+) -> None:
+    render_static_command.run(
+        profile=profile,
+        templates=templates,
+        template_set_name=template_set_name,
+        output_root=output_root,
+        release=release,
+        rendered_at=rendered_at,
+        source_repo=source_repo,
+        source_commit=source_commit,
+        source_dirty=source_dirty,
+        overwrite=overwrite,
     )
 
 
