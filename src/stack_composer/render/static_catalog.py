@@ -21,6 +21,10 @@ from stack_composer.render.mpi import (
     select_compiler_provider,
     select_flavor_compiler,
 )
+from stack_composer.render.plan import (
+    preferred_baseline_compiler_provider,
+    resolve_mpi,
+)
 from stack_composer.render.platform import (
     classify_system_externals,
     is_platform_selected_external,
@@ -32,6 +36,7 @@ from stack_composer.render.scopes import (
     compiler_external,
     compiler_toolchain_entries,
     mpi_provider_externals,
+    mpi_provider_variants,
     mpi_toolchain_compilers,
     mpi_toolchains,
 )
@@ -87,6 +92,7 @@ def render_static_catalog(
         profile=profile,
         defaults=defaults,
         workspace=pending,
+        published_workspace=workspace,
         release_vars=release_vars,
         template_set_name=template_set_name,
     )
@@ -103,6 +109,7 @@ def build_static_catalog(
     profile: dict[str, Any],
     defaults: dict[str, Any],
     workspace: Path,
+    published_workspace: Path,
     release_vars: ReleaseVars,
     template_set_name: str,
 ) -> dict[str, Any]:
@@ -144,8 +151,12 @@ def build_static_catalog(
     scopes.extend(gpu_scopes)
     reports["gpu_scopes"] = [scope_report(scope) for scope in gpu_scopes]
 
+    recommended_mpi_provider, _recommended_mpi_source = resolve_mpi(
+        profile, defaults, {}
+    )
     recommendations = recommendations_for(
         defaults=defaults,
+        preferred_mpi_provider=recommended_mpi_provider,
         compiler_scopes=compiler_scopes,
         compiler_default=compiler_default,
         mpi_scopes=mpi_scopes,
@@ -167,7 +178,7 @@ def build_static_catalog(
             "commit": release_vars.source_repo.commit,
             "dirty": release_vars.source_repo.dirty,
         },
-        "scope_root": str(workspace / "scopes"),
+        "scope_root": str(published_workspace / "scopes"),
         "recommendations": recommendations,
         "scopes": [manifest_scope(scope) for scope in scopes],
     }
@@ -185,7 +196,7 @@ def build_compiler_scopes(
     profile: dict[str, Any], workspace: Path
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     scopes = []
-    default_provider = None
+    rendered_providers: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for provider in profile.get("compiler_providers") or []:
         name = provider.get("name")
@@ -221,8 +232,15 @@ def build_compiler_scopes(
             "modules": provider.get("modules") or [],
         }
         scopes.append(scope)
-        if default_provider is None or provider.get("name") == "gcc":
-            default_provider = provider
+        rendered_providers.append(provider)
+    gcc_candidates = [
+        provider for provider in rendered_providers if provider.get("name") == "gcc"
+    ]
+    default_provider = (
+        preferred_baseline_compiler_provider(gcc_candidates)
+        if gcc_candidates
+        else (rendered_providers[0] if rendered_providers else None)
+    )
     return scopes, default_provider
 
 
@@ -238,7 +256,7 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
         grouped.setdefault((name, version, family), []).append(provider)
 
     seen_paths: set[str] = set()
-    for (name, version, _family), records in sorted(
+    for (name, version, family), records in sorted(
         grouped.items(), key=lambda item: (item[0][0], version_key(item[0][1]))
     ):
         provider = merge_mpi_variant_records(records)
@@ -273,6 +291,7 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
                     "kind": "mpi",
                     "name": name,
                     "version": version,
+                    "provider_family": family,
                     "compiler_ref": compiler_ref,
                     "toolchain": toolchain,
                     "path": scope_rel,
@@ -319,8 +338,9 @@ def mpi_packages_mapping(
     if not externals:
         return {}
     package: dict[str, Any] = {"buildable": False, "externals": externals}
-    if name == "cray-mpich":
-        package["variants"] = "+wrappers"
+    variants = mpi_provider_variants(str(name))
+    if variants:
+        package["variants"] = variants
     packages[str(name)] = package
     packages["mpi"] = {"buildable": False, "require": [str(name)]}
     return packages
@@ -437,6 +457,7 @@ def write_static_catalog(workspace: Path, catalog: dict[str, Any]) -> None:
 def write_readme(path: Path, manifest: dict[str, Any]) -> None:
     recommended = manifest.get("recommendations") or {}
     includes = recommended.get("include") or []
+    catalog_root = Path(str(manifest["scope_root"])).parent
     lines = [
         f"# Static Spack platform catalog: {manifest['system'].get('name', 'unknown')}",
         "",
@@ -450,7 +471,10 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
         "spack:",
         "  include:",
     ]
-    lines.extend(f"  - {item}" for item in includes)
+    lines.extend(
+        f"  - {item if Path(item).is_absolute() else catalog_root / item}"
+        for item in includes
+    )
     lines.extend(
         [
             "  specs:",
@@ -466,13 +490,16 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
 def recommendations_for(
     *,
     defaults: dict[str, Any],
+    preferred_mpi_provider: str | None,
     compiler_scopes: list[dict[str, Any]],
     compiler_default: dict[str, Any] | None,
     mpi_scopes: list[dict[str, Any]],
     gpu_scopes: list[dict[str, Any]],
 ) -> dict[str, Any]:
     compiler_scope = select_compiler_scope(defaults, compiler_scopes, compiler_default)
-    mpi_scope = select_mpi_scope(defaults, mpi_scopes, compiler_scope)
+    mpi_scope = select_mpi_scope(
+        preferred_mpi_provider, mpi_scopes, compiler_scope
+    )
     gpu_recommendations = select_gpu_scopes(gpu_scopes)
 
     include = []
@@ -513,14 +540,17 @@ def select_compiler_scope(
 
 
 def select_mpi_scope(
-    defaults: dict[str, Any],
+    preferred_provider: str | None,
     mpi_scopes: list[dict[str, Any]],
     compiler_scope: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
     if not mpi_scopes:
         return None
-    preferred = (defaults.get("mpi") or {}).get("provider")
-    candidates = [scope for scope in mpi_scopes if not preferred or scope["name"] == preferred]
+    candidates = [
+        scope
+        for scope in mpi_scopes
+        if not preferred_provider or scope["name"] == preferred_provider
+    ]
     if not candidates:
         candidates = mpi_scopes
     if compiler_scope:
@@ -528,7 +558,10 @@ def select_mpi_scope(
         matching = [scope for scope in candidates if scope.get("compiler_ref") == compiler_ref]
         if matching:
             candidates = matching
-    platform = [scope for scope in candidates if scope["name"] == "cray-mpich"]
+    # When the preferred provider is not reported, the platform-provided MPI
+    # wins by provider-family fact (never by vendor name), matching the lane
+    # renderer's selection order.
+    platform = [scope for scope in candidates if scope.get("provider_family") == "platform"]
     if platform:
         candidates = platform
     return max(candidates, key=lambda scope: version_key(str(scope.get("version") or "")))

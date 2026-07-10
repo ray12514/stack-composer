@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
 
 import yaml
@@ -32,6 +33,7 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     assert_yaml_files_parse(workspace)
     manifest = load_yaml(workspace / "manifest.yaml")
     assert manifest["kind"] == "static-platform-catalog"
+    assert manifest["scope_root"] == str(workspace / "scopes")
     assert manifest["recommendations"]["compiler"]["path"] == "scopes/compilers/gcc/13.3.0"
     assert manifest["recommendations"]["mpi"]["path"] == (
         "scopes/mpi/cray-mpich/8.1.29/gcc-13.3.0"
@@ -39,6 +41,8 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     assert manifest["recommendations"]["gpu"] == [
         {"kind": "gpu", "name": "rocm", "path": "scopes/gpu/rocm/6.0.0", "version": "6.0.0"}
     ]
+    readme = (workspace / "README.md").read_text(encoding="utf-8")
+    assert f"  - {workspace}/scopes/common" in readme
 
     common = load_yaml(workspace / "scopes" / "common" / "packages.yaml")
     assert sorted(common["packages"]) == ["curl", "libfabric", "openssl", "ucx"]
@@ -97,6 +101,120 @@ def test_static_catalog_renders_linux_mpi_pairing(tmp_path: Path) -> None:
     assert "aocc420_openmpi416" in toolchains["toolchains"]
 
 
+def test_static_catalog_recommends_platform_mpi_without_provider_name_bias(
+    tmp_path: Path,
+) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-cray", "profile.yaml"))
+    cray_mpi = deepcopy(profile["mpi_providers"][0])
+    platform_mpi = deepcopy(cray_mpi)
+    platform_mpi["name"] = "vendor-mpi"
+    platform_mpi["version"] = "2.0.0"
+    profile["mpi_providers"] = [platform_mpi, cray_mpi]
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="alpha-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-07-09T00:00:00Z",
+            source_repo=SourceRepo("local-static-alpha", "abc123", False),
+        ),
+    )
+
+    manifest = load_yaml(workspace / "manifest.yaml")
+    assert manifest["recommendations"]["mpi"]["name"] == "vendor-mpi"
+
+
+def test_static_catalog_recommends_site_mpi_without_provider_name_bias(
+    tmp_path: Path,
+) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
+    profile["system"]["name"] = "generic-platform"
+    profile["mpi_providers"] = [
+        {
+            "name": "vendor-mpi",
+            "version": "5.0.0",
+            "provider_family": "site",
+            "prefix": "/opt/vendor-mpi/5.0.0",
+            "compiler": "aocc@4.2.0",
+        },
+        {
+            "name": "cray-mpich",
+            "version": "8.1.29",
+            "provider_family": "site",
+            "prefix": "/opt/other-mpi/8.1.29",
+            "compiler": "aocc@4.2.0",
+        },
+    ]
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="alpha-001",
+            output_root=str(tmp_path),
+            rendered_at="2026-07-09T00:00:00Z",
+            source_repo=SourceRepo("local-static-alpha", "abc123", False),
+        ),
+    )
+
+    manifest = load_yaml(workspace / "manifest.yaml")
+    assert manifest["recommendations"]["mpi"]["name"] == "vendor-mpi"
+    assert manifest["recommendations"]["mpi"]["path"] == (
+        "scopes/mpi/vendor-mpi/5.0.0/aocc-4.2.0"
+    )
+
+
+def test_static_catalog_recommends_compiler_through_baseline_policy(
+    tmp_path: Path,
+) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
+    profile["system"]["name"] = "compiler-policy"
+    profile["compiler_providers"] = [
+        {
+            "name": "gcc",
+            "version": "13.3.1",
+            "prefix": "/opt/site/gcc/13.3.1",
+            "provider_family": "site",
+            "languages": ["c", "c++", "fortran"],
+        },
+        {
+            "name": "gcc",
+            "version": "14.2.0",
+            "prefix": "/usr",
+            "provider_family": "system",
+            "languages": ["c", "c++", "fortran"],
+        },
+    ]
+    profile["mpi_providers"] = []
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="alpha-001",
+            output_root=str(tmp_path),
+            rendered_at="2026-07-09T00:00:00Z",
+            source_repo=SourceRepo("local-static-alpha", "abc123", False),
+        ),
+    )
+
+    manifest = load_yaml(workspace / "manifest.yaml")
+    assert manifest["recommendations"]["compiler"]["path"] == (
+        "scopes/compilers/gcc/13.3.1"
+    )
+
+
 def test_render_static_cli_writes_catalog(tmp_path: Path) -> None:
     result = CliRunner().invoke(
         cli,
@@ -136,3 +254,40 @@ def load_yaml(path: Path) -> dict:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert isinstance(data, dict), path
     return data
+
+
+def test_recommendation_prefers_platform_family_mpi_regardless_of_name(tmp_path: Path) -> None:
+    # The platform-provider preference is a provider-family fact, not a vendor
+    # name: rename the Cray MPI and add a newer site MPI — the platform one
+    # must still win the recommendation.
+    profile = load_yaml(fixture_path("profiles", "example-cray", "profile.yaml"))
+    profile = deepcopy(profile)
+    for provider in profile["mpi_providers"]:
+        if provider["name"] == "cray-mpich":
+            provider["name"] = "vendor-mpich"
+    profile["mpi_providers"].append(
+        {
+            "name": "mpich",
+            "version": "99.0",
+            "provider_family": "site",
+            "prefix": "/opt/site/mpich/99.0",
+            "compiler": "gcc@13.3.0",
+        }
+    )
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="alpha-002",
+            output_root=str(tmp_path),
+            rendered_at="2026-07-09T00:00:00Z",
+            source_repo=SourceRepo("local-static-alpha", "abc123", False),
+        ),
+    )
+
+    manifest = load_yaml(workspace / "manifest.yaml")
+    assert manifest["recommendations"]["mpi"]["name"] == "vendor-mpich"

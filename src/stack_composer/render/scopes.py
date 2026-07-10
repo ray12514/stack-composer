@@ -137,7 +137,7 @@ def mpi_external_packages(
     for provider in selected_mpi_providers(profile, provider_name, rendered_lanes):
         if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
             continue
-        variants = _MPI_PROVIDER_VARIANTS.get(provider_name)
+        variants = mpi_provider_variants(provider_name)
         for external in mpi_provider_externals(profile, provider, rendered_lanes):
             package = packages.setdefault(
                 provider_name,
@@ -150,6 +150,15 @@ def mpi_external_packages(
             )
             package["externals"].append(external)
     return list(packages.values())
+
+
+def mpi_provider_variants(provider_name: str) -> str | None:
+    """Return Spack package variants required for one MPI provider.
+
+    Provider-specific Spack package behavior belongs in this scope-rendering
+    module so managed and static renders cannot drift.
+    """
+    return _MPI_PROVIDER_VARIANTS.get(provider_name)
 
 
 def selected_mpi_providers(
