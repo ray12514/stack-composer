@@ -373,3 +373,16 @@ def tree_bytes(root: Path) -> list[tuple[str, bytes]]:
         for path in sorted(root.rglob("*"))
         if path.is_file()
     ]
+
+
+def test_repos_yaml_pins_builtin_recipe_generation(tmp_path: Path) -> None:
+    # The recipe generation is a declared input, not whatever the Spack clone
+    # defaults to: defaults.spack.package_repo pins builtin to an exact ref,
+    # and local package repos ride alongside in the named mapping form.
+    workspace = render_fixture(tmp_path / "out-a")
+
+    repos = load_yaml(workspace / "configs" / "common" / "repos.yaml")
+    builtin = repos["repos"]["builtin"]
+    assert builtin["git"] == "https://github.com/spack/spack-packages.git"
+    assert builtin["tag"] == "v2026.06.0"
+    assert repos["repos"]["science"] == "../../package-repos/science"

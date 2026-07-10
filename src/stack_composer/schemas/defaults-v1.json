@@ -35,7 +35,21 @@
     },
     "spack": {
       "type": "object",
-      "properties": { "floor": { "type": "string", "minLength": 1 } },
+      "properties": {
+        "floor": { "type": "string", "minLength": 1 },
+        "package_repo": {
+          "type": "object",
+          "description": "Pin the Spack builtin package repository to an exact recipe generation. Prefer tag or commit; branches float and break reproducibility.",
+          "properties": {
+            "git": { "type": "string", "minLength": 1 },
+            "tag": { "type": "string", "minLength": 1 },
+            "commit": { "type": "string", "minLength": 1 },
+            "branch": { "type": "string", "minLength": 1 }
+          },
+          "required": ["git"],
+          "additionalProperties": false
+        }
+      },
       "additionalProperties": false
     },
     "externals": {
