@@ -1,7 +1,7 @@
 """Spec-native build kind inference.
 
 A stack build is authored minimally as ``name`` + ``specs`` (or a
-``package_set``) with an optional ``kind`` (cpu/mpi/gpu). When ``kind`` is
+``package_set``) with an optional ``kind`` (core/serial/mpi/gpu). When ``kind`` is
 omitted it is inferred from the specs. That is the only normalization the build
 needs — how it actually fans out into lanes (which compilers, which MPI, which
 GPU arches, which target) is resolved by the planner from the merged site
@@ -32,8 +32,8 @@ def _spec_strings(build: dict[str, Any]) -> list[str]:
 
 def infer_kind(build: dict[str, Any]) -> str:
     """Return the build's kind: explicit ``kind`` if set, else inferred from the
-    specs (gpu > mpi > cpu). Package-set builds with no inline specs default to
-    cpu and should set ``kind`` explicitly when they are MPI/GPU."""
+    specs (gpu > mpi > serial). Package-set builds with no inline specs default to
+    serial and should set ``kind`` explicitly when they are MPI/GPU."""
     explicit = build.get("kind")
     if explicit:
         return str(explicit)
@@ -51,7 +51,7 @@ def infer_kind(build: dict[str, Any]) -> str:
         return "gpu"
     if any(marker in blob for marker in _MPI_SPEC_MARKERS):
         return "mpi"
-    return "cpu"
+    return "serial"
 
 
 def normalize_build(build: dict[str, Any]) -> dict[str, Any]:

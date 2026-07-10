@@ -32,7 +32,7 @@ def test_common_plan_externals_match_the_template_global_it_replaces() -> None:
 
 def test_common_plan_default_provider_is_none_without_mpi_lanes() -> None:
     profile, stack = fixture_context("example-cray")
-    stack["builds"] = [{"name": "core", "kind": "cpu", "specs": ["zlib"], "compilers": ["gcc"]}]
+    stack["builds"] = [{"name": "core", "kind": "core", "specs": ["zlib"], "compilers": ["gcc"]}]
     stack["per_system"] = {}
     lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
     assert issues == []

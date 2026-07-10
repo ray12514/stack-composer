@@ -16,12 +16,12 @@ spack:
 
 builds:
   - name: core
-    kind: cpu
+    kind: core
     package_set: core-foundation
     target: baseline
     compilers: all
   - name: serial
-    kind: cpu
+    kind: serial
     package_set: science-full
     compilers: all
   - name: mpi

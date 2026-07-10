@@ -61,7 +61,7 @@ def run(
             {
                 "name": "show",
                 "builds": [
-                    {"name": "cpu", "kind": "cpu", "specs": ["_"]},
+                    {"name": "serial", "kind": "serial", "specs": ["_"]},
                     {"name": "mpi", "kind": "mpi", "specs": ["_"]},
                     {"name": "gpu", "kind": "gpu", "specs": ["_"]},
                 ],
@@ -153,7 +153,7 @@ def render_menu(
         f" · mpi={(defaults.get('mpi') or {}).get('provider', 'n/a')}"
         f" · target={defaults.get('target', 'native')})"
     )
-    by_kind: dict[str, list[str]] = OrderedDict((k, []) for k in ("cpu", "mpi", "gpu"))
+    by_kind: dict[str, list[str]] = OrderedDict((k, []) for k in ("core", "serial", "mpi", "gpu"))
     for lane in lanes:
         by_kind.setdefault(lane["kind"], []).append(lane["compiler"])
     for kind, lane_compilers in by_kind.items():

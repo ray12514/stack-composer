@@ -55,7 +55,7 @@ def test_validate_template_set_records_render_failure_and_exits_nonzero(tmp_path
             shutil.copytree(child, bad_templates / child.name)
         else:
             shutil.copy2(child, bad_templates / child.name)
-    broken = bad_templates / "environments" / "cpu" / "spack.yaml.j2"
+    broken = bad_templates / "environments" / "serial" / "spack.yaml.j2"
     broken.write_text("{{ missing_context_key }}\n", encoding="utf-8")
 
     err = io.StringIO()

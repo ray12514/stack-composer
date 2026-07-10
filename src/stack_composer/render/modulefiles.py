@@ -33,7 +33,7 @@ def render_front_door_modules(
     core_by_compiler = {
         lane["compiler"]: lane
         for lane in lanes
-        if lane.get("kind") == "cpu" and lane.get("lane") == "core"
+        if lane.get("kind") == "core"
     }
     public_lanes = [
         lane
@@ -103,7 +103,7 @@ def build_front_door_module_plan(
     core_by_compiler = {
         lane["compiler"]: lane
         for lane in lanes
-        if lane.get("kind") == "cpu" and lane.get("lane") == "core"
+        if lane.get("kind") == "core"
     }
     public_lanes = [
         lane
@@ -168,7 +168,7 @@ def build_front_door_module_plan(
 
 
 def is_compiler_init_lane(lane: dict[str, Any]) -> bool:
-    return lane.get("kind") == "cpu" and lane.get("lane") == "core"
+    return lane.get("kind") == "core"
 
 
 def compiler_init_module_name(init_module: str, compiler: str) -> str:

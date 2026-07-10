@@ -189,7 +189,7 @@ def load_spec_sources(
     issues: list[Issue] = []
     for build in stack.get("builds", []):
         build_name = build["name"]
-        required_kind = build.get("kind", "cpu")
+        required_kind = build.get("kind", "serial")
         if build.get("package_set"):
             path = package_sets_dir / f"{build['package_set']}.yaml"
             if not path.exists():

@@ -27,7 +27,7 @@
     },
     "kinds": {
       "type": "array",
-      "description": "Package-set kinds this set can satisfy. Open vocabulary matched against build kinds such as cpu/mpi/gpu/core.",
+      "description": "Package-set kinds this set can satisfy. Open vocabulary matched against build kinds such as core/serial/mpi/gpu.",
       "items": {
         "type": "string",
         "minLength": 1

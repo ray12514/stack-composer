@@ -182,7 +182,7 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["cpu", "mpi", "gpu"],
+          "enum": ["core", "serial", "mpi", "gpu"],
           "description": "Optional build kind. Inferred from spec variants when omitted (+mpi -> mpi; +cuda/+rocm/cuda_arch/amdgpu_target -> gpu; otherwise cpu). Determines which axes fan out: cpu = compilers; mpi = compilers x mpi provider; gpu = compilers x mpi x gpu archs."
         },
         "package_set": {

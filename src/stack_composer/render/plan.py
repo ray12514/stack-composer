@@ -138,7 +138,7 @@ def lane_candidates_for_build(
     """Resolve one build into lanes = selected compilers × (mpi provider, for
     mpi/gpu) × (gpu arch, for gpu). Everything is read from the merged site
     defaults, overridable per build, resolved against the profile."""
-    kind = build.get("kind") or "cpu"
+    kind = build.get("kind") or "serial"
     want_gpu = kind == "gpu"
     node_types = runtime_nodes(profile, want_gpu)
     if not node_types:

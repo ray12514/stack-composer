@@ -32,11 +32,11 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     assert validate_schema("release-manifest", manifest, "release-manifest.yaml") == []
     assert manifest["phase"] == "draft"
     assert manifest["templates"]["render_tool"]["name"] == "stack-composer render"
-    assert {lane["kind"] for lane in manifest["lanes"]} == {"cpu", "mpi", "gpu"}
+    assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "serial", "mpi", "gpu"}
     render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
     assert render_plan["system"]["name"] == "example-cray"
     assert render_plan["stack"]["name"] == "science-stack"
-    assert {lane["kind"] for lane in render_plan["lanes"]} == {"cpu", "mpi", "gpu"}
+    assert {lane["kind"] for lane in render_plan["lanes"]} == {"core", "serial", "mpi", "gpu"}
     assert render_plan["platform_plan"] == {
         "family": "cray-pe",
         "release_policy": {
@@ -272,7 +272,7 @@ def test_render_workspace_handles_generic_linux_without_gpu(tmp_path: Path) -> N
     manifest = load_yaml(workspace / "release-manifest.yaml")
     assert validate_schema("release-manifest", manifest, "release-manifest.yaml") == []
     assert manifest["profile"]["system_name"] == "example-linux"
-    assert {lane["kind"] for lane in manifest["lanes"]} == {"cpu", "mpi"}
+    assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "serial", "mpi"}
     assert manifest["skipped_builds"] == [
         {
             "build": "gpu",
@@ -312,7 +312,7 @@ def test_render_workspace_refuses_stale_pending_path(tmp_path: Path) -> None:
 def test_render_workspace_removes_pending_on_template_failure(tmp_path: Path) -> None:
     templates_root = tmp_path / "template-sets"
     shutil.copytree(fixture_path("template-sets"), templates_root)
-    broken_template = templates_root / "v6" / "environments" / "cpu" / "spack.yaml.j2"
+    broken_template = templates_root / "v6" / "environments" / "serial" / "spack.yaml.j2"
     broken_template.write_text("{{ missing_context_key }}\n", encoding="utf-8")
 
     output_root = tmp_path / "out-a"

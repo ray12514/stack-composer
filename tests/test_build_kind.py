@@ -15,13 +15,13 @@ def test_infer_kind_from_specs() -> None:
     assert infer_kind({"specs": ["raja+cuda"]}) == "gpu"
     # GPU wins over MPI when both appear.
     assert infer_kind({"specs": ["hdf5+mpi", "kokkos+rocm"]}) == "gpu"
-    assert infer_kind({"specs": ["cmake", "ninja"]}) == "cpu"
+    assert infer_kind({"specs": ["cmake", "ninja"]}) == "serial"
     # specs-map keyed by kind is a signal too.
     assert infer_kind({"specs": {"any": ["gsl"], "mpi": ["hdf5+mpi"]}}) == "mpi"
     # explicit kind always wins.
     assert infer_kind({"kind": "gpu", "specs": ["cmake"]}) == "gpu"
     # package-set build with no inline specs defaults to cpu.
-    assert infer_kind({"package_set": "science-full"}) == "cpu"
+    assert infer_kind({"package_set": "science-full"}) == "serial"
 
 
 def test_normalize_build_sets_kind() -> None:
@@ -30,7 +30,7 @@ def test_normalize_build_sets_kind() -> None:
     out = normalize_build({"name": "g", "kind": "gpu", "specs": ["cmake"]})
     assert out["kind"] == "gpu"
     out = normalize_build({"name": "c", "package_set": "x"})
-    assert out["kind"] == "cpu"
+    assert out["kind"] == "serial"
 
 
 def _v6_defaults() -> dict:
@@ -120,7 +120,7 @@ def test_baseline_prefers_latest_platform_gcc_when_gcc_is_duplicated() -> None:
         _v6_defaults(),
         {
             "name": "science-stack",
-            "builds": [{"name": "serial", "kind": "cpu", "specs": ["cmake"]}],
+            "builds": [{"name": "serial", "kind": "serial", "specs": ["cmake"]}],
         },
     )
 

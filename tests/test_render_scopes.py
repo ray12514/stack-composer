@@ -86,7 +86,7 @@ def test_vendor_scope_is_per_compiler_provider_family() -> None:
             "modules": ["aocc/4.2.0"],
         }
     )
-    stack["builds"] = [{"name": "core", "kind": "cpu", "specs": ["zlib"], "compilers": "all"}]
+    stack["builds"] = [{"name": "core", "kind": "core", "specs": ["zlib"], "compilers": "all"}]
     stack["per_system"] = {}
 
     lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
@@ -134,7 +134,7 @@ def test_rendered_compiler_scopes_filter_and_group_duplicate_provider_names(
         ]
     )
     stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
-    stack["builds"] = [{"name": "core", "kind": "cpu", "specs": ["zlib"], "compilers": "all"}]
+    stack["builds"] = [{"name": "core", "kind": "core", "specs": ["zlib"], "compilers": "all"}]
     stack["per_system"] = {}
 
     workspace = render_profile_with_stack(
@@ -177,7 +177,7 @@ def test_invalid_compiler_provider_version_is_not_rendered_or_selected(
         },
     )
     stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
-    stack["builds"] = [{"name": "core", "kind": "cpu", "specs": ["zlib"], "compilers": "all"}]
+    stack["builds"] = [{"name": "core", "kind": "core", "specs": ["zlib"], "compilers": "all"}]
     stack["per_system"] = {}
 
     lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
