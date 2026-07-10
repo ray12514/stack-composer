@@ -88,7 +88,6 @@ def build_front_door_module_plan(
     modules = stack.get("modules") or {}
     exposure = modules.get("exposure", "front_door")
     module_root = modules.get("module_root")
-    init_module = modules.get("init_module")
     plan: dict[str, Any] = {
         "exposure": exposure,
         "enabled": False,
@@ -97,7 +96,7 @@ def build_front_door_module_plan(
         "init_modules": [],
         "lane_modules": [],
     }
-    if exposure != "front_door" or not module_root or not init_module:
+    if exposure != "front_door" or not module_root:
         return plan
 
     core_by_compiler = {
@@ -117,7 +116,7 @@ def build_front_door_module_plan(
         prereqs, issues = platform_module_prereqs_for_lane(fake_lane, profile)
         if issues:
             raise ValidationFailed(issues)
-        name = compiler_init_module_name(init_module, compiler)
+        name = compiler_init_module_name(module_root, compiler)
         core_lane = core_by_compiler.get(compiler)
         plan["init_modules"].append(
             {
@@ -136,8 +135,9 @@ def build_front_door_module_plan(
         if issues:
             raise ValidationFailed(issues)
         public_name = public_names[lane["name"]]
+        display = compiler_display(lane["compiler"])
         conflicts = [
-            f"{module_root}/{name}"
+            posixpath.join(module_root, display, name)
             for lane_name, name in sorted(public_names.items())
             if lane_name != lane["name"]
             and lane_by_name(public_lanes, lane_name)["compiler"] == lane["compiler"]
@@ -154,6 +154,7 @@ def build_front_door_module_plan(
                     lane["compiler"],
                     "lanes",
                     module_root,
+                    display,
                     public_name,
                 ),
                 "prereqs": prereqs,
@@ -171,8 +172,27 @@ def is_compiler_init_lane(lane: dict[str, Any]) -> bool:
     return lane.get("kind") == "core"
 
 
-def compiler_init_module_name(init_module: str, compiler: str) -> str:
-    return f"{init_module}_{compiler}"
+# Known compiler display casings for the public cse/<Compiler>/<Lane> names.
+_COMPILER_DISPLAY = {
+    "gcc": "GCC",
+    "cce": "CCE",
+    "aocc": "AOCC",
+    "nvhpc": "NVHPC",
+    "intel": "Intel",
+    "oneapi": "oneAPI",
+    "rocmcc": "ROCmCC",
+    "clang": "Clang",
+}
+
+
+def compiler_display(compiler: str) -> str:
+    if compiler in _COMPILER_DISPLAY:
+        return _COMPILER_DISPLAY[compiler]
+    return compiler.upper() if len(compiler) <= 4 else compiler.capitalize()
+
+
+def compiler_init_module_name(module_root: str, compiler: str) -> str:
+    return posixpath.join(module_root, compiler_display(compiler))
 
 
 def lane_module_root_for_compiler(compiler: str, lanes: list[dict[str, Any]]) -> str:
@@ -180,39 +200,71 @@ def lane_module_root_for_compiler(compiler: str, lanes: list[dict[str, Any]]) ->
     return posixpath.join(posixpath.dirname(lane["package_module_root"]), "lanes")
 
 
+_KIND_DISPLAY = {"serial": "Serial", "mpi": "MPI", "gpu": "GPU", "core": "Core"}
+
+
 def lane_public_names(lanes: list[dict[str, Any]]) -> dict[str, str]:
+    """Public lane names: the capitalized kind, qualified by the distinguishing
+    fact only when the same compiler surface has more than one lane of that
+    kind (two MPIs -> MPI-<impl>; two GPU archs -> GPU-<arch>), never by
+    contents. Same rule toolchain names follow."""
     by_compiler: dict[str, list[dict[str, Any]]] = {}
     for lane in lanes:
         by_compiler.setdefault(lane["compiler"], []).append(lane)
 
     names: dict[str, str] = {}
     for compiler_lanes in by_compiler.values():
-        preferred = {lane["name"]: preferred_lane_name(lane) for lane in compiler_lanes}
-        counts = Counter(preferred.values())
-        fallback = {
-            lane["name"]: fallback_lane_name(lane)
-            for lane in compiler_lanes
-            if counts[preferred[lane["name"]]] > 1
-        }
-        fallback_counts = Counter(fallback.values())
+        chains = {lane["name"]: name_candidates(lane) for lane in compiler_lanes}
+        level = {lane["name"]: 0 for lane in compiler_lanes}
+        for _ in range(max(len(chain) for chain in chains.values())):
+            picked = {
+                name: chains[name][min(lvl, len(chains[name]) - 1)]
+                for name, lvl in level.items()
+            }
+            counts = Counter(picked.values())
+            colliding = [name for name, value in picked.items() if counts[value] > 1]
+            if not colliding:
+                break
+            for name in colliding:
+                level[name] += 1
         for lane in compiler_lanes:
-            name = preferred[lane["name"]]
-            if counts[name] > 1:
-                name = fallback[lane["name"]]
-            if fallback_counts.get(name, 0) > 1:
-                name = lane["lane"]
-            names[lane["name"]] = name
+            chain = chains[lane["name"]]
+            names[lane["name"]] = chain[min(level[lane["name"]], len(chain) - 1)]
     return names
 
 
-def preferred_lane_name(lane: dict[str, Any]) -> str:
-    if lane.get("kind") in {"mpi", "gpu"}:
-        return lane["kind"]
-    return fallback_lane_name(lane)
+def kind_display(lane: dict[str, Any]) -> str:
+    kind = str(lane.get("kind") or "")
+    return _KIND_DISPLAY.get(kind, kind or str(lane["lane"]))
 
 
-def fallback_lane_name(lane: dict[str, Any]) -> str:
-    return str(lane.get("source_build") or lane["lane"])
+def name_candidates(lane: dict[str, Any]) -> list[str]:
+    """Qualification chain: bare kind, then the distinguishing facts in order,
+    then the always-unique internal lane id."""
+    base = kind_display(lane)
+    kind = lane.get("kind")
+    chain = [base]
+    arch = lane.get("gpu_arch")
+    provider = lane.get("mpi_provider")
+    if kind == "gpu":
+        if arch:
+            chain.append(f"{base}-{arch}")
+        if provider:
+            chain.append(f"{base}-{provider_token(provider)}")
+        if arch and provider:
+            chain.append(f"{base}-{provider_token(provider)}-{arch}")
+    elif kind == "mpi" and provider:
+        chain.append(f"{base}-{provider_token(provider)}")
+    else:
+        build = lane.get("source_build")
+        if build and str(build) != str(kind):
+            chain.append(f"{base}-{build}")
+    chain.append(str(lane["lane"]))
+    return chain
+
+
+def provider_token(provider: object) -> str:
+    return str(provider).replace("-", "")
 
 
 def lane_by_name(lanes: list[dict[str, Any]], name: str) -> dict[str, Any]:
@@ -231,7 +283,8 @@ def compiler_init_module_text(
 ) -> str:
     lines = [
         "#%Module1.0",
-        f'module-whatis "{tcl_quote(module_root)} compiler environment: {tcl_quote(compiler)}"',
+        f'module-whatis "{tcl_quote(module_root)} compiler surface: '
+        f'{tcl_quote(compiler_display(compiler))}"',
         "",
     ]
     for prereq in prereqs:
@@ -276,7 +329,7 @@ def lane_module_text(
 ) -> str:
     whatis = (
         f"{tcl_quote(module_root)} lane: "
-        f"{tcl_quote(lane['compiler'])} {tcl_quote(public_name)}"
+        f"{tcl_quote(compiler_display(lane['compiler']))} {tcl_quote(public_name)}"
     )
     lines = [
         "#%Module1.0",

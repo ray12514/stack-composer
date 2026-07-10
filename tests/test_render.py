@@ -94,11 +94,11 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
 def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None:
     workspace = render_fixture(tmp_path / "out-a")
 
-    init_module = workspace / "modulefiles" / "science_init_gcc"
+    init_module = workspace / "modulefiles" / "cse" / "GCC"
     init_text = init_module.read_text(encoding="utf-8")
 
     assert init_text.startswith("#%Module1.0\n")
-    assert 'module-whatis "science compiler environment: gcc"' in init_text
+    assert 'module-whatis "cse compiler surface: GCC"' in init_text
     assert "prereq PrgEnv-gnu" in init_text
     assert "prereq gcc-native/13" in init_text
     assert (
@@ -111,18 +111,18 @@ def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None
     ) in init_text
     assert "gpu-craympich-gfx90a" not in init_text
 
-    selector = workspace / "modulefiles" / "gcc" / "lanes" / "science" / "gpu"
+    selector = workspace / "modulefiles" / "gcc" / "lanes" / "cse" / "GCC" / "GPU"
     text = selector.read_text(encoding="utf-8")
 
     assert text.startswith("#%Module1.0\n")
-    assert 'module-whatis "science lane: gcc gpu"' in text
-    assert "conflict science/serial" in text
-    assert "conflict science/mpi" in text
+    assert 'module-whatis "cse lane: GCC GPU"' in text
+    assert "conflict cse/GCC/Serial" in text
+    assert "conflict cse/GCC/MPI" in text
     assert "prereq cray-mpich/8.1.29" in text
     assert "prereq rocm/6.0.0" in text
     assert 'setenv STACK_RELEASE "2026.06"' in text
     assert 'setenv STACK_COMPILER "gcc"' in text
-    assert 'setenv STACK_LANE "gpu"' in text
+    assert 'setenv STACK_LANE "GPU"' in text
     assert 'setenv STACK_LANE_ID "gpu-craympich-gfx90a"' in text
     assert (
         'prepend-path MODULEPATH "/shared/stack/modules/2026.06/example-cray/'
@@ -135,14 +135,14 @@ def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None
 
     render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
     module_plan = render_plan["module_plan"]
-    assert module_plan["module_root"] == "science"
+    assert module_plan["module_root"] == "cse"
     gcc_init = next(
-        entry for entry in module_plan["init_modules"] if entry["name"] == "science_init_gcc"
+        entry for entry in module_plan["init_modules"] if entry["name"] == "cse/GCC"
     )
     assert gcc_init == {
-        "name": "science_init_gcc",
+        "name": "cse/GCC",
         "compiler": "gcc",
-        "file": "modulefiles/science_init_gcc",
+        "file": "modulefiles/cse/GCC",
         "prereqs": ["PrgEnv-gnu", "gcc-native/13"],
         "core_lane": "gcc-core",
         "core_view_root": "/shared/stack/views/2026.06/example-cray/science-stack/gcc/core",
@@ -153,16 +153,16 @@ def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None
     gpu_module = next(
         entry for entry in module_plan["lane_modules"] if entry["lane_id"] == "gpu-craympich-gfx90a"
     )
-    assert gpu_module["public_name"] == "gpu"
-    assert gpu_module["file"] == "modulefiles/gcc/lanes/science/gpu"
+    assert gpu_module["public_name"] == "GPU"
+    assert gpu_module["file"] == "modulefiles/gcc/lanes/cse/GCC/GPU"
     assert gpu_module["prereqs"] == [
         "PrgEnv-gnu",
         "gcc-native/13",
         "cray-mpich/8.1.29",
         "rocm/6.0.0",
     ]
-    assert "science/mpi" in gpu_module["conflicts"]
-    assert "science/serial" in gpu_module["conflicts"]
+    assert "cse/GCC/MPI" in gpu_module["conflicts"]
+    assert "cse/GCC/Serial" in gpu_module["conflicts"]
     assert gpu_module["package_module_root"] == (
         "/shared/stack/modules/2026.06/example-cray/science-stack/"
         "gcc/gpu-craympich-gfx90a"
@@ -218,14 +218,14 @@ def test_render_workspace_uses_build_names_when_lane_names_collide(tmp_path: Pat
         package_repos_dir=fixture_path("package-repos"),
     )
 
-    lane_root = workspace / "modulefiles" / "gcc" / "lanes" / "science"
-    assert (lane_root / "mpi-osu").exists()
-    assert (lane_root / "mpi-hdf5").exists()
+    lane_root = workspace / "modulefiles" / "gcc" / "lanes" / "cse" / "GCC"
+    assert (lane_root / "mpi-osu-craympich").exists()
+    assert (lane_root / "mpi-hdf5-craympich").exists()
     assert not (lane_root / "mpi").exists()
 
-    osu_text = (lane_root / "mpi-osu").read_text(encoding="utf-8")
-    assert "conflict science/mpi-hdf5" in osu_text
-    assert 'setenv STACK_LANE "mpi-osu"' in osu_text
+    osu_text = (lane_root / "mpi-osu-craympich").read_text(encoding="utf-8")
+    assert "conflict cse/GCC/mpi-hdf5-craympich" in osu_text
+    assert 'setenv STACK_LANE "mpi-osu-craympich"' in osu_text
     assert 'setenv STACK_LANE_ID "mpi-osu-craympich"' in osu_text
 
 

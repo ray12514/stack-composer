@@ -132,17 +132,10 @@
           "default": "front_door",
           "description": "front_door: users load a compiler init module, then one lane module, then package modules. direct: public package/application modules."
         },
-        "init_module": {
-          "oneOf": [
-            { "type": "null" },
-            { "type": "string", "minLength": 1 }
-          ],
-          "description": "Optional compiler-init module prefix (e.g., science_init -> science_init_gcc). Null when the lane module root is already on MODULEPATH."
-        },
         "module_root": {
           "type": "string",
           "minLength": 1,
-          "description": "User-facing lane module namespace (e.g., science in science/mpi)."
+          "description": "User-facing module namespace: the stack prefix in <root>/<Compiler>/<Lane> (e.g., cse in cse/GCC/Serial). The compiler surface module is <root>/<Compiler>."
         },
         "publish_root": {
           "oneOf": [
