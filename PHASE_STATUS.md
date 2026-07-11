@@ -35,8 +35,8 @@ Primary planning docs:
 - `publish-manifest`: finalizes a draft manifest from downstream build evidence.
 - `spack-build`: local Spack-driving companion script.
 - Front-door Tcl modulefiles are rendered under the workspace's `modulefiles/`
-  tree: compiler init modules such as `science_init_gcc`, plus short lane
-  modules such as `science/mpi`. Spack still generates package modulefiles into
+  tree: compiler surface modules such as `cse/GCC`, plus lane modules such as
+  `cse/GCC/MPI`. Spack still generates package modulefiles into
   each lane's `package_module_root`.
 - Generic provider inventory consumption: `compiler_providers` +
   `mpi_providers`.
