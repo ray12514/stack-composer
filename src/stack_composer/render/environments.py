@@ -18,6 +18,17 @@ def spec_package_name(spec: str) -> str:
     return _SPEC_NAME_SPLIT.split(spec.strip(), maxsplit=1)[0]
 
 
+def module_formats(stack: dict[str, Any]) -> list[str]:
+    """Module formats are declared policy (modules.format + additional_formats),
+    never a template constant."""
+    modules = stack.get("modules") or {}
+    formats = [str(modules.get("format") or "tcl")]
+    for extra in modules.get("additional_formats") or []:
+        if extra not in formats:
+            formats.append(str(extra))
+    return formats
+
+
 def render_lane_environment(
     *,
     template_dir: Path,
@@ -42,6 +53,7 @@ def render_lane_environment(
             # falls back to a hash-qualified projection and generates no module.
             "module_view_root": lane["view_root"] + "-modules",
             "view_projection_names": sorted({spec_package_name(spec) for spec in specs}),
+            "module_formats": module_formats(ctx["stack"]),
             "platform_module_prereqs": prereqs,
         }
     )

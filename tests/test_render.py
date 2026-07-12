@@ -415,3 +415,38 @@ def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
     assert modules["default"]["tcl"]["exclude_implicits"] is True
     assert modules["default"]["tcl"]["hash_length"] == 0
     assert modules["default"]["tcl"]["projections"]["all"] == "{name}/{version}"
+
+
+def test_module_formats_come_from_declared_policy(tmp_path: Path) -> None:
+    # modules.format/additional_formats are policy; the template prints the
+    # computed list and never hardcodes a format.
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    stack["modules"] = {"format": "tcl", "additional_formats": ["lmod"]}
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    workspace = render_workspace(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        release_vars=ReleaseVars(
+            release_tag="2026.06",
+            output_root=(tmp_path / "out-a").as_posix(),
+            rendered_at="2026-06-19T00:00:00Z",
+            source_repo=SourceRepo(
+                url="git@example:stacks/science-stack",
+                commit="0375b16fdeadbeef0123456789abcdef01234567",
+                dirty=False,
+            ),
+        ),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+
+    env = load_yaml(workspace / "environments" / "gcc" / "serial" / "spack.yaml")
+    modules = env["spack"]["modules"]["default"]
+    assert modules["enable"] == ["tcl", "lmod"]
+    assert modules["roots"]["tcl"].endswith("/gcc/serial")
+    assert modules["roots"]["lmod"].endswith("/gcc/serial")
+    assert modules["lmod"]["exclude_implicits"] is True
