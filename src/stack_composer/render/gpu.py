@@ -21,17 +21,13 @@ _TOOLKITS = ("rocm", "cuda")
 
 
 def build_gpu_plan(profile: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    """Resolve GPU toolkit externals for every toolkit with facts on the system.
+    """Resolve GPU toolkit externals for every toolkit.
 
-    Returns `{toolkit: [packages]}`. A toolkit with no resolved externals is
-    omitted — there is nothing to render for it.
+    Returns `{toolkit: [packages]}` with every toolkit key always present
+    (empty when the profile has no facts), so templates print without
+    defaulting guards.
     """
-    plan: dict[str, list[dict[str, Any]]] = {}
-    for toolkit in _TOOLKITS:
-        packages = gpu_external_packages(profile, toolkit)
-        if packages:
-            plan[toolkit] = packages
-    return plan
+    return {toolkit: gpu_external_packages(profile, toolkit) for toolkit in _TOOLKITS}
 
 
 def select_gpu_toolkit(profile: dict[str, Any], family: str) -> dict[str, Any]:

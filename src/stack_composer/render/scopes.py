@@ -48,6 +48,8 @@ def make_jinja_environment(template_dir: Path) -> Environment:
     )
     env.filters["to_yaml"] = to_yaml
     env.globals["to_yaml"] = to_yaml
+    env.filters["yaml_flow"] = yaml_flow
+    env.globals["yaml_flow"] = yaml_flow
     env.globals["path_join"] = path_join
     env.globals["spack_spec"] = spack_spec
     # All external/toolchain selection is resolved once into the render context
@@ -59,6 +61,11 @@ def make_jinja_environment(template_dir: Path) -> Environment:
 
 def to_yaml(value: Any) -> str:
     return yaml.safe_dump(value, sort_keys=False, default_flow_style=False).rstrip()
+
+
+def yaml_flow(value: Any) -> str:
+    """Flow-style one-liner (e.g. `[rocm/6.0.0]`), for scalar-line printing."""
+    return yaml.safe_dump(value, sort_keys=False, default_flow_style=True).strip()
 
 
 def path_join(*parts: str) -> str:
