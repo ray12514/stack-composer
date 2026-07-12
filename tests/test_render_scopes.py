@@ -1554,6 +1554,11 @@ def write_test_deployment(path: Path, system: str) -> None:
         {
             "schema_version": 1,
             "system": system,
+            "access": {
+                "group": "cse",
+                "read": "group",
+                "write": "group",
+            },
             "install_tree": {"root": "/shared/stack/spack/opt"},
             "build_stage": {"default": "/scratch/$user/spack-stage"},
             "caches": {

@@ -235,6 +235,9 @@ for lane in "${LANES[@]}"; do
     printf '%s|%s\n' "$lane_name" "$install_root" >> "$lane_roots"
   fi
   run_step "$lane" view-regenerate spack -e "$env_path" env view regenerate || lane_failed=1
+  # Package modules come from the environment's own modules config (use_view
+  # over the projected cse_modules view; explicit roots only).
+  run_step "$lane" module-refresh spack -e "$env_path" module tcl refresh --delete-tree -y || lane_failed=1
   run_step "$lane" verify-libraries spack -e "$env_path" verify libraries || {
     lane_failed=1
     libraries_status=failed

@@ -22,7 +22,12 @@ from tests.conftest import fixture_path
 def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     workspace = render_fixture(tmp_path / "out-a")
 
-    assert (workspace / "configs" / "common" / "packages.yaml").exists()
+    packages = load_yaml(workspace / "configs" / "common" / "packages.yaml")
+    assert packages["packages"]["all"]["permissions"] == {
+        "group": "cse",
+        "read": "group",
+        "write": "group",
+    }
     config = load_yaml(workspace / "configs" / "common" / "config.yaml")
     assert config["config"]["install_tree"]["root"] == "/shared/stack/spack/opt"
     assert config["config"]["source_cache"] == "/shared/stack/spack/source-cache"
@@ -386,3 +391,27 @@ def test_repos_yaml_pins_builtin_recipe_generation(tmp_path: Path) -> None:
     assert builtin["git"] == "https://github.com/spack/spack-packages.git"
     assert builtin["tag"] == "v2026.06.0"
     assert repos["repos"]["science"] == "../../package-repos/science"
+
+
+def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
+    # Spack 1.1+ use_view module generation: each lane carries a merged
+    # default view (the ambient surface lane modules path into) plus a named
+    # projected view that package-module generation reads. Public roots get
+    # clean {name}/{version} projections; dependencies fall back to a
+    # hash-qualified form and generate no modules (exclude_implicits).
+    workspace = render_fixture(tmp_path / "out-a")
+
+    env = load_yaml(workspace / "environments" / "gcc" / "serial" / "spack.yaml")
+    views = env["spack"]["view"]
+    assert views["default"]["root"].endswith("/gcc/serial")
+    modules_view = views["cse_modules"]
+    assert modules_view["root"] == views["default"]["root"] + "-modules"
+    assert modules_view["projections"]["hdf5"] == "{name}/{version}"
+    assert modules_view["projections"]["all"] == "{name}/{version}-{hash:7}"
+
+    modules = env["spack"]["modules"]
+    assert modules["default"]["use_view"] == "cse_modules"
+    assert modules["default"]["roots"]["tcl"].endswith("/gcc/serial")
+    assert modules["default"]["tcl"]["exclude_implicits"] is True
+    assert modules["default"]["tcl"]["hash_length"] == 0
+    assert modules["default"]["tcl"]["projections"]["all"] == "{name}/{version}"

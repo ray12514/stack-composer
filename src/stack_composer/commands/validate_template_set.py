@@ -159,6 +159,7 @@ def write_validation_deployment(profile_path: Path, deployment_path: Path) -> No
     deployment = {
         "schema_version": 1,
         "system": system,
+        "access": {"group": "cse", "read": "group", "write": "group"},
         "install_tree": {"root": "/tmp/stack-composer-validate/spack/opt"},
         "build_stage": {"default": "/tmp/stack-composer-validate/stage"},
         "caches": {

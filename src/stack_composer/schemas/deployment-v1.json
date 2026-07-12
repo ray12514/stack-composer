@@ -11,6 +11,30 @@
       "minLength": 1,
       "description": "Must match profile.system.name."
     },
+    "access": {
+      "type": "object",
+      "description": "Installer-chosen access policy for Spack-installed package prefixes and published stack artifacts.",
+      "properties": {
+        "group": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\s]+$",
+          "description": "Unix group that owns shared stack artifacts."
+        },
+        "read": {
+          "type": "string",
+          "enum": ["group", "world"],
+          "description": "Broadest audience allowed to read installed and published artifacts."
+        },
+        "write": {
+          "type": "string",
+          "enum": ["user", "group"],
+          "description": "Broadest audience allowed to write Spack-installed package prefixes while the shared store is maintained."
+        }
+      },
+      "required": ["group", "read", "write"],
+      "additionalProperties": false
+    },
     "install_tree": {
       "type": "object",
       "properties": {
@@ -100,6 +124,7 @@
   "required": [
     "schema_version",
     "system",
+    "access",
     "install_tree",
     "build_stage",
     "caches",
