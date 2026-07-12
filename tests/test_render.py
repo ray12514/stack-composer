@@ -243,10 +243,14 @@ def test_render_workspace_skips_front_door_modules_for_direct_exposure(tmp_path:
     }
     stack_path = tmp_path / "stack.yaml"
     stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+    deployment = deepcopy(load_yaml(fixture_path("deployments", "example-cray.yaml")))
+    deployment["modules"]["publish_root"] = "/sw/site/modulefiles"
+    deployment_path = tmp_path / "deployment.yaml"
+    deployment_path.write_text(yaml.safe_dump(deployment, sort_keys=False), encoding="utf-8")
 
     workspace = render_workspace(
         profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
-        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        deployment_path=deployment_path,
         stack_path=stack_path,
         templates_root=fixture_path("template-sets"),
         release_vars=ReleaseVars(
@@ -450,3 +454,73 @@ def test_module_formats_come_from_declared_policy(tmp_path: Path) -> None:
     assert modules["roots"]["tcl"].endswith("/gcc/serial")
     assert modules["roots"]["lmod"].endswith("/gcc/serial")
     assert modules["lmod"]["exclude_implicits"] is True
+
+
+def direct_stack() -> dict:
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    stack["modules"] = {"exposure": "direct"}
+    stack["builds"] = [
+        {"name": "serial", "kind": "serial", "compilers": ["gcc"], "specs": ["cmake"]}
+    ]
+    stack.pop("per_system", None)
+    return stack
+
+
+def test_direct_exposure_publishes_package_modules_to_publish_root(tmp_path: Path) -> None:
+    # direct exposure: no front door; package modules root at the
+    # installer-chosen publish_root already on the site MODULEPATH.
+    deployment = deepcopy(load_yaml(fixture_path("deployments", "example-cray.yaml")))
+    deployment["modules"]["publish_root"] = "/sw/site/modulefiles"
+    deployment_path = tmp_path / "deployment.yaml"
+    deployment_path.write_text(yaml.safe_dump(deployment, sort_keys=False), encoding="utf-8")
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(direct_stack(), sort_keys=False), encoding="utf-8")
+
+    workspace = render_workspace(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        deployment_path=deployment_path,
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        release_vars=ReleaseVars(
+            release_tag="2026.06",
+            output_root=(tmp_path / "out-a").as_posix(),
+            rendered_at="2026-06-19T00:00:00Z",
+            source_repo=SourceRepo(
+                url="git@example:stacks/science-stack",
+                commit="0375b16fdeadbeef0123456789abcdef01234567",
+                dirty=False,
+            ),
+        ),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+
+    assert not (workspace / "modulefiles").exists()
+    env = load_yaml(workspace / "environments" / "gcc" / "serial" / "spack.yaml")
+    assert env["spack"]["modules"]["default"]["roots"]["tcl"] == "/sw/site/modulefiles"
+
+
+def test_direct_exposure_without_publish_root_is_an_error(tmp_path: Path) -> None:
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(direct_stack(), sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(ValidationFailed) as excinfo:
+        render_workspace(
+            profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+            deployment_path=fixture_path("deployments", "example-cray.yaml"),
+            stack_path=stack_path,
+            templates_root=fixture_path("template-sets"),
+            release_vars=ReleaseVars(
+                release_tag="2026.06",
+                output_root=(tmp_path / "out-a").as_posix(),
+                rendered_at="2026-06-19T00:00:00Z",
+                source_repo=SourceRepo(
+                    url="git@example:stacks/science-stack",
+                    commit="0375b16fdeadbeef0123456789abcdef01234567",
+                    dirty=False,
+                ),
+            ),
+            package_sets_dir=fixture_path("package-sets"),
+            package_repos_dir=fixture_path("package-repos"),
+        )
+    assert any(issue.code == "direct-exposure-needs-publish-root" for issue in excinfo.value.issues)

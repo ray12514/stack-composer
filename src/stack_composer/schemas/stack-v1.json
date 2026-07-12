@@ -137,13 +137,6 @@
           "minLength": 1,
           "description": "User-facing module namespace: the stack prefix in <root>/<Compiler>/<Lane> (e.g., cse in cse/GCC/Serial). The compiler surface module is <root>/<Compiler>."
         },
-        "publish_root": {
-          "oneOf": [
-            { "type": "null" },
-            { "type": "string", "pattern": "^/" }
-          ],
-          "description": "Optional existing site MODULEPATH root where public modules are published or symlinked. Absolute path or null."
-        },
         "hierarchy_style": {
           "type": "string",
           "enum": ["collapsed", "granular"],
