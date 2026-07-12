@@ -76,7 +76,7 @@ def render_workspace(
     )
     mpi_plan = build_mpi_plan(profile, rendered_lanes)
     gpu_plan = build_gpu_plan(profile)
-    common_plan = build_common_plan(profile, stack, rendered_lanes)
+    common_plan = build_common_plan(profile, stack, rendered_lanes, context["package_repos"])
     compiler_plan = build_compiler_plan(profile, stack, rendered_lanes)
     render_context = build_render_context(
         base_context=context,

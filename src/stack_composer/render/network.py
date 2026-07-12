@@ -34,8 +34,47 @@ def build_mpi_plan(
     )
     plan: dict[str, dict[str, Any]] = {}
     for name in provider_names:
+        packages = mpi_external_packages(profile, name, rendered_lanes)
+        sources = {
+            str(lane.get("mpi_source"))
+            for lane in rendered_lanes
+            if lane.get("mpi_provider") == name
+        }
+        # The platform-vs-build decision belongs to resolve_mpi and rides the
+        # lanes; templates print whichever config this produces and never
+        # infer the mode from list emptiness.
+        mode = "platform" if "platform" in sources else "build"
         plan[name] = {
-            "packages": mpi_external_packages(profile, name, rendered_lanes),
+            "mode": mode,
+            "packages": packages,
+            "packages_config": mpi_packages_config(name, mode, packages),
             "toolchains": mpi_toolchains(profile, rendered_lanes, name),
         }
     return plan
+
+
+def mpi_packages_config(
+    name: str, mode: str, packages: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """The provider scope's packages.yaml mapping, fully decided: platform
+    lanes pin the reported externals buildable-false; build lanes leave the
+    provider buildable and pin the mpi virtual so nothing floats a second
+    MPI into the lane."""
+    config: dict[str, Any] = {"all": {"providers": {"mpi": [name]}}}
+    if mode == "platform":
+        config[name] = {
+            "buildable": False,
+            "externals": [
+                {
+                    "spec": external["spec"],
+                    "prefix": external["prefix"],
+                    "modules": external.get("modules") or [],
+                }
+                for package in packages
+                for external in package.get("externals", [])
+            ],
+        }
+    else:
+        config["mpi"] = {"require": [name]}
+        config[name] = {"buildable": True}
+    return config

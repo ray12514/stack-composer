@@ -9,6 +9,7 @@ This module makes them once so the template becomes a dumb printer.
 
 from __future__ import annotations
 
+import posixpath
 from typing import Any
 
 from stack_composer.render.scopes import common_external_packages
@@ -18,8 +19,10 @@ def build_common_plan(
     profile: dict[str, Any],
     stack: dict[str, Any],
     rendered_lanes: list[dict[str, Any]],
+    package_repos: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Resolve the common scope's externals, default MPI provider, and target.
+    """Resolve the common scope's externals, default MPI provider, target,
+    and repos mapping.
 
     `default_mpi_provider` uses the first rendered lane's provider. Keeping
     that rule here makes it visible and testable.
@@ -31,4 +34,24 @@ def build_common_plan(
         "externals": common_external_packages(profile, stack),
         "default_mpi_provider": lane_providers[0] if lane_providers else None,
         "target_prefer": rendered_lanes[0]["target"] if rendered_lanes else None,
+        "repos": repos_mapping(stack, package_repos or []),
     }
+
+
+def repos_mapping(
+    stack: dict[str, Any], package_repos: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """repos.yaml content, fully decided: the builtin recipe-generation pin
+    from declared policy (spack.package_repo) plus local package repositories
+    as named path entries. Always a complete mapping — empty when nothing is
+    declared — so the template prints it verbatim."""
+    repos: dict[str, Any] = {}
+    spack_cfg = stack.get("spack")
+    pin = spack_cfg.get("package_repo") if isinstance(spack_cfg, dict) else None
+    if pin:
+        repos["builtin"] = {
+            key: pin[key] for key in ("git", "tag", "commit", "branch") if pin.get(key)
+        }
+    for repo in package_repos:
+        repos[str(repo["name"])] = posixpath.join("..", "..", "package-repos", str(repo["name"]))
+    return repos
