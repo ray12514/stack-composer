@@ -7,6 +7,7 @@ from typing import Any
 
 from stack_composer.errors import ValidationFailed
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
+from stack_composer.render.shared_exposure import shared_module_root_for_lane
 
 
 def render_front_door_modules(
@@ -67,6 +68,7 @@ def render_front_door_modules(
             prereqs=lane_entry["prereqs"],
             platform_module_policy=module_plan["platform_module_policy"],
             conflicts=lane_entry["conflicts"],
+            shared_module_root=lane_entry["shared_module_root"],
         )
         path = pending / lane_entry["file"]
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -79,6 +81,7 @@ def build_front_door_module_plan(
     stack: dict[str, Any],
     lanes: list[dict[str, Any]],
     release_tag: str,
+    shared_exposure: dict[str, Any],
 ) -> dict[str, Any]:
     """Describe stack-owned module exposure for the current front-door model.
 
@@ -162,6 +165,9 @@ def build_front_door_module_plan(
                 "conflicts": conflicts,
                 "view_root": lane["view_root"],
                 "package_module_root": lane["package_module_root"],
+                # Lane-agnostic payload exposure: the per-compiler shared
+                # module root every payload lane prepends, or None.
+                "shared_module_root": shared_module_root_for_lane(lane, shared_exposure),
             }
         )
 
@@ -328,6 +334,7 @@ def lane_module_text(
     prereqs: list[str],
     platform_module_policy: str,
     conflicts: list[str],
+    shared_module_root: str | None,
 ) -> str:
     whatis = (
         f"{tcl_quote(module_root)} lane: "
@@ -355,6 +362,11 @@ def lane_module_text(
             "",
         ]
     )
+    if shared_module_root:
+        # Lane-agnostic packages: one serial-lane build, module-visible from
+        # every payload lane. Prepended first so the lane's own root stays
+        # highest precedence.
+        lines.append(f'prepend-path MODULEPATH "{tcl_quote(shared_module_root)}"')
     lines.append(f'prepend-path MODULEPATH "{tcl_quote(lane["package_module_root"])}"')
     lines.append("")
     return "\n".join(lines)

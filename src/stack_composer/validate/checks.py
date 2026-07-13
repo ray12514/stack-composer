@@ -5,7 +5,7 @@ from typing import Any
 
 from stack_composer.errors import Issue
 from stack_composer.model.deployment import load_deployment, validate_deployment_for_profile
-from stack_composer.model.package_set import load_package_set
+from stack_composer.model.package_set import load_package_set, spec_package_name
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
 from stack_composer.resolve.build_kind import normalize_builds
@@ -166,6 +166,7 @@ def validate_package_sets(stack: dict[str, Any], package_sets_dir: Path) -> list
                         f"package set {package_set_name!r} has tier {package_set.get('tier')!r}",
                     )
                 )
+            issues.extend(validate_lane_agnostic_names(package_set, path))
             loaded[package_set_name] = package_set
         package_set = loaded.get(package_set_name)
         if not package_set:
@@ -177,6 +178,52 @@ def validate_package_sets(stack: dict[str, Any], package_sets_dir: Path) -> list
                     "package-set-kind-mismatch",
                     f"stack.builds[{index}].package_set",
                     f"{package_set_name!r} does not provide kind {required_kind!r}",
+                )
+            )
+    return issues
+
+
+def validate_lane_agnostic_names(package_set: dict[str, Any], path: Path) -> list[Issue]:
+    """Every lane_agnostic name must be a root spec in the serial kind and in
+    no other kind: the serial lane owns the single shared build. A package in
+    `any` is already built everywhere; one in mpi/gpu too is a dual-build
+    package — neither is lane-agnostic."""
+    declared = package_set.get("lane_agnostic") or []
+    if not declared:
+        return []
+    specs = package_set.get("specs", {})
+    names_by_kind = {
+        kind: {spec_package_name(spec) for spec in kind_specs}
+        for kind, kind_specs in specs.items()
+    }
+    serial_names = names_by_kind.get("serial", set())
+    issues: list[Issue] = []
+    for name in declared:
+        other_kinds = sorted(
+            kind
+            for kind, names in names_by_kind.items()
+            if kind != "serial" and name in names
+        )
+        if name not in serial_names and not other_kinds:
+            issues.append(
+                Issue(
+                    "error",
+                    "lane-agnostic-unknown-package",
+                    f"{path}:lane_agnostic",
+                    f"lane_agnostic package {name!r} has no root spec in the "
+                    f"serial kind of package set {package_set.get('name')!r}",
+                )
+            )
+            continue
+        if other_kinds:
+            issues.append(
+                Issue(
+                    "error",
+                    "lane-agnostic-not-serial-only",
+                    f"{path}:lane_agnostic",
+                    f"lane_agnostic package {name!r} also has root specs in "
+                    f"{', '.join(other_kinds)}; lane-agnostic means one serial "
+                    f"build exposed everywhere, not a per-lane build",
                 )
             )
     return issues

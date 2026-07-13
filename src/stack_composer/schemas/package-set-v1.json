@@ -50,6 +50,15 @@
       },
       "additionalProperties": false
     },
+    "lane_agnostic": {
+      "type": "array",
+      "description": "Package names built once in the compiler column's serial lane and exposed — module visibility only, never a rebuild — in every payload lane view (serial/mpi/gpu) of that compiler. For packages with no MPI implementation that fail the compiler-agnostic Core test (e.g. openblas). Each name must match a root spec in the serial kind and appear in no other kind (one build, exposed everywhere); render fails if a declaring stack derives no serial lane to build them.",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
     "provenance_hints": {
       "type": "object",
       "description": "Optional overrides for the render-step provenance derivation. Keys are package names; values are provenance classes.",

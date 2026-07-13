@@ -19,6 +19,8 @@ specs:
     - hdf5@1.12.3~mpi+fortran
     - netcdf-c@4.9.2~mpi
     - netcdf-c@4.9.0~mpi
+    - openblas@0.3.30
+    - netlib-lapack@3.11.0
   mpi:
     - hdf5@1.14.5+mpi+fortran
     - hdf5@1.14.4+mpi+fortran
@@ -37,6 +39,9 @@ specs:
     - tau+mpi
     - kokkos+gpu
     - raja+gpu
+
+# One serial-lane build, module-exposed in every payload lane of the compiler.
+lane_agnostic: [openblas, netlib-lapack]
 
 provenance_hints:
   cray-mpich: Platform-backed

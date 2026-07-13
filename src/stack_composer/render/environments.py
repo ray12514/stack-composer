@@ -1,21 +1,15 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment
 
 from stack_composer.errors import ValidationFailed
-from stack_composer.model.package_set import expand_specs_for_lane
+from stack_composer.model.package_set import expand_specs_for_lane, spec_package_name
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 from stack_composer.render.scopes import scopes_for_lane
-
-_SPEC_NAME_SPLIT = re.compile(r"[@ +~%^]")
-
-
-def spec_package_name(spec: str) -> str:
-    return _SPEC_NAME_SPLIT.split(spec.strip(), maxsplit=1)[0]
+from stack_composer.render.shared_exposure import lane_shared_module_set
 
 
 def module_formats(stack: dict[str, Any]) -> list[str]:
@@ -54,6 +48,11 @@ def render_lane_environment(
             "module_view_root": lane["view_root"] + "-modules",
             "view_projection_names": sorted({spec_package_name(spec) for spec in specs}),
             "module_formats": module_formats(ctx["stack"]),
+            # Owning serial lane only: the shared module set for lane-agnostic
+            # packages (single build, exposed in every payload lane).
+            "lane_shared_module_set": lane_shared_module_set(
+                lane, ctx["shared_exposure_plan"]
+            ),
             "platform_module_prereqs": prereqs,
         }
     )

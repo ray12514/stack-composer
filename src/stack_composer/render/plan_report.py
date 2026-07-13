@@ -21,6 +21,7 @@ def render_plan_report(
     applied_narrowing: dict[str, Any] | None,
     release_vars: ReleaseVars,
     module_plan: dict[str, Any],
+    shared_exposure_plan: dict[str, Any],
     rendered_scopes: list[str],
 ) -> dict[str, Any]:
     """Return the explicit decision report for one render.
@@ -54,6 +55,7 @@ def render_plan_report(
         "platform_plan": platform_plan(profile, stack),
         "network_plan": network_plan(profile, stack, lanes),
         "module_plan": module_plan,
+        "shared_exposure": shared_exposure_plan,
         "skipped_builds": skipped_builds,
         "applied_narrowing": applied_narrowing,
     }

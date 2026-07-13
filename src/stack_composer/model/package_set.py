@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +8,12 @@ from stack_composer.schema_registry import validate_schema
 from stack_composer.yaml_io import load_yaml
 
 GPU_VARIANT_PLACEHOLDER = "+gpu"
+
+_SPEC_NAME_SPLIT = re.compile(r"[@ +~%^]")
+
+
+def spec_package_name(spec: str) -> str:
+    return _SPEC_NAME_SPLIT.split(spec.strip(), maxsplit=1)[0]
 
 
 def load_package_set(path: Path) -> tuple[dict[str, Any], list]:
