@@ -44,6 +44,8 @@ def test_spack_build_runs_lanes_and_writes_publish_inputs(tmp_path: Path) -> Non
             str(reports),
             "--jobs",
             "2",
+            "--concretize-jobs",
+            "1",
             "--buildcache",
             "payload=file:///cache/payload",
         ],
@@ -73,7 +75,7 @@ def test_spack_build_runs_lanes_and_writes_publish_inputs(tmp_path: Path) -> Non
         }
     ]
     log = fake_log.read_text(encoding="utf-8")
-    assert "concretize --force" in log
+    assert "concretize --force -j 1" in log
     assert "install -j 2" in log
     assert "find --explicit --format {prefix}" in log
     assert "find -H" in log

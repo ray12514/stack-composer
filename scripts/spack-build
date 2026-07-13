@@ -10,6 +10,7 @@ Options:
   --spack-root DIR       Optional Spack checkout to source before running.
   --lanes GLOB           Lane glob relative to environments/, default '*/*'.
   --reports DIR          Report directory, default '<workspace>/reports'.
+  --concretize-jobs N    spack concretize parallelism, default 1.
   --jobs N               spack install parallelism, default half local CPUs.
   --buildcache NAME=URL  Buildcache mirror to push after each lane; repeatable.
   --skip-push            Skip buildcache push steps.
@@ -28,6 +29,7 @@ SPACK_ROOT=""
 LANES_GLOB="*/*"
 REPORTS=""
 JOBS=""
+CONCRETIZE_JOBS="${SPACK_CONCRETIZE_JOBS:-1}"
 SKIP_PUSH=0
 FAIL_FAST=0
 BUILDCACHE_NAMES=()
@@ -53,6 +55,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --jobs)
       JOBS=${2:-}
+      shift 2
+      ;;
+    --concretize-jobs)
+      CONCRETIZE_JOBS=${2:-}
       shift 2
       ;;
     --buildcache)
@@ -92,6 +98,7 @@ if [[ -n $SPACK_ROOT ]]; then
 fi
 
 command -v spack >/dev/null 2>&1 || die "spack is not on PATH"
+[[ $CONCRETIZE_JOBS =~ ^[1-9][0-9]*$ ]] || die "--concretize-jobs expects a positive integer"
 
 if [[ -z $REPORTS ]]; then
   REPORTS="$WORKSPACE/reports"
@@ -159,6 +166,8 @@ LANES=()
 while IFS= read -r spack_yaml; do
   env_dir=${spack_yaml%/spack.yaml}
   rel=${env_dir#"$WORKSPACE/environments/"}
+  # LANES_GLOB is intentionally a shell pattern.
+  # shellcheck disable=SC2053
   if [[ $rel == $LANES_GLOB ]]; then
     LANES+=("$rel")
   fi
@@ -222,7 +231,7 @@ for lane in "${LANES[@]}"; do
   env_path="$WORKSPACE/environments/$lane"
   lane_name=${lane//\//-}
   lane_failed=0
-  run_step "$lane" concretize spack -e "$env_path" concretize --force || lane_failed=1
+  run_step "$lane" concretize spack -e "$env_path" concretize --force -j "$CONCRETIZE_JOBS" || lane_failed=1
   run_step "$lane" fetch spack -e "$env_path" fetch -D || lane_failed=1
   run_step "$lane" install spack -e "$env_path" install -j "$JOBS" || lane_failed=1
   install_root=$(spack -e "$env_path" find --explicit --format '{prefix}' 2>/dev/null | while IFS= read -r line; do

@@ -135,7 +135,7 @@
         "module_root": {
           "type": "string",
           "minLength": 1,
-          "description": "User-facing module namespace: the stack prefix in <root>/<Compiler>/<Lane> (e.g., cse in cse/GCC/Serial). The compiler surface module is <root>/<Compiler>."
+          "description": "User-facing compiler-front-door namespace (for example, cse in cse/GCC). Lane selectors use short names such as Serial, MPI, and GPU inside the compiler-specific MODULEPATH exposed by that front door."
         },
         "hierarchy_style": {
           "type": "string",

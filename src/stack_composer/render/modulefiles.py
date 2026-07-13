@@ -49,6 +49,7 @@ def render_front_door_modules(
             compiler=compiler,
             release_tag=release_tag,
             prereqs=init_entry["prereqs"],
+            platform_module_policy=module_plan["platform_module_policy"],
             core_lane=core_by_compiler.get(compiler),
             lane_module_root=init_entry["lane_module_root"],
         )
@@ -64,6 +65,7 @@ def render_front_door_modules(
             public_name=lane_entry["public_name"],
             release_tag=release_tag,
             prereqs=lane_entry["prereqs"],
+            platform_module_policy=module_plan["platform_module_policy"],
             conflicts=lane_entry["conflicts"],
         )
         path = pending / lane_entry["file"]
@@ -88,10 +90,12 @@ def build_front_door_module_plan(
     modules = stack.get("modules") or {}
     exposure = modules.get("exposure", "front_door")
     module_root = modules.get("module_root")
+    platform_module_policy = modules.get("platform_module_policy", "prereq")
     plan: dict[str, Any] = {
         "exposure": exposure,
         "enabled": False,
         "module_root": module_root,
+        "platform_module_policy": platform_module_policy,
         "release": release_tag,
         "init_modules": [],
         "lane_modules": [],
@@ -135,9 +139,8 @@ def build_front_door_module_plan(
         if issues:
             raise ValidationFailed(issues)
         public_name = public_names[lane["name"]]
-        display = compiler_display(lane["compiler"])
         conflicts = [
-            posixpath.join(module_root, display, name)
+            name
             for lane_name, name in sorted(public_names.items())
             if lane_name != lane["name"]
             and lane_by_name(public_lanes, lane_name)["compiler"] == lane["compiler"]
@@ -153,8 +156,6 @@ def build_front_door_module_plan(
                     "modulefiles",
                     lane["compiler"],
                     "lanes",
-                    module_root,
-                    display,
                     public_name,
                 ),
                 "prereqs": prereqs,
@@ -278,6 +279,7 @@ def compiler_init_module_text(
     compiler: str,
     release_tag: str,
     prereqs: list[str],
+    platform_module_policy: str,
     core_lane: dict[str, Any] | None,
     lane_module_root: str,
 ) -> str:
@@ -287,8 +289,7 @@ def compiler_init_module_text(
         f'{tcl_quote(compiler_display(compiler))}"',
         "",
     ]
-    for prereq in prereqs:
-        lines.append(f"prereq {prereq}")
+    lines.extend(platform_module_lines(prereqs, platform_module_policy))
     if prereqs:
         lines.append("")
     lines.extend(
@@ -325,6 +326,7 @@ def lane_module_text(
     public_name: str,
     release_tag: str,
     prereqs: list[str],
+    platform_module_policy: str,
     conflicts: list[str],
 ) -> str:
     whatis = (
@@ -340,8 +342,7 @@ def lane_module_text(
         lines.append(f"conflict {conflict}")
     if conflicts:
         lines.append("")
-    for prereq in prereqs:
-        lines.append(f"prereq {prereq}")
+    lines.extend(platform_module_lines(prereqs, platform_module_policy))
     if prereqs:
         lines.append("")
     lines.extend(
@@ -357,6 +358,11 @@ def lane_module_text(
     lines.append(f'prepend-path MODULEPATH "{tcl_quote(lane["package_module_root"])}"')
     lines.append("")
     return "\n".join(lines)
+
+
+def platform_module_lines(modules: list[str], policy: str) -> list[str]:
+    command = "module load" if policy == "autoload" else "prereq"
+    return [f"{command} {module}" for module in modules]
 
 
 def tcl_quote(value: str) -> str:

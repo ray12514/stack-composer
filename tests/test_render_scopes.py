@@ -1381,6 +1381,38 @@ def test_ambiguous_compiler_family_without_version_is_a_hard_error() -> None:
     assert "aocc@5.1.0" in ambiguous[0].message
 
 
+def test_ambiguous_compiler_version_prefix_is_a_hard_error() -> None:
+    profile, stack = fixture_context("example-linux")
+    profile = deepcopy(profile)
+    profile["compiler_providers"].append(
+        {
+            "name": "aocc",
+            "version": "4.2.1",
+            "prefix": "/opt/AMD/aocc-compiler-4.2.1",
+            "provider_family": "site",
+            "languages": ["c", "c++", "fortran"],
+            "modules": ["aocc/4.2.1"],
+        }
+    )
+    stack["builds"] = [
+        {
+            "name": "mpi",
+            "kind": "mpi",
+            "compilers": ["aocc@4.2"],
+            "specs": ["hdf5+mpi"],
+        }
+    ]
+    stack["per_system"] = {}
+
+    lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    ambiguous = [issue for issue in issues if issue.code == "compiler_ambiguous"]
+    assert lanes == []
+    assert len(ambiguous) == 1
+    assert "aocc@4.2.0" in ambiguous[0].message
+    assert "aocc@4.2.1" in ambiguous[0].message
+
+
 def test_explicit_compiler_version_binds_matching_toolchain(tmp_path: Path) -> None:
     profile, _stack = fixture_context("example-linux")
     profile = deepcopy(profile)

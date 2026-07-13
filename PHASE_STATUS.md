@@ -1,6 +1,6 @@
 # Phase Status
 
-Current branch: `spec-native-builds`.
+Current branch: `codex/simplified-render-plan`.
 
 This file tracks the active pre-v1 implementation shape. Older contract /
 toolchain / build-class phase text was removed because the current model is
@@ -32,12 +32,18 @@ Primary planning docs:
 - `validate-template-set`: render-only smoke validation across profiles.
 - `render`: deterministic workspace tree with config scopes, lane
   environments, package repos, and draft `release-manifest.yaml`.
+- `render-static`: reusable, include-ready Spack configuration catalogs from a
+  Cluster Inspector profile, independent of managed stack lanes and deployment
+  roots.
 - `publish-manifest`: finalizes a draft manifest from downstream build evidence.
 - `spack-build`: local Spack-driving companion script.
 - Front-door Tcl modulefiles are rendered under the workspace's `modulefiles/`
-  tree: compiler surface modules such as `cse/GCC`, plus lane modules such as
-  `cse/GCC/MPI`. Spack still generates package modulefiles into
+  tree: compiler surface modules such as `cse/GCC`, plus short lane selectors
+  such as `MPI` in the compiler-specific lane MODULEPATH. Spack still generates package modulefiles into
   each lane's `package_module_root`.
+- Front-door platform prerequisites support explicit `prereq` and `autoload`
+  policy. `autoload` emits `module load`; `prereq` requires the operator or
+  user environment to have loaded the platform module already.
 - Generic provider inventory consumption: `compiler_providers` +
   `mpi_providers`.
 - Baseline compiler default: `gcc` if present, otherwise first reported
@@ -67,22 +73,22 @@ Primary planning docs:
   check — no local Spack; re-run with `spack -e <env> concretize` on a system
   with Spack).
 
-## Where we left off (2026-07-01)
+## Where we left off (2026-07-12)
 
-Blueback run #1 is ready to resume. The spec-native toolchain rework landed and
-is pushed: every MPI lane's `%<toolchain_name>` decoration is defined in an
-included scope; same-name multi-version platform MPI hard-errors unless the
-build pins `mpi.version`; same-family multi-version compiler selections
-hard-error unless the build pins `name@version`; toolchain names are
-spec-token-safe versioned slugs.
-Next step on the box (per
-`stack-content/systems/blueback/runbook-notes.md`): pull all three repos,
-rebuild the pyz, `show` against the fresh profile, validate, render, oracle-diff
-(including `configs/mpi/cray-mpich/toolchains.yaml`), build the mpi lane.
-Note: the Blueback profile captured the system default CPE, which is now the
-newest (ROCm 7-era) release — the known-good Kokkos baseline was built on the
-previous CPE, so the oracle diff is structural (flavor paths, toolchain
-binding), not version-exact.
+Blueback and Raider have both exercised the profile -> validate/render ->
+concretize/build path. The local Rocky/Spack smoke also has concrete core,
+serial, and MPI lockfiles. Current local hardening adds clear ambiguity errors
+for compiler version prefixes, merges repeated Cray MPICH flavor module
+evidence, and validates the configured front-door autoload behavior.
+
+The local Tcl/Lmod acceptance now passes compiler surface -> lane selection,
+MODULEPATH wiring, and rejection of a mutually exclusive sibling lane. The
+Docker smoke runner uses each rendered environment's module root rather than a
+test-only global root. Lane selectors live directly in the compiler-specific
+lane MODULEPATH (`Serial`, `MPI`, `GPU`); nesting them under the compiler init
+name caused an Lmod reload storm and is prohibited. Actual package-module
+visibility remains gated on completing the local concretization and module
+refresh after a rerender.
 
 ## Deferred / open
 
@@ -101,8 +107,9 @@ binding), not version-exact.
   needs version fan-out as a build axis and the deferred `cpe_version`
   pairing tag, on top of the two items above.
 - `validate-template-set --concretize` remains intentionally deferred.
-- Front-door compiler-init/lane module emission still needs real-system
-  module-tool validation.
+- Front-door compiler-init/lane selection passed the Docker/Lmod
+  `module-smoke`; package-module visibility after a fresh concretization and
+  real-system module-tool validation remain.
   Package module generation remains owned by Spack (`spack module tcl refresh`).
 - Fabric userspace external inventory still needs first-system evidence and
   render coverage.

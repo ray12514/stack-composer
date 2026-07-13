@@ -353,9 +353,6 @@ def resolve_compiler_refs(
             missing.append(requested)
             continue
         requested_name, requested_version = compiler_fragment_name_version(requested)
-        if requested_version:
-            selected.append(compiler_provider_ref(candidates[0]))
-            continue
         if len(candidates) > 1:
             available = ", ".join(
                 sorted(compiler_provider_ref(provider) for provider in candidates)
@@ -366,13 +363,15 @@ def resolve_compiler_refs(
                 {
                     "code": "compiler_ambiguous",
                     "message": (
-                        f"compiler {requested_name!r} is ambiguous: the profile reports "
+                        f"compiler {requested!r} is ambiguous: the profile reports "
                         f"{available}; set compilers to an exact version such as "
                         f"{compiler_provider_ref(candidates[0])}"
                     ),
                 },
             )
-        selected.append(requested_name)
+        selected.append(
+            compiler_provider_ref(candidates[0]) if requested_version else requested_name
+        )
     return selected, missing, None
 
 
