@@ -1,15 +1,64 @@
 from __future__ import annotations
 
+import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment
 
-from stack_composer.errors import ValidationFailed
+from stack_composer.errors import Issue, ValidationFailed
 from stack_composer.model.package_set import expand_specs_for_lane, spec_package_name
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 from stack_composer.render.scopes import scopes_for_lane
 from stack_composer.render.shared_exposure import lane_shared_module_set
+
+_HEAD_VERSION = re.compile(r"@=?([A-Za-z0-9_.\-]+)")
+
+CLEAN_PROJECTION = "{name}/{version}"
+PYTHON_QUALIFIED_PROJECTION = "{name}/{version}-python{^python.version}"
+
+
+def spec_name_version(spec: str) -> tuple[str, str | None]:
+    head = spec.strip().split()[0]
+    match = _HEAD_VERSION.search(head)
+    return spec_package_name(head), match.group(1) if match else None
+
+
+def root_projections(specs: list[str]) -> tuple[list[dict[str, str]], list[Issue]]:
+    """Per-package view/module projections for a lane's root specs.
+
+    Names stay clean until they collide: a package carrying two root specs
+    with the same name and version (one per python line, e.g. py-numpy built
+    against each supported python) gets a python-qualified projection so the
+    module and view names stay unique. Same-name/version duplicates that no
+    ^python dependency distinguishes are a render error, not a guess.
+    """
+    pairs = [spec_name_version(spec) for spec in specs]
+    duplicated = {key for key, count in Counter(pairs).items() if count > 1}
+    qualified: dict[str, str] = {}
+    issues: list[Issue] = []
+    for spec, key in zip(specs, pairs):
+        if key not in duplicated:
+            continue
+        if "^python@" in spec:
+            qualified[key[0]] = PYTHON_QUALIFIED_PROJECTION
+        else:
+            issues.append(
+                Issue(
+                    "error",
+                    "ambiguous-root-modules",
+                    spec,
+                    f"root spec {spec!r} duplicates {key[0]}@{key[1]} with no "
+                    f"^python line to qualify the module name; disambiguate "
+                    f"the roots or drop one",
+                )
+            )
+    projections = [
+        {"name": name, "projection": qualified.get(name, CLEAN_PROJECTION)}
+        for name in sorted({name for name, _ in pairs})
+    ]
+    return projections, issues
 
 
 def module_formats(stack: dict[str, Any]) -> list[str]:
@@ -35,6 +84,9 @@ def render_lane_environment(
     if prereq_issues:
         raise ValidationFailed(prereq_issues)
     specs = expand_specs_for_lane(ctx["spec_sources"][lane["source_build"]], lane)
+    projections, projection_issues = root_projections(specs)
+    if projection_issues:
+        raise ValidationFailed(projection_issues)
     lane_ctx = dict(ctx)
     lane_ctx.update(
         {
@@ -43,10 +95,14 @@ def render_lane_environment(
             "scopes": scopes_for_lane(lane, ctx["stack"], ctx["profile"]),
             "view_root": lane["view_root"],
             # The projected view package-module generation reads (use_view):
-            # explicit roots get clean {name}/{version} names, everything else
-            # falls back to a hash-qualified projection and generates no module.
+            # explicit roots get clean {name}/{version} names (python-qualified
+            # when two roots collide), everything else falls back to a
+            # hash-qualified projection and generates no module.
             "module_view_root": lane["view_root"] + "-modules",
-            "view_projection_names": sorted({spec_package_name(spec) for spec in specs}),
+            "root_projections": projections,
+            "qualified_projections": [
+                entry for entry in projections if entry["projection"] != CLEAN_PROJECTION
+            ],
             "module_formats": module_formats(ctx["stack"]),
             # Owning serial lane only: the shared module set for lane-agnostic
             # packages (single build, exposed in every payload lane).
