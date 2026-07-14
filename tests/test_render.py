@@ -28,6 +28,10 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
         "read": "group",
         "write": "group",
     }
+    # Foundation pins render as require entries in the common scope, so every
+    # lane's concretization resolves the pinned version, root or dependency.
+    for name, version in (("zlib", "1.3.1"), ("xz", "5.4.6"), ("zstd", "1.5.6")):
+        assert packages["packages"][name]["require"] == [f"@{version}"]
     config = load_yaml(workspace / "configs" / "common" / "config.yaml")
     assert config["config"]["install_tree"]["root"] == "/shared/stack/spack/opt"
     assert config["config"]["source_cache"] == "/shared/stack/spack/source-cache"

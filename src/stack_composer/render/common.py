@@ -35,6 +35,13 @@ def build_common_plan(
         "default_mpi_provider": lane_providers[0] if lane_providers else None,
         "target_prefer": rendered_lanes[0]["target"] if rendered_lanes else None,
         "repos": repos_mapping(stack, package_repos or []),
+        # Foundation single-version is enforced here, in the lock, not
+        # assumed: every concretization in every lane resolves the pinned
+        # version whether the package is a root or a dependency.
+        "foundation_pins": [
+            {"name": name, "version": str(version)}
+            for name, version in sorted((stack.get("foundation_pins") or {}).items())
+        ],
     }
 
 
