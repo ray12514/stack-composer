@@ -72,6 +72,21 @@ def module_formats(stack: dict[str, Any]) -> list[str]:
     return formats
 
 
+def lane_module_includes(
+    lane: dict[str, Any], ctx: dict[str, Any], specs: list[str]
+) -> list[str]:
+    """Names the lane's default module set generates modules for: the lane's
+    own roots, minus the lane-agnostic packages the owning serial lane emits
+    into the shared set instead (include outranks exclude in Spack's module
+    config, so the whitelist must simply not name them), and minus the
+    foundation pins, which are reached through the surface view and are never
+    loadable modules."""
+    shared = lane_shared_module_set(lane, ctx["shared_exposure_plan"])
+    excluded = set(shared["packages"]) if shared else set()
+    excluded |= set((ctx["stack"].get("foundation_pins") or {}).keys())
+    return sorted({spec_package_name(spec) for spec in specs} - excluded)
+
+
 def render_lane_environment(
     *,
     template_dir: Path,
@@ -103,6 +118,12 @@ def render_lane_environment(
             "qualified_projections": [
                 entry for entry in projections if entry["projection"] != CLEAN_PROJECTION
             ],
+            # The lane's default module set generates modules for exactly the
+            # lane's own roots. exclude_implicits is not enough: Spack's
+            # explicit-install flag is global to the shared install database,
+            # so a package another lane installed explicitly (core's zlib,
+            # python) would otherwise grow a module in this lane's tree.
+            "lane_module_includes": lane_module_includes(lane, ctx, specs),
             "module_formats": module_formats(ctx["stack"]),
             # Owning serial lane only: the shared module set for lane-agnostic
             # packages (single build, exposed in every payload lane).

@@ -115,17 +115,35 @@ def test_rendered_workspace_exposes_lane_agnostic_packages(tmp_path: Path) -> No
 
     serial_env = load_yaml(root / "serial" / "spack.yaml")
     modules = serial_env["spack"]["modules"]
-    assert modules["default"]["tcl"]["exclude"] == ["netlib-lapack", "openblas"]
+    # The default set is a whitelist of the lane's own roots; the
+    # lane-agnostic packages are simply not named (include outranks exclude),
+    # so their only modulefiles are the shared set's.
+    default_include = modules["default"]["tcl"]["include"]
+    assert "openblas" not in default_include
+    assert "netlib-lapack" not in default_include
+    assert "hdf5" in default_include
+    assert modules["default"]["tcl"]["exclude"] == ["@:"]
     shared = modules["cse_shared"]
     assert shared["use_view"] == "cse_modules"
     assert shared["roots"] == {"tcl": f"{MODULE_ROOT}/gcc/shared"}
     assert shared["tcl"]["include"] == ["netlib-lapack", "openblas"]
     assert shared["tcl"]["exclude"] == ["@:"]
 
+    # Foundation pins never appear in any whitelist: they are reached through
+    # the surface view and are never loadable modules.
+    core_env = load_yaml(root / "core" / "spack.yaml")
+    core_include = core_env["spack"]["modules"]["default"]["tcl"]["include"]
+    assert "python" in core_include and "py-numpy" in core_include
+    assert not {"zlib", "xz", "zstd"} & set(core_include)
+
     # Consuming lanes emit no shared set: they reach it purely via MODULEPATH.
     mpi_env = load_yaml(root / "mpi-craympich" / "spack.yaml")
     assert "cse_shared" not in mpi_env["spack"]["modules"]
-    assert "exclude" not in mpi_env["spack"]["modules"]["default"]["tcl"]
+    mpi_include = mpi_env["spack"]["modules"]["default"]["tcl"]["include"]
+    assert "hdf5" in mpi_include and "tau" in mpi_include
+    # Another lane's explicit installs never leak in: the whitelist is the
+    # lane's own roster, nothing else.
+    assert "openblas" not in mpi_include
 
     shared_prepend = f'prepend-path MODULEPATH "{MODULE_ROOT}/gcc/shared"'
     for selector in ("Serial", "MPI", "GPU"):
