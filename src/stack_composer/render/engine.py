@@ -19,13 +19,13 @@ from stack_composer.render.modulefiles import (
 from stack_composer.render.network import build_mpi_plan
 from stack_composer.render.plan import plan_lanes
 from stack_composer.render.plan_report import render_plan_report
-from stack_composer.render.shared_exposure import build_shared_exposure_plan
 from stack_composer.render.release import ReleaseVars
 from stack_composer.render.scopes import (
     make_jinja_environment,
     render_template_tree,
     required_scopes,
 )
+from stack_composer.render.shared_exposure import build_shared_exposure_plan
 from stack_composer.render.workspace_validation import validate_rendered_workspace
 from stack_composer.schema_registry import validate_schema
 from stack_composer.validate.checks import validate_inputs
