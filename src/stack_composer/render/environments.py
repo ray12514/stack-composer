@@ -64,13 +64,11 @@ def root_projections(specs: list[str]) -> tuple[list[dict[str, str]], list[Issue
 def module_root_projections(
     projections: list[dict[str, str]], foundation_pins: dict[str, str]
 ) -> list[dict[str, str]]:
-    """Keep foundation libraries out of the dependency-complete module view.
+    """Keep foundation libraries out of the root-only module view.
 
     Foundation packages are ambient roots in the user-facing core view and do
-    not receive package modules.  Leaving clean projections for them in the
-    dependency-complete view makes distinct dependency variants (for example
-    ``zstd+programs`` and ``zstd~programs``) collide at ``name/version``.
-    Without an explicit projection they use the hash-qualified fallback.
+    not receive package modules. The module view contains roots only, and the
+    module whitelist selects those roots with their complete spec constraints.
     """
     foundation = set(foundation_pins)
     return [entry for entry in projections if entry["name"] not in foundation]
@@ -95,8 +93,8 @@ def default_view_policy(
     The core view is prepended by the compiler-init module, so it contains only
     the deliberately ambient foundation roots. Payload views are not prepended;
     they retain every explicit root, projected by version so multiple supported
-    root versions can coexist. The separate ``cse_modules`` view remains the
-    dependency-complete input to Spack module generation.
+    root versions can coexist. The separate ``cse_modules`` view contains the
+    explicit roots used by Spack module generation.
     """
     if lane["kind"] == "core":
         return {
@@ -114,16 +112,27 @@ def default_view_policy(
 def lane_module_includes(
     lane: dict[str, Any], ctx: dict[str, Any], specs: list[str]
 ) -> list[str]:
-    """Names the lane's default module set generates modules for: the lane's
-    own roots, minus the lane-agnostic packages the owning serial lane emits
-    into the shared set instead (include outranks exclude in Spack's module
-    config, so the whitelist must simply not name them), and minus the
-    foundation pins, which are reached through the surface view and are never
-    loadable modules."""
+    """Return exact root specs for the lane's default package-module set.
+
+    Full constraints matter: a package-name-only include matches every
+    concrete variant in Spack's shared install database. That lets roots from
+    other lanes leak into this module tree and collide at ``name/version``.
+    """
     shared = lane_shared_module_set(lane, ctx["shared_exposure_plan"])
     excluded = set(shared["packages"]) if shared else set()
     excluded |= set((ctx["stack"].get("foundation_pins") or {}).keys())
-    return sorted({spec_package_name(spec) for spec in specs} - excluded)
+    return sorted(spec for spec in specs if spec_package_name(spec) not in excluded)
+
+
+def lane_shared_module_includes(
+    lane: dict[str, Any], ctx: dict[str, Any], specs: list[str]
+) -> list[str]:
+    """Return exact root specs owned by the lane's shared module set."""
+    shared = lane_shared_module_set(lane, ctx["shared_exposure_plan"])
+    if not shared:
+        return []
+    included = set(shared["packages"])
+    return sorted(spec for spec in specs if spec_package_name(spec) in included)
 
 
 def render_lane_environment(
@@ -153,10 +162,9 @@ def render_lane_environment(
             "scopes": scopes_for_lane(lane, ctx["stack"], ctx["profile"]),
             "view_root": lane["view_root"],
             "default_view": default_view,
-            # The projected view package-module generation reads (use_view):
-            # explicit roots get clean {name}/{version} names (python-qualified
-            # when two roots collide), everything else falls back to a
-            # hash-qualified projection and generates no module.
+            # Module generation reads this root-only projected view (use_view).
+            # Explicit roots get clean {name}/{version} names, python-qualified
+            # when two supported Python roots would otherwise collide.
             "module_view_root": lane["view_root"] + "-modules",
             "root_projections": module_projections,
             "qualified_projections": [
@@ -164,17 +172,17 @@ def render_lane_environment(
                 for entry in module_projections
                 if entry["projection"] != CLEAN_PROJECTION
             ],
-            # The lane's default module set generates modules for exactly the
-            # lane's own roots. exclude_implicits is not enough: Spack's
-            # explicit-install flag is global to the shared install database,
-            # so a package another lane installed explicitly (core's zlib,
-            # python) would otherwise grow a module in this lane's tree.
+            # Exact root constraints prevent another lane's variants from
+            # matching this module set in the shared install database.
             "lane_module_includes": lane_module_includes(lane, ctx, specs),
             "module_formats": module_formats(ctx["stack"]),
             # Owning serial lane only: the shared module set for lane-agnostic
             # packages (single build, exposed in every payload lane).
             "lane_shared_module_set": lane_shared_module_set(
                 lane, ctx["shared_exposure_plan"]
+            ),
+            "lane_shared_module_includes": lane_shared_module_includes(
+                lane, ctx, specs
             ),
             "platform_module_prereqs": prereqs,
         }

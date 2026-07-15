@@ -460,6 +460,7 @@ def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
     assert default_view["projections"]["all"] == "{name}/{version}-{hash:7}"
     modules_view = views["cse_modules"]
     assert modules_view["root"] == default_view["root"] + "-modules"
+    assert modules_view["link"] == "roots"
     assert modules_view["projections"]["hdf5"] == "{name}/{version}"
     assert modules_view["projections"]["all"] == "{name}/{version}-{hash:7}"
 
@@ -468,6 +469,14 @@ def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
     assert modules["default"]["roots"]["tcl"].endswith("/gcc/serial")
     assert modules["default"]["tcl"]["exclude_implicits"] is True
     assert modules["default"]["tcl"]["hash_length"] == 0
+    assert modules["default"]["tcl"]["include"] == [
+        "gsl@2.8",
+        "hdf5@1.12.3~mpi+fortran",
+        "hdf5@1.14.4~mpi+fortran",
+        "hdf5@1.14.5~mpi+fortran",
+        "netcdf-c@4.9.0~mpi",
+        "netcdf-c@4.9.2~mpi",
+    ]
     assert modules["default"]["tcl"]["projections"]["all"] == "{name}/{version}"
 
 
