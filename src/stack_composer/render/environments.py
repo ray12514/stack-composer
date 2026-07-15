@@ -61,6 +61,21 @@ def root_projections(specs: list[str]) -> tuple[list[dict[str, str]], list[Issue
     return projections, issues
 
 
+def module_root_projections(
+    projections: list[dict[str, str]], foundation_pins: dict[str, str]
+) -> list[dict[str, str]]:
+    """Keep foundation libraries out of the dependency-complete module view.
+
+    Foundation packages are ambient roots in the user-facing core view and do
+    not receive package modules.  Leaving clean projections for them in the
+    dependency-complete view makes distinct dependency variants (for example
+    ``zstd+programs`` and ``zstd~programs``) collide at ``name/version``.
+    Without an explicit projection they use the hash-qualified fallback.
+    """
+    foundation = set(foundation_pins)
+    return [entry for entry in projections if entry["name"] not in foundation]
+
+
 def module_formats(stack: dict[str, Any]) -> list[str]:
     """Module formats are declared policy (modules.format + additional_formats),
     never a template constant."""
@@ -128,6 +143,9 @@ def render_lane_environment(
         raise ValidationFailed(projection_issues)
     lane_ctx = dict(ctx)
     default_view = default_view_policy(lane, ctx["stack"], projections)
+    module_projections = module_root_projections(
+        projections, ctx["stack"].get("foundation_pins") or {}
+    )
     lane_ctx.update(
         {
             "lane": lane,
@@ -140,9 +158,11 @@ def render_lane_environment(
             # when two roots collide), everything else falls back to a
             # hash-qualified projection and generates no module.
             "module_view_root": lane["view_root"] + "-modules",
-            "root_projections": projections,
+            "root_projections": module_projections,
             "qualified_projections": [
-                entry for entry in projections if entry["projection"] != CLEAN_PROJECTION
+                entry
+                for entry in module_projections
+                if entry["projection"] != CLEAN_PROJECTION
             ],
             # The lane's default module set generates modules for exactly the
             # lane's own roots. exclude_implicits is not enough: Spack's

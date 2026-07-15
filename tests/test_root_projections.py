@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from stack_composer.render.environments import root_projections
+from stack_composer.render.environments import module_root_projections, root_projections
 from stack_composer.yaml_io import load_yaml
 from tests.test_render import render_fixture
 
@@ -38,6 +38,20 @@ def test_collision_without_python_line_is_an_error() -> None:
     ]
 
 
+def test_module_view_uses_hash_fallback_for_foundation_packages() -> None:
+    projections, issues = root_projections(
+        ["zlib@1.3.1", "xz@5.4.6", "zstd@1.5.6", "python@3.14.5"]
+    )
+    assert issues == []
+
+    filtered = module_root_projections(
+        projections,
+        {"zlib": "1.3.1", "xz": "5.4.6", "zstd": "1.5.6"},
+    )
+
+    assert filtered == [{"name": "python", "projection": "{name}/{version}"}]
+
+
 def test_rendered_core_env_carries_qualified_projections(tmp_path: Path) -> None:
     workspace = render_fixture(tmp_path / "out")
     core_env = load_yaml(workspace / "environments" / "gcc" / "core" / "spack.yaml")
@@ -45,6 +59,9 @@ def test_rendered_core_env_carries_qualified_projections(tmp_path: Path) -> None
     view = core_env["spack"]["view"]["cse_modules"]["projections"]
     assert view["py-numpy"] == PY_QUALIFIED
     assert view["python"] == "{name}/{version}"
+    assert "zlib" not in view
+    assert "xz" not in view
+    assert "zstd" not in view
 
     tcl = core_env["spack"]["modules"]["default"]["tcl"]["projections"]
     assert tcl["py-numpy"] == PY_QUALIFIED

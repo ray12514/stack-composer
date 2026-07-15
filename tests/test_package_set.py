@@ -28,6 +28,27 @@ def test_keeps_user_authored_gpu_arch_flags() -> None:
     )
 
 
+def test_gpu_runtime_placeholder_takes_the_backend_without_an_arch() -> None:
+    # tau traces the GPU runtime rather than compiling device code, and its
+    # recipe has no amdgpu_target/cuda_arch variant: rendering one would fail
+    # concretization.
+    amd = {"kind": "gpu", "gpu_arch": "gfx942"}
+    nvidia = {"kind": "gpu", "gpu_arch": "sm_80"}
+
+    assert expand_gpu_variant("tau+mpi+gpu_runtime", amd) == "tau+mpi+rocm"
+    assert expand_gpu_variant("tau+mpi+gpu_runtime", nvidia) == "tau+mpi+cuda"
+
+
+def test_gpu_runtime_placeholder_is_not_mangled_by_the_gpu_substring() -> None:
+    # "+gpu" is a substring of "+gpu_runtime"; a naive replace would emit
+    # "+rocm_runtime".
+    lane = {"kind": "gpu", "gpu_arch": "gfx942"}
+
+    resolved = expand_gpu_variant("tau+gpu_runtime", lane)
+    assert resolved == "tau+rocm"
+    assert "_runtime" not in resolved
+
+
 def test_decorates_undecorated_spec_with_lane_toolchain() -> None:
     lane = {"toolchain": "gcc1140_openmpi416"}
 

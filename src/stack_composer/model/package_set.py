@@ -7,7 +7,15 @@ from typing import Any
 from stack_composer.schema_registry import validate_schema
 from stack_composer.yaml_io import load_yaml
 
+# Two GPU placeholders, because packages need the accelerator in two different
+# ways. `+gpu` is for packages that compile device code (kokkos): they take the
+# backend and the target architecture. `+gpu_runtime` is for packages that only
+# use the GPU runtime, such as a profiler tracing kernels (tau): they take the
+# backend and have no architecture variant to set. Rendering an arch flag onto
+# a recipe that has no such variant is a concretization failure, so the package
+# set author picks the placeholder that matches the recipe.
 GPU_VARIANT_PLACEHOLDER = "+gpu"
+GPU_RUNTIME_PLACEHOLDER = "+gpu_runtime"
 
 _SPEC_NAME_SPLIT = re.compile(r"[@ +~%^]")
 
@@ -50,6 +58,10 @@ def expand_gpu_variant(spec: str, lane: dict[str, Any]) -> str:
 
 
 def expand_amd_gpu_spec(spec: str, arch: str) -> str:
+    # The runtime placeholder is checked first: replacing the `+gpu` substring
+    # inside `+gpu_runtime` would corrupt it into `+rocm_runtime`.
+    if GPU_RUNTIME_PLACEHOLDER in spec:
+        return spec.replace(GPU_RUNTIME_PLACEHOLDER, "+rocm")
     resolved = spec.replace(GPU_VARIANT_PLACEHOLDER, "+rocm")
     if "+rocm" in resolved and "amdgpu_target=" not in resolved:
         return f"{resolved} amdgpu_target={arch}"
@@ -57,6 +69,8 @@ def expand_amd_gpu_spec(spec: str, arch: str) -> str:
 
 
 def expand_nvidia_gpu_spec(spec: str, cuda_arch: str) -> str:
+    if GPU_RUNTIME_PLACEHOLDER in spec:
+        return spec.replace(GPU_RUNTIME_PLACEHOLDER, "+cuda")
     resolved = spec.replace(GPU_VARIANT_PLACEHOLDER, "+cuda")
     if "+cuda" in resolved and "cuda_arch=" not in resolved:
         return f"{resolved} cuda_arch={cuda_arch}"
