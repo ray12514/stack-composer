@@ -72,6 +72,30 @@ def module_formats(stack: dict[str, Any]) -> list[str]:
     return formats
 
 
+def default_view_policy(
+    lane: dict[str, Any], stack: dict[str, Any], projections: list[dict[str, str]]
+) -> dict[str, Any]:
+    """Describe the user-facing view without exposing dependency internals.
+
+    The core view is prepended by the compiler-init module, so it contains only
+    the deliberately ambient foundation roots. Payload views are not prepended;
+    they retain every explicit root, projected by version so multiple supported
+    root versions can coexist. The separate ``cse_modules`` view remains the
+    dependency-complete input to Spack module generation.
+    """
+    if lane["kind"] == "core":
+        return {
+            "link": "roots",
+            "select": sorted((stack.get("foundation_pins") or {}).keys()),
+            "projections": [],
+        }
+    return {
+        "link": "roots",
+        "select": [],
+        "projections": projections,
+    }
+
+
 def lane_module_includes(
     lane: dict[str, Any], ctx: dict[str, Any], specs: list[str]
 ) -> list[str]:
@@ -103,12 +127,14 @@ def render_lane_environment(
     if projection_issues:
         raise ValidationFailed(projection_issues)
     lane_ctx = dict(ctx)
+    default_view = default_view_policy(lane, ctx["stack"], projections)
     lane_ctx.update(
         {
             "lane": lane,
             "specs": specs,
             "scopes": scopes_for_lane(lane, ctx["stack"], ctx["profile"]),
             "view_root": lane["view_root"],
+            "default_view": default_view,
             # The projected view package-module generation reads (use_view):
             # explicit roots get clean {name}/{version} names (python-qualified
             # when two roots collide), everything else falls back to a

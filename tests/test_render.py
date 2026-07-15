@@ -444,18 +444,22 @@ def test_repos_yaml_pins_builtin_recipe_generation(tmp_path: Path) -> None:
 
 
 def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
-    # Spack 1.1+ use_view module generation: each lane carries a merged
-    # default view (the ambient surface lane modules path into) plus a named
-    # projected view that package-module generation reads. Public roots get
-    # clean {name}/{version} projections; dependencies fall back to a
-    # hash-qualified form and generate no modules (exclude_implicits).
+    # Spack 1.1+ use_view module generation: payload lanes carry a root-only,
+    # version-projected default view plus a named projected view that package-
+    # module generation reads. Public roots get clean {name}/{version}
+    # projections; dependencies in the module view fall back to a hash-
+    # qualified form and generate no modules (exclude_implicits).
     workspace = render_fixture(tmp_path / "out-a")
 
     env = load_yaml(workspace / "environments" / "gcc" / "serial" / "spack.yaml")
     views = env["spack"]["view"]
-    assert views["default"]["root"].endswith("/gcc/serial")
+    default_view = views["default"]
+    assert default_view["root"].endswith("/gcc/serial")
+    assert default_view["link"] == "roots"
+    assert default_view["projections"]["hdf5"] == "{name}/{version}"
+    assert default_view["projections"]["all"] == "{name}/{version}-{hash:7}"
     modules_view = views["cse_modules"]
-    assert modules_view["root"] == views["default"]["root"] + "-modules"
+    assert modules_view["root"] == default_view["root"] + "-modules"
     assert modules_view["projections"]["hdf5"] == "{name}/{version}"
     assert modules_view["projections"]["all"] == "{name}/{version}-{hash:7}"
 
@@ -465,6 +469,16 @@ def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
     assert modules["default"]["tcl"]["exclude_implicits"] is True
     assert modules["default"]["tcl"]["hash_length"] == 0
     assert modules["default"]["tcl"]["projections"]["all"] == "{name}/{version}"
+
+
+def test_core_default_view_contains_only_ambient_foundation(tmp_path: Path) -> None:
+    workspace = render_fixture(tmp_path / "out-a")
+
+    env = load_yaml(workspace / "environments" / "gcc" / "core" / "spack.yaml")
+    default_view = env["spack"]["view"]["default"]
+    assert default_view["link"] == "roots"
+    assert default_view["select"] == ["xz", "zlib", "zstd"]
+    assert "projections" not in default_view
 
 
 def test_module_formats_come_from_declared_policy(tmp_path: Path) -> None:
