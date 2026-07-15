@@ -37,7 +37,7 @@
     },
     "specs": {
       "type": "object",
-      "description": "Root specs by package-set kind. Keys are either 'any' (specs identical across every kind) or a kind name appearing in `kinds`. Values are arrays of Spack spec strings. GPU package-set specs may use the +gpu placeholder variant; render expands it to +rocm or +cuda with the lane architecture flag.",
+      "description": "Root specs by package-set kind. Keys are either 'any' (specs identical across every kind) or a kind name appearing in `kinds`. Values are arrays of Spack spec strings. GPU package-set specs may use two placeholder variants. +gpu is for packages that compile device code: render expands it to +rocm or +cuda plus the lane architecture flag (amdgpu_target=/cuda_arch=). +gpu_runtime is for packages that only use the GPU runtime, such as a profiler tracing kernels: render expands it to +rocm or +cuda alone, because those recipes have no architecture variant and rendering one would fail concretization.",
       "minProperties": 1,
       "patternProperties": {
         "^(any|[a-z][a-z0-9_-]*)$": {
