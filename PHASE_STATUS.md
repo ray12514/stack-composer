@@ -125,3 +125,18 @@ refresh after a rerender.
    `stacks/mpi-smoke/stack.yaml`.
 4. The Docker/Spack smoke path in `cse-stack/scripts` succeeds or has a clearly
    documented blocker. Current baseline passed with Spack 1.1.1 on Rocky 9.
+
+## Hand-maintained against the package sets (2026-07-14)
+
+Three artifacts restate the roster and none of them are generated from it, so
+a roster change means touching all of them in the same commit:
+
+- `stack-content/package-sets/{core-foundation,science-full}.yaml` (the source
+  of truth),
+- `stack-planning/presentations/make_lanes_model_deck.py` (appendix tables),
+- `stack-planning/docs/package_placement_map_v1.html` (per-package map).
+
+Generating the last two from the package sets would remove the drift risk.
+Not worth it while the roster is still moving; revisit if it outlives the
+pilot. This note stays internal: the deck and the map are audience-facing and
+carry no process bookkeeping.
