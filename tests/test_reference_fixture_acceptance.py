@@ -15,18 +15,22 @@ REFERENCE_PROFILES = ("example-cray", "example-linux")
 
 EXPECTED_LANES = {
     "example-cray": [
+        "cce-common",
         "cce-core",
         "cce-mpi-craympich",
         "cce-serial",
+        "gcc-common",
         "gcc-core",
         "gcc-gpu-craympich-gfx90a",
         "gcc-mpi-craympich",
         "gcc-serial",
     ],
     "example-linux": [
+        "aocc-common",
         "aocc-core",
         "aocc-mpi-openmpi",
         "aocc-serial",
+        "gcc-common",
         "gcc-core",
         "gcc-serial",
     ],

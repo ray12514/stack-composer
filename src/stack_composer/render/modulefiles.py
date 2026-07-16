@@ -7,7 +7,6 @@ from typing import Any
 
 from stack_composer.errors import ValidationFailed
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
-from stack_composer.render.shared_exposure import shared_module_root_for_lane
 
 
 def render_front_door_modules(
@@ -31,11 +30,6 @@ def render_front_door_modules(
     if not module_plan["enabled"]:
         return
 
-    core_by_compiler = {
-        lane["compiler"]: lane
-        for lane in lanes
-        if lane.get("kind") == "core"
-    }
     public_lanes = [
         lane
         for lane in lanes
@@ -51,7 +45,9 @@ def render_front_door_modules(
             release_tag=release_tag,
             prereqs=init_entry["prereqs"],
             platform_module_policy=module_plan["platform_module_policy"],
-            core_lane=core_by_compiler.get(compiler),
+            core_view_root=init_entry["core_view_root"],
+            core_module_root=init_entry["core_module_root"],
+            common_module_root=init_entry["common_module_root"],
             lane_module_root=init_entry["lane_module_root"],
         )
         path = pending / init_entry["file"]
@@ -68,7 +64,6 @@ def render_front_door_modules(
             prereqs=lane_entry["prereqs"],
             platform_module_policy=module_plan["platform_module_policy"],
             conflicts=lane_entry["conflicts"],
-            shared_module_root=lane_entry["shared_module_root"],
         )
         path = pending / lane_entry["file"]
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,7 +76,6 @@ def build_front_door_module_plan(
     stack: dict[str, Any],
     lanes: list[dict[str, Any]],
     release_tag: str,
-    shared_exposure: dict[str, Any],
 ) -> dict[str, Any]:
     """Describe stack-owned module exposure for the current front-door model.
 
@@ -106,11 +100,6 @@ def build_front_door_module_plan(
     if exposure != "front_door" or not module_root:
         return plan
 
-    core_by_compiler = {
-        lane["compiler"]: lane
-        for lane in lanes
-        if lane.get("kind") == "core"
-    }
     public_lanes = [
         lane
         for lane in lanes
@@ -124,7 +113,8 @@ def build_front_door_module_plan(
         if issues:
             raise ValidationFailed(issues)
         name = compiler_init_module_name(module_root, compiler)
-        core_lane = core_by_compiler.get(compiler)
+        core_lane = surface_lane(lanes, compiler, "core")
+        common_lane = surface_lane(lanes, compiler, "common")
         plan["init_modules"].append(
             {
                 "name": name,
@@ -132,7 +122,16 @@ def build_front_door_module_plan(
                 "file": posixpath.join("modulefiles", name),
                 "prereqs": prereqs,
                 "core_lane": core_lane["name"] if core_lane else None,
+                # Foundation reaches users through the view; Core reaches them
+                # as modules, so the surface must put both on the right paths.
                 "core_view_root": core_lane["view_root"] if core_lane else None,
+                "core_module_root": (
+                    core_lane["package_module_root"] if core_lane else None
+                ),
+                "common_lane": common_lane["name"] if common_lane else None,
+                "common_module_root": (
+                    common_lane["package_module_root"] if common_lane else None
+                ),
                 "lane_module_root": lane_module_root_for_compiler(compiler, lanes),
             }
         )
@@ -165,9 +164,6 @@ def build_front_door_module_plan(
                 "conflicts": conflicts,
                 "view_root": lane["view_root"],
                 "package_module_root": lane["package_module_root"],
-                # Lane-agnostic payload exposure: the per-compiler shared
-                # module root every payload lane prepends, or None.
-                "shared_module_root": shared_module_root_for_lane(lane, shared_exposure),
             }
         )
 
@@ -175,8 +171,25 @@ def build_front_door_module_plan(
     return plan
 
 
+# Kinds that belong to the compiler surface rather than to a chooseable lane.
+# Core and compiler-common are both reachable the moment the surface loads;
+# neither is a lane a user selects, so neither gets a selector module.
+SURFACE_KINDS = ("core", "common")
+
+
 def is_compiler_init_lane(lane: dict[str, Any]) -> bool:
-    return lane.get("kind") == "core"
+    return lane.get("kind") in SURFACE_KINDS
+
+
+def surface_lane(lanes: list[dict[str, Any]], compiler: str, kind: str) -> dict[str, Any] | None:
+    return next(
+        (
+            lane
+            for lane in lanes
+            if lane["compiler"] == compiler and lane.get("kind") == kind
+        ),
+        None,
+    )
 
 
 # Known compiler display casings for the public cse/<Compiler>/<Lane> names.
@@ -286,7 +299,9 @@ def compiler_init_module_text(
     release_tag: str,
     prereqs: list[str],
     platform_module_policy: str,
-    core_lane: dict[str, Any] | None,
+    core_view_root: str | None,
+    core_module_root: str | None,
+    common_module_root: str | None,
     lane_module_root: str,
 ) -> str:
     lines = [
@@ -306,9 +321,17 @@ def compiler_init_module_text(
             "",
         ]
     )
-    if core_lane is not None:
-        lines.extend(view_path_lines(core_lane["view_root"]))
+    # Foundation: on the paths through the core view, never a module.
+    if core_view_root:
+        lines.extend(view_path_lines(core_view_root))
         lines.append("")
+    # Core and compiler-common: loadable modules, reachable the moment the
+    # surface loads and before any lane is chosen. Lanes are prepended last so
+    # a lane's own root outranks both.
+    if core_module_root:
+        lines.append(f'prepend-path MODULEPATH "{tcl_quote(core_module_root)}"')
+    if common_module_root:
+        lines.append(f'prepend-path MODULEPATH "{tcl_quote(common_module_root)}"')
     lines.append(f'prepend-path MODULEPATH "{tcl_quote(lane_module_root)}"')
     lines.append("")
     return "\n".join(lines)
@@ -334,7 +357,6 @@ def lane_module_text(
     prereqs: list[str],
     platform_module_policy: str,
     conflicts: list[str],
-    shared_module_root: str | None,
 ) -> str:
     whatis = (
         f"{tcl_quote(module_root)} lane: "
@@ -362,11 +384,6 @@ def lane_module_text(
             "",
         ]
     )
-    if shared_module_root:
-        # Lane-agnostic packages: one serial-lane build, module-visible from
-        # every payload lane. Prepended first so the lane's own root stays
-        # highest precedence.
-        lines.append(f'prepend-path MODULEPATH "{tcl_quote(shared_module_root)}"')
     lines.append(f'prepend-path MODULEPATH "{tcl_quote(lane["package_module_root"])}"')
     lines.append("")
     return "\n".join(lines)

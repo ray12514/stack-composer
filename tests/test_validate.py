@@ -287,7 +287,7 @@ def test_validate_inputs_rejects_build_with_both_specs_and_package_set(tmp_path:
         package_repos_dir=fixture_path("package-repos"),
     )
     assert any(
-        issue.code == "schema" and "builds[3]" in issue.message for issue in issues
+        issue.code == "schema" and "builds[4]" in issue.message for issue in issues
     )
 
 
@@ -309,7 +309,7 @@ def test_validate_inputs_rejects_build_with_neither_specs_nor_package_set(tmp_pa
         package_repos_dir=fixture_path("package-repos"),
     )
     assert any(
-        issue.code == "schema" and "builds[3]" in issue.message for issue in issues
+        issue.code == "schema" and "builds[4]" in issue.message for issue in issues
     )
 
 

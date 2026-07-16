@@ -168,8 +168,8 @@
         },
         "kind": {
           "type": "string",
-          "enum": ["core", "serial", "mpi", "gpu"],
-          "description": "Optional build kind. Inferred from spec variants when omitted (+mpi -> mpi; +cuda/+rocm/cuda_arch/amdgpu_target -> gpu; otherwise serial). Determines which axes fan out: core/serial = compilers; mpi = compilers x MPI provider; gpu = compilers x optional MPI provider x GPU architectures."
+          "enum": ["core", "common", "serial", "mpi", "gpu"],
+          "description": "Optional build kind. Inferred from spec variants when omitted (+mpi -> mpi; +cuda/+rocm/cuda_arch/amdgpu_target -> gpu; otherwise serial). Determines which axes fan out: core/common/serial = compilers; mpi = compilers x MPI provider; gpu = compilers x optional MPI provider x GPU architectures. common is the compiler-common group: built for one compiler family, independent of the execution model, and reachable as modules from the compiler surface rather than from any one lane."
         },
         "package_set": {
           "type": "string",

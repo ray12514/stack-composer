@@ -25,7 +25,6 @@ from stack_composer.render.scopes import (
     render_template_tree,
     required_scopes,
 )
-from stack_composer.render.shared_exposure import build_shared_exposure_plan
 from stack_composer.render.workspace_validation import validate_rendered_workspace
 from stack_composer.schema_registry import validate_schema
 from stack_composer.validate.checks import validate_inputs
@@ -69,19 +68,11 @@ def render_workspace(
         deployment=deployment,
         release_tag=release_vars.release_tag,
     )
-    shared_exposure_plan, exposure_issues = build_shared_exposure_plan(
-        stack=stack,
-        lanes=rendered_lanes,
-        spec_sources=context["spec_sources"],
-    )
-    if any(issue.severity == "error" for issue in exposure_issues):
-        raise ValidationFailed(exposure_issues)
     module_plan = build_front_door_module_plan(
         profile=profile,
         stack=stack,
         lanes=rendered_lanes,
         release_tag=release_vars.release_tag,
-        shared_exposure=shared_exposure_plan,
     )
     mpi_plan = build_mpi_plan(profile, rendered_lanes)
     gpu_plan = build_gpu_plan(profile)
@@ -93,7 +84,6 @@ def render_workspace(
         skipped_builds=skipped_builds,
         applied_narrowing=applied_narrowing,
         module_plan=module_plan,
-        shared_exposure_plan=shared_exposure_plan,
         mpi_plan=mpi_plan,
         gpu_plan=gpu_plan,
         common_plan=common_plan,
@@ -154,8 +144,7 @@ def render_workspace(
                 applied_narrowing=applied_narrowing,
                 release_vars=release_vars,
                 module_plan=render_context["module_plan"],
-                shared_exposure_plan=shared_exposure_plan,
-                rendered_scopes=rendered_scopes,
+                        rendered_scopes=rendered_scopes,
             ),
         )
         rendered_issues = validate_rendered_workspace(pending)

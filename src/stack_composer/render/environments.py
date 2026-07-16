@@ -11,7 +11,6 @@ from stack_composer.errors import Issue, ValidationFailed
 from stack_composer.model.package_set import expand_specs_for_lane, spec_package_name
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 from stack_composer.render.scopes import scopes_for_lane
-from stack_composer.render.shared_exposure import lane_shared_module_set
 
 _HEAD_VERSION = re.compile(r"@=?([A-Za-z0-9_.\-]+)")
 
@@ -118,21 +117,8 @@ def lane_module_includes(
     concrete variant in Spack's shared install database. That lets roots from
     other lanes leak into this module tree and collide at ``name/version``.
     """
-    shared = lane_shared_module_set(lane, ctx["shared_exposure_plan"])
-    excluded = set(shared["packages"]) if shared else set()
-    excluded |= set((ctx["stack"].get("foundation_pins") or {}).keys())
+    excluded = set((ctx["stack"].get("foundation_pins") or {}).keys())
     return sorted(spec for spec in specs if spec_package_name(spec) not in excluded)
-
-
-def lane_shared_module_includes(
-    lane: dict[str, Any], ctx: dict[str, Any], specs: list[str]
-) -> list[str]:
-    """Return exact root specs owned by the lane's shared module set."""
-    shared = lane_shared_module_set(lane, ctx["shared_exposure_plan"])
-    if not shared:
-        return []
-    included = set(shared["packages"])
-    return sorted(spec for spec in specs if spec_package_name(spec) in included)
 
 
 def render_lane_environment(
@@ -176,14 +162,6 @@ def render_lane_environment(
             # matching this module set in the shared install database.
             "lane_module_includes": lane_module_includes(lane, ctx, specs),
             "module_formats": module_formats(ctx["stack"]),
-            # Owning serial lane only: the shared module set for lane-agnostic
-            # packages (single build, exposed in every payload lane).
-            "lane_shared_module_set": lane_shared_module_set(
-                lane, ctx["shared_exposure_plan"]
-            ),
-            "lane_shared_module_includes": lane_shared_module_includes(
-                lane, ctx, specs
-            ),
             "platform_module_prereqs": prereqs,
         }
     )

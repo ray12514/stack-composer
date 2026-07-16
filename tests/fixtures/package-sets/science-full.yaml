@@ -8,9 +8,13 @@ description: |
   Full curated science library set: HDF5/NetCDF/PnetCDF (multi-version),
   TAU, and performance-portability roots used by science-stack payload lanes.
 
-kinds: [serial, mpi, gpu]
+kinds: [common, serial, mpi, gpu]
 
 specs:
+  common:
+    # compiler-common: one build per compiler, independent of the lane
+    - openblas@0.3.30
+    - netlib-lapack@3.11.0
   any:
     - gsl@2.8
   serial:
@@ -19,8 +23,6 @@ specs:
     - hdf5@1.12.3~mpi+fortran
     - netcdf-c@4.9.2~mpi
     - netcdf-c@4.9.0~mpi
-    - openblas@0.3.30
-    - netlib-lapack@3.11.0
   mpi:
     - hdf5@1.14.5+mpi+fortran
     - hdf5@1.14.4+mpi+fortran
@@ -39,9 +41,6 @@ specs:
     - tau+mpi
     - kokkos+gpu
     - raja+gpu
-
-# One serial-lane build, module-exposed in every payload lane of the compiler.
-lane_agnostic: [openblas, netlib-lapack]
 
 provenance_hints:
   cray-mpich: Platform-backed

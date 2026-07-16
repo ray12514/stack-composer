@@ -41,11 +41,15 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
     assert validate_schema("release-manifest", manifest, "release-manifest.yaml") == []
     assert manifest["phase"] == "draft"
     assert manifest["templates"]["render_tool"]["name"] == "stack-composer render"
-    assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "serial", "mpi", "gpu"}
+    assert {lane["kind"] for lane in manifest["lanes"]} == {
+        "core", "common", "serial", "mpi", "gpu",
+    }
     render_plan = load_yaml(workspace / "reports" / "render-plan.yaml")
     assert render_plan["system"]["name"] == "example-cray"
     assert render_plan["stack"]["name"] == "science-stack"
-    assert {lane["kind"] for lane in render_plan["lanes"]} == {"core", "serial", "mpi", "gpu"}
+    assert {lane["kind"] for lane in render_plan["lanes"]} == {
+        "core", "common", "serial", "mpi", "gpu",
+    }
     assert render_plan["platform_plan"] == {
         "family": "cray-pe",
         "release_policy": {
@@ -155,6 +159,15 @@ def test_render_workspace_writes_front_door_lane_modules(tmp_path: Path) -> None
         "prereqs": ["PrgEnv-gnu", "gcc-native/13"],
         "core_lane": "gcc-core",
         "core_view_root": "/shared/stack/views/2026.06/example-cray/science-stack/gcc/core",
+        # Foundation reaches users through the view; Core and compiler-common
+        # reach them as modules, both from the surface rather than a lane.
+        "core_module_root": (
+            "/shared/stack/modules/2026.06/example-cray/science-stack/gcc/core"
+        ),
+        "common_lane": "gcc-common",
+        "common_module_root": (
+            "/shared/stack/modules/2026.06/example-cray/science-stack/gcc/common"
+        ),
         "lane_module_root": (
             "/shared/stack/modules/2026.06/example-cray/science-stack/gcc/lanes"
         ),
@@ -327,7 +340,7 @@ def test_render_workspace_handles_generic_linux_without_gpu(tmp_path: Path) -> N
     manifest = load_yaml(workspace / "release-manifest.yaml")
     assert validate_schema("release-manifest", manifest, "release-manifest.yaml") == []
     assert manifest["profile"]["system_name"] == "example-linux"
-    assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "serial", "mpi"}
+    assert {lane["kind"] for lane in manifest["lanes"]} == {"core", "common", "serial", "mpi"}
     assert manifest["skipped_builds"] == [
         {
             "build": "gpu",

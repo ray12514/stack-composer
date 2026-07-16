@@ -20,6 +20,10 @@ builds:
     package_set: core-foundation
     target: baseline
     compilers: all
+  - name: common
+    kind: common
+    package_set: science-full
+    compilers: all
   - name: serial
     kind: serial
     package_set: science-full
@@ -37,6 +41,8 @@ per_system:
   example-cray:
     builds:
       core:
+        compilers: [gcc, cce]
+      common:
         compilers: [gcc, cce]
       serial:
         compilers: [gcc, cce]
