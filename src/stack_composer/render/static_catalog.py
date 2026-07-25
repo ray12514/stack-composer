@@ -259,53 +259,61 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
     for (name, version, family), records in sorted(
         grouped.items(), key=lambda item: (item[0][0], version_key(item[0][1]))
     ):
-        provider = merge_mpi_variant_records(records)
-        for compiler_provider in mpi_scope_compilers(profile, provider):
-            compiler_ref = compiler_provider_ref(compiler_provider)
-            toolchain = mpi_toolchain_name_for_profile(profile, compiler_ref, name, version)
-            lane = {
-                "compiler": compiler_provider["name"],
-                "compiler_ref": compiler_ref,
-                "mpi_provider": name,
-                "mpi_version": version,
-                "mpi_source": "platform",
-                "toolchain": toolchain,
-            }
-            packages = mpi_packages_mapping(profile, provider, [lane])
-            toolchains = toolchains_mapping(mpi_toolchains(profile, [lane], name))
-            if not packages:
-                continue
-            compiler_axis = compiler_scope_axis(compiler_provider)
-            scope_rel = (
-                Path("scopes")
-                / "mpi"
-                / path_token(name)
-                / path_token(version)
-                / compiler_axis
-            )
-            if scope_rel.as_posix() in seen_paths:
-                continue
-            seen_paths.add(scope_rel.as_posix())
-            scopes.append(
-                {
-                    "kind": "mpi",
-                    "name": name,
-                    "version": version,
-                    "provider_family": family,
+        merged = merge_mpi_variant_records(records)
+        # A flavor-based provider (Cray PE) carries every compiler variant
+        # inside one record, so the merged record is the right unit and
+        # mpi_scope_compilers walks its flavors. Profiles that instead report
+        # one physical install per compiler must stay separate: those records
+        # differ by prefix, and merging keeps only the first, which would drop
+        # every other compiler's build without reporting it.
+        variant_records = [merged] if merged.get("flavors") else records
+        for provider in variant_records:
+            for compiler_provider in mpi_scope_compilers(profile, provider):
+                compiler_ref = compiler_provider_ref(compiler_provider)
+                toolchain = mpi_toolchain_name_for_profile(profile, compiler_ref, name, version)
+                lane = {
+                    "compiler": compiler_provider["name"],
                     "compiler_ref": compiler_ref,
+                    "mpi_provider": name,
+                    "mpi_version": version,
+                    "mpi_source": "platform",
                     "toolchain": toolchain,
-                    "path": scope_rel,
-                    "absolute_path": workspace / scope_rel,
-                    "packages": packages,
-                    "toolchains": toolchains,
-                    "modules": sorted(
-                        module
-                        for package in packages.values()
-                        for ext in package.get("externals", [])
-                        for module in ext.get("modules", [])
-                    ),
                 }
-            )
+                packages = mpi_packages_mapping(profile, provider, [lane])
+                toolchains = toolchains_mapping(mpi_toolchains(profile, [lane], name))
+                if not packages:
+                    continue
+                compiler_axis = compiler_scope_axis(compiler_provider)
+                scope_rel = (
+                    Path("scopes")
+                    / "mpi"
+                    / path_token(name)
+                    / path_token(version)
+                    / compiler_axis
+                )
+                if scope_rel.as_posix() in seen_paths:
+                    continue
+                seen_paths.add(scope_rel.as_posix())
+                scopes.append(
+                    {
+                        "kind": "mpi",
+                        "name": name,
+                        "version": version,
+                        "provider_family": family,
+                        "compiler_ref": compiler_ref,
+                        "toolchain": toolchain,
+                        "path": scope_rel,
+                        "absolute_path": workspace / scope_rel,
+                        "packages": packages,
+                        "toolchains": toolchains,
+                        "modules": sorted(
+                            module
+                            for package in packages.values()
+                            for ext in package.get("externals", [])
+                            for module in ext.get("modules", [])
+                        ),
+                    }
+                )
     return scopes
 
 

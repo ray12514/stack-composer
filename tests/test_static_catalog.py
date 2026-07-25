@@ -291,3 +291,54 @@ def test_recommendation_prefers_platform_family_mpi_regardless_of_name(tmp_path:
 
     manifest = load_yaml(workspace / "manifest.yaml")
     assert manifest["recommendations"]["mpi"]["name"] == "vendor-mpich"
+
+
+def test_static_catalog_keeps_one_scope_per_mpi_compiler_build(tmp_path: Path) -> None:
+    """One MPI version built once per compiler must not collapse into one scope.
+
+    Generic Linux profiles report a physical install per compiler, so a site
+    that ships openmpi 5.0.5 for both gcc and aocc has two prefixes under one
+    name and version. Each build needs its own scope: the prefixes differ, and
+    a user picking the aocc scope must not be handed the gcc prefix.
+    """
+    profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
+    profile["mpi_providers"] = [
+        {
+            "name": "openmpi",
+            "version": "5.0.5",
+            "provider_family": "site",
+            "prefix": "/opt/site/openmpi/5.0.5-gcc-11.4.0",
+            "compiler": "gcc@11.4.0",
+        },
+        {
+            "name": "openmpi",
+            "version": "5.0.5",
+            "provider_family": "site",
+            "prefix": "/opt/site/openmpi/5.0.5-aocc-4.2.0",
+            "compiler": "aocc@4.2.0",
+        },
+    ]
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="alpha-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-07-09T00:00:00Z",
+            source_repo=SourceRepo("local-static-alpha", "abc123", False),
+        ),
+    )
+
+    gcc_scope = workspace / "scopes" / "mpi" / "openmpi" / "5.0.5" / "gcc-11.4.0"
+    aocc_scope = workspace / "scopes" / "mpi" / "openmpi" / "5.0.5" / "aocc-4.2.0"
+    assert gcc_scope.exists(), "gcc build of openmpi 5.0.5 lost its scope"
+    assert aocc_scope.exists(), "aocc build of openmpi 5.0.5 lost its scope"
+
+    gcc_external = load_yaml(gcc_scope / "packages.yaml")["packages"]["openmpi"]["externals"][0]
+    aocc_external = load_yaml(aocc_scope / "packages.yaml")["packages"]["openmpi"]["externals"][0]
+    assert gcc_external["prefix"] == "/opt/site/openmpi/5.0.5-gcc-11.4.0"
+    assert aocc_external["prefix"] == "/opt/site/openmpi/5.0.5-aocc-4.2.0"
