@@ -477,7 +477,7 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
         "",
         "```yaml",
         "spack:",
-        "  include:",
+        "  include::",
     ]
     lines.extend(
         f"  - {item if Path(item).is_absolute() else catalog_root / item}"
@@ -489,11 +489,63 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
             "  - hdf5 +mpi",
             "```",
             "",
+            "`include::` with two colons is deliberate. It overrides every ambient",
+            "configuration scope, so the environment resolves from this catalog plus Spack's",
+            "own defaults and nothing else. With a single colon, a stray `~/.spack`, site, or",
+            "system setting joins the concretization and the same inputs stop producing the",
+            "same build.",
+            "",
         ]
     )
     lines.extend(mpi_pairing_lines(recommended))
+    lines.extend(own_compiler_lines(recommended, catalog_root))
     lines.append("See `manifest.yaml` for all scopes and defaults.")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def own_compiler_lines(recommended: dict[str, Any], catalog_root: Path) -> list[str]:
+    """Explain how to build a compiler instead of taking the platform's.
+
+    Including a compiler scope pins that compiler as a non-buildable external.
+    Leaving it out is the whole difference, which is not something a reader can
+    infer from a directory listing, so state it and show the specs that go with
+    it.
+    """
+    compiler = recommended.get("compiler") or {}
+    mpi = recommended.get("mpi") or {}
+    compiler_path = compiler.get("path")
+    if not compiler_path:
+        return []
+    mpi_compiler = mpi.get("compiler_ref") or "the version its MPI scope names"
+    return [
+        "Building your own compiler:",
+        "",
+        "A compiler scope declares that compiler as a non-buildable external, so including",
+        "`scopes/compilers/...` means you take the platform's. To build your own instead,",
+        "leave that one scope out and name the compiler in your specs. Keep it at or above",
+        f"{mpi_compiler}, since the MPI you pair with was built against that baseline and a",
+        "lower compiler brings older runtime libraries than the MPI expects.",
+        "",
+        "```yaml",
+        "spack:",
+        "  include::",
+        f"  - {catalog_root / 'scopes' / 'common'}",
+    ]  + (
+        [f"  - {catalog_root / mpi['path']}"] if mpi.get("path") else []
+    ) + [
+        f"  # {catalog_root / compiler_path} left out on purpose",
+        "  specs:",
+        "  - group: compiler",
+        "    specs: [gcc@14.3.0]",
+        "  - group: apps",
+        "    needs: [compiler]",
+        "    specs: ['hdf5 +mpi %gcc@14.3.0']",
+        "```",
+        "",
+        "The `group` and `needs` keys order the compiler build ahead of everything that",
+        "uses it. They need Spack 1.2 or newer.",
+        "",
+    ]
 
 
 def mpi_pairing_lines(recommended: dict[str, Any]) -> list[str]:

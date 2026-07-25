@@ -367,3 +367,28 @@ def test_static_catalog_readme_states_the_mpi_compiler_pairing(tmp_path: Path) -
     readme = (workspace / "README.md").read_text(encoding="utf-8")
     assert "built with" in readme
     assert "gcc@13.3.0" in readme, "README must name the compiler the MPI scope pairs with"
+
+
+def test_static_catalog_readme_documents_isolation_and_own_compiler(tmp_path: Path) -> None:
+    """The README is the whole interface for a hand-assembled environment.
+
+    Two moves are not discoverable from the scope tree alone: overriding
+    ambient config scopes, and building your own compiler rather than taking
+    the platform's. Both belong in the generated README or they stay tribal.
+    """
+    workspace = render_static_catalog(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="alpha-001",
+            output_root=str(tmp_path),
+            rendered_at="2026-07-09T00:00:00Z",
+            source_repo=SourceRepo("local-static-alpha", "abc123", False),
+        ),
+    )
+
+    readme = (workspace / "README.md").read_text(encoding="utf-8")
+    assert "include::" in readme, "README must show the ambient-scope override"
+    assert "~/.spack" in readme
+    assert "scopes/compilers" in readme, "README must explain the compiler scope choice"
