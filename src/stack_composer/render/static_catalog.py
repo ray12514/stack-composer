@@ -489,10 +489,36 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
             "  - hdf5 +mpi",
             "```",
             "",
-            "See `manifest.yaml` for all scopes and defaults.",
         ]
     )
+    lines.extend(mpi_pairing_lines(recommended))
+    lines.append("See `manifest.yaml` for all scopes and defaults.")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def mpi_pairing_lines(recommended: dict[str, Any]) -> list[str]:
+    """State the compiler an MPI scope pairs with, in prose.
+
+    The static catalog informs rather than enforces: a user assembles their own
+    environment, so the pairing that the managed render checks for them has to
+    be written down here. The scope path already encodes it, but a path is not
+    a statement.
+    """
+    mpi = recommended.get("mpi") or {}
+    compiler_ref = mpi.get("compiler_ref")
+    if not compiler_ref:
+        return []
+    return [
+        "Compiler pairing:",
+        "",
+        f"Each MPI scope is one build of that MPI, built with a single compiler. The "
+        f"{mpi.get('name', 'MPI')} scope above was built with {compiler_ref}, so include the "
+        "compiler scope that matches it. Pairing an MPI with a different compiler than the "
+        "one it was built with is not supported: the Fortran module files and the compiler "
+        "runtime libraries both come from the build compiler. Every MPI scope names its "
+        "compiler in its path and in `manifest.yaml`.",
+        "",
+    ]
 
 
 def recommendations_for(

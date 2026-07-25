@@ -342,3 +342,28 @@ def test_static_catalog_keeps_one_scope_per_mpi_compiler_build(tmp_path: Path) -
     aocc_external = load_yaml(aocc_scope / "packages.yaml")["packages"]["openmpi"]["externals"][0]
     assert gcc_external["prefix"] == "/opt/site/openmpi/5.0.5-gcc-11.4.0"
     assert aocc_external["prefix"] == "/opt/site/openmpi/5.0.5-aocc-4.2.0"
+
+
+def test_static_catalog_readme_states_the_mpi_compiler_pairing(tmp_path: Path) -> None:
+    """The static tree informs rather than enforces, so it must say the rule.
+
+    A user assembling their own environment picks scopes by hand. The pairing
+    between an MPI build and the compiler it was built with is only implicit in
+    the scope path, so the README states it plainly and names the compiler the
+    recommended MPI scope expects.
+    """
+    workspace = render_static_catalog(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="alpha-001",
+            output_root=str(tmp_path),
+            rendered_at="2026-07-09T00:00:00Z",
+            source_repo=SourceRepo("local-static-alpha", "abc123", False),
+        ),
+    )
+
+    readme = (workspace / "README.md").read_text(encoding="utf-8")
+    assert "built with" in readme
+    assert "gcc@13.3.0" in readme, "README must name the compiler the MPI scope pairs with"

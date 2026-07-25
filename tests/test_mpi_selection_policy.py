@@ -96,3 +96,45 @@ def test_preferred_provider_falls_back_to_reported_provider() -> None:
         lane["mpi_provider"] == "mpich" and lane["mpi_source"] == "platform"
         for lane in selected
     )
+
+
+def cray_profile_with_gnu_flavor_above_compiler() -> dict[str, Any]:
+    """A Cray system whose only GNU cray-mpich flavor outranks its GCC.
+
+    The site pins GCC 12.5.0 but the platform shipped cray-mpich built with
+    GCC 13.3, so no flavor accepts the pinned compiler. HPE states a minimum
+    GCC per release, so a compiler under the flavor baseline is unsupported
+    rather than merely untested.
+    """
+    import yaml
+
+    from tests.conftest import fixture_path
+
+    profile = yaml.safe_load(
+        fixture_path("profiles", "example-cray", "profile.yaml").read_text(encoding="utf-8")
+    )
+    profile["compiler_providers"] = [
+        provider
+        for provider in profile["compiler_providers"]
+        if provider["name"] == "gcc"
+    ]
+    profile["compiler_providers"][0]["version"] = "12.5.0"
+    mpi = profile["mpi_providers"][0]
+    mpi["flavors"] = {"gcc@13.3": mpi["flavors"]["gcc@13.3"]}
+    mpi["compatibility"] = {"compilers": ["gcc"]}
+    return profile
+
+
+def test_compiler_below_every_mpi_flavor_baseline_is_an_error() -> None:
+    # Dropping the orphan flavor silently leaves an MPI lane with no MPI
+    # external, which Spack then tries to build from source. Say so instead.
+    profile = cray_profile_with_gnu_flavor_above_compiler()
+    stack = selection_stack({"provider": "cray-mpich"})
+
+    _lanes, _skipped, _narrowing, issues = plan_lanes(profile, stack)
+
+    flavor_issues = [issue for issue in issues if issue.code == "mpi_flavor_compiler_unsupported"]
+    assert flavor_issues, f"expected a flavor-baseline error, got {[i.code for i in issues]}"
+    assert flavor_issues[0].severity == "error"
+    assert "12.5.0" in flavor_issues[0].message
+    assert "gcc@13.3" in flavor_issues[0].message

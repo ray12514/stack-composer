@@ -14,6 +14,7 @@ from stack_composer.render.mpi import (
     is_renderable_mpi_provider,
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
+    select_flavor_compiler,
     select_platform_mpi,
 )
 from stack_composer.render.spack_specs import is_renderable_external_name_version
@@ -79,8 +80,81 @@ def plan_lanes(
             message += f" (skipped: {details})"
         issues.append(Issue("error", "no-rendered-lanes", "stack.builds", message))
     issues.extend(gpu_toolkit_issues(profile, lanes))
+    issues.extend(mpi_flavor_issues(profile, lanes))
     lanes.sort(key=lambda lane: (lane["compiler"], lane["lane"], lane["source_build"]))
     return lanes, skipped, applied_narrowing, issues
+
+
+def mpi_flavor_issues(profile: dict[str, Any], lanes: list[dict[str, Any]]) -> list[Issue]:
+    """Error when no MPI flavor on this system accepts the lane's compiler.
+
+    A flavor-based provider (Cray PE cray-mpich) ships one build per compiler
+    baseline. select_flavor_compiler drops a flavor the lane's compiler cannot
+    satisfy, so a lane under every baseline would otherwise render with no MPI
+    external at all, and Spack would then build the MPI from source rather than
+    consume the platform's. HPE publishes a minimum supported compiler per
+    release, so a compiler below every baseline is unsupported, not merely
+    untested; that makes this an error and not a warning.
+    """
+    issues: list[Issue] = []
+    seen: set[tuple[str, str, str]] = set()
+    for lane in lanes:
+        provider_name = lane.get("mpi_provider")
+        if not provider_name or lane.get("mpi_source") != "platform":
+            continue
+        compiler_ref = str(lane.get("compiler_ref") or "")
+        version = str(lane.get("mpi_version") or "")
+        key = (compiler_ref, str(provider_name), version)
+        if key in seen:
+            continue
+        seen.add(key)
+        record = next(
+            (
+                provider
+                for provider in profile.get("mpi_providers") or []
+                if str(provider.get("name")) == str(provider_name)
+                and str(provider.get("version") or "") == version
+            ),
+            None,
+        )
+        flavors = (record or {}).get("flavors") or {}
+        if not flavors:
+            continue
+        # Mirror mpi_provider_externals exactly: a flavor survives only when
+        # the lane's compiler ref satisfies its baseline AND the profile has a
+        # compiler provider that satisfies it. Checking anything looser here
+        # would report a lane healthy that renders without an MPI external.
+        if any(
+            compiler_ref_satisfies_flavor(compiler_ref, flavor, record)
+            and select_flavor_compiler(profile, flavor, record) is not None
+            for flavor in flavors
+        ):
+            continue
+        baselines = ", ".join(sorted(flavors))
+        # Name the compiler the profile actually reports, not just the lane's
+        # ref: the ref is often a bare family name, and the operator needs the
+        # version they have next to the baseline they need.
+        family = compiler_ref_name(compiler_ref)
+        present = ", ".join(
+            sorted(
+                f"{provider['name']}@{provider['version']}"
+                for provider in profile.get("compiler_providers") or []
+                if str(provider.get("name")) == family and provider.get("version")
+            )
+        )
+        have = present or compiler_ref
+        issues.append(
+            Issue(
+                "error",
+                "mpi_flavor_compiler_unsupported",
+                f"stack.builds.{lane['source_build']}",
+                f"{provider_name} {version} on this system ships no flavor that accepts "
+                f"compiler {compiler_ref} ({family} present: {have}); available flavor "
+                f"baselines are {baselines}. Select a compiler that satisfies one of them, "
+                f"or the lane would render with no {provider_name} external.",
+            )
+        )
+    return issues
 
 
 _GPU_ARCH_TOOLKITS = (("gfx", "rocm"), ("sm_", "cuda"))
