@@ -871,7 +871,8 @@ def test_build_sourced_mpi_lane_gets_a_defined_toolchain(tmp_path: Path) -> None
 
     env = load_yaml(workspace / "environments" / "gcc" / "mpi-openmpi" / "spack.yaml")
     assert env["spack"]["specs"] == ["osu-micro-benchmarks %gcc1140_openmpi"]
-    assert "../../../configs/mpi/openmpi" in env["spack"]["include"]
+    # `include::` overrides ambient scopes, so the parsed key keeps its colon.
+    assert "../../../configs/mpi/openmpi" in env["spack"]["include:"]
 
     toolchains = load_yaml(workspace / "configs" / "mpi" / "openmpi" / "toolchains.yaml")
     assert toolchains["toolchains"]["gcc1140_openmpi"] == [

@@ -606,3 +606,25 @@ def test_direct_exposure_without_publish_root_is_an_error(tmp_path: Path) -> Non
             package_repos_dir=fixture_path("package-repos"),
         )
     assert any(issue.code == "direct-exposure-needs-publish-root" for issue in excinfo.value.issues)
+
+
+def test_lane_environments_isolate_from_ambient_config(tmp_path: Path) -> None:
+    """Rendered lanes must use `include::`, the two-colon override form.
+
+    The handoff contract names the include list, not ambient ~/.spack, site, or
+    system scopes, as the production isolation boundary. Spack only honours
+    that when the key carries two colons: with one, a stray user-scope
+    packages.yaml silently joins the concretization and the same tree stops
+    producing the same build.
+    """
+    workspace = render_fixture(tmp_path / "out-isolation")
+
+    text = (workspace / "environments" / "gcc" / "serial" / "spack.yaml").read_text(
+        encoding="utf-8"
+    )
+    assert "\n  include::\n" in text, "lane spack.yaml must override ambient config scopes"
+
+    # The parsed key keeps the override colon, which is how Spack detects it.
+    env = load_yaml(workspace / "environments" / "gcc" / "serial" / "spack.yaml")
+    assert "include:" in env["spack"]
+    assert env["spack"]["include:"], "scope list must survive the override form"
