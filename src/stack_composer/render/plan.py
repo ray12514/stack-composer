@@ -412,8 +412,23 @@ def resolve_compilers(
             False,
             None,
         )
+    if compilers_are_stack_built(stack):
+        # Under build_all the stack names the exact versions to build. A
+        # compiler that has yet to be built cannot appear in the profile's
+        # observed inventory, so resolving against that inventory would reject
+        # every valid selection. Take the stack's refs verbatim instead.
+        return list(selection), [], True, None
     selected, missing, error = resolve_compiler_refs(profile, selection)
     return selected, missing, True, error
+
+
+def compilers_are_stack_built(stack: dict[str, Any]) -> bool:
+    """True when the stack builds its compilers instead of consuming them.
+
+    Posture lives in the externals block, normally inherited from defaults, so
+    a site chooses it once rather than per build.
+    """
+    return (stack.get("externals") or {}).get("compilers") == "build_all"
 
 
 def resolve_compiler_refs(
@@ -677,6 +692,9 @@ def make_lane(
         "runtime_node_type": node_name,
         "gpu_selector": gpu_arch,
         "gpu_arch": gpu_arch,
+        # Where the compiler comes from: a stack-built one has no platform
+        # module to require and no external prefix to resolve.
+        "compiler_source": "stack" if compilers_are_stack_built(stack) else "platform",
         "mpi_provider": mpi_provider,
         "mpi_source": mpi_source,
         "mpi_version": mpi_record.get("version") if mpi_record else None,

@@ -628,3 +628,50 @@ def test_lane_environments_isolate_from_ambient_config(tmp_path: Path) -> None:
     env = load_yaml(workspace / "environments" / "gcc" / "serial" / "spack.yaml")
     assert "include:" in env["spack"]
     assert env["spack"]["include:"], "scope list must survive the override form"
+
+
+def build_all_stack(tmp_path: Path) -> Path:
+    """The science stack, but building its compiler instead of consuming one."""
+    stack = deepcopy(load_yaml(fixture_path("stacks", "science-stack", "stack.yaml")))
+    stack["externals"] = {
+        "compilers": "build_all",
+        "mpi": "prefer_platform",
+        "openssl": "system",
+        "curl": "system",
+        "cray-libsci": "system",
+        "fabric_userspace": "prefer_platform",
+    }
+    for build in stack["builds"]:
+        build["compilers"] = ["gcc@14.3.0"]
+    stack.pop("per_system", None)
+    path = tmp_path / "build-all-stack.yaml"
+    path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def test_build_all_renders_without_platform_compiler_facts(tmp_path: Path) -> None:
+    """A stack-built compiler has no platform module to require.
+
+    Lane modules `prereq` the platform modules behind site-external providers.
+    A compiler we build ourselves has none, so demanding profile facts for it
+    makes the posture unrenderable on every system.
+    """
+    workspace = render_workspace(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=build_all_stack(tmp_path),
+        templates_root=fixture_path("template-sets"),
+        release_vars=ReleaseVars(
+            release_tag="2026.06",
+            output_root=(tmp_path / "out").as_posix(),
+            rendered_at="2026-06-19T00:00:00Z",
+            source_repo=SourceRepo(
+                "git@example:x", "0375b16fdeadbeef0123456789abcdef01234567", False
+            ),
+        ),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=fixture_path("package-repos"),
+    )
+
+    envs = sorted(workspace.glob("environments/*/*/spack.yaml"))
+    assert envs, "build_all must still render lanes"

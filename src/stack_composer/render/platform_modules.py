@@ -43,6 +43,10 @@ def _compiler_modules(
     compiler = lane.get("compiler_ref") or lane.get("compiler")
     if not compiler:
         return []
+    if lane.get("compiler_source") == "stack":
+        # The stack builds this compiler, so there is no platform module
+        # behind it and nothing for the lane module to require.
+        return []
     wanted_name, wanted_version = compiler_fragment_name_version(compiler)
     for provider in profile.get("compiler_providers") or []:
         if provider.get("name") != wanted_name:
