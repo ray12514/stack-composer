@@ -4,6 +4,9 @@ import click
 
 from stack_composer import __version__
 from stack_composer.commands import (
+    init_workspace as init_workspace_command,
+)
+from stack_composer.commands import (
     publish_manifest as publish_manifest_command,
 )
 from stack_composer.commands import (
@@ -174,6 +177,29 @@ def render_static(
         source_repo=source_repo,
         source_commit=source_commit,
         source_dirty=source_dirty,
+        overwrite=overwrite,
+    )
+
+
+@cli.command("init-workspace")
+@click.option("--blueprint", required=True, help="Authored workspace blueprint directory.")
+@click.option("--catalog", required=True, help="Rendered static platform catalog directory.")
+@click.option("--values", required=True, help="Site-specific blueprint values YAML.")
+@click.option("--output", required=True, help="Initialized workspace destination.")
+@click.option("--overwrite", is_flag=True, help="Replace an existing initialized workspace.")
+def init_workspace(
+    blueprint: str,
+    catalog: str,
+    values: str,
+    output: str,
+    overwrite: bool,
+) -> None:
+    """Initialize a manual workspace from a static catalog and blueprint."""
+    init_workspace_command.run(
+        blueprint=blueprint,
+        catalog=catalog,
+        values=values,
+        output=output,
         overwrite=overwrite,
     )
 

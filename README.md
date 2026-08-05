@@ -17,6 +17,10 @@ Current implementation status:
 - `validate` performs schema checks and render preflight checks.
 - `render` writes deterministic draft workspaces with rendered config scopes,
   lane environments, package repos, and `release-manifest.yaml`.
+- `render-static` writes a reusable catalog of observed platform scopes for
+  package managers who want to author their own Spack environments.
+- `init-workspace` assembles an authored starter blueprint against an exact
+  static catalog selection. It does not probe, build, or replace full `render`.
 - `render` requires `deployment.yaml` and emits installer-owned install/cache
   paths into `configs/common/config.yaml`; profile filesystem entries are only
   candidates.
@@ -48,6 +52,21 @@ Build a local release artifact with:
 ```bash
 PYTHON=.venv/bin/python scripts/build-pyz.sh
 ```
+
+Initialize an authored pilot workspace from a static catalog with:
+
+```bash
+stack-composer init-workspace \
+  --blueprint /path/to/stack-content/pilots/cse-pilot \
+  --catalog /path/to/rendered-static/<system>/static/<catalog-release> \
+  --values /path/to/<system>-cse-pilot-values.yaml \
+  --output /path/to/workspaces/<system>/cse-pilot/<release>
+```
+
+The blueprint owns package intent and exposure policy. The values file selects
+real catalog scopes and deployment roots. The command rejects missing or
+escaping catalog paths, unsupported provider modes, incomplete values, and
+invalid generated YAML before publishing the workspace atomically.
 
 ## GitLab Note
 
