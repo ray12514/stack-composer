@@ -194,7 +194,7 @@ def init_workspace(
     output: str,
     overwrite: bool,
 ) -> None:
-    """Initialize a manual workspace from a static catalog and blueprint."""
+    """Initialize a CSE pilot workspace from a static catalog and blueprint."""
     init_workspace_command.run(
         blueprint=blueprint,
         catalog=catalog,

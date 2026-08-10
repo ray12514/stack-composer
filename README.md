@@ -19,8 +19,10 @@ Current implementation status:
   lane environments, package repos, and `release-manifest.yaml`.
 - `render-static` writes a reusable catalog of observed platform scopes for
   package managers who want to author their own Spack environments.
-- `init-workspace` assembles an authored starter blueprint against an exact
-  static catalog selection. It does not probe, build, or replace full `render`.
+- `init-workspace` is a CSE pilot convenience that assembles an authored
+  starter blueprint against an exact static catalog selection. It is not a
+  production render mode or a supported long-term consumption seam; it does
+  not probe, build, or replace full `render`.
 - `render` requires `deployment.yaml` and emits installer-owned install/cache
   paths into `configs/common/config.yaml`; profile filesystem entries are only
   candidates.

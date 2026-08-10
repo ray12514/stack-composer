@@ -90,6 +90,43 @@ name caused an Lmod reload storm and is prohibited. Actual package-module
 visibility remains gated on completing the local concretization and module
 refresh after a rerender.
 
+## Full-render production-readiness audit (2026-08-05)
+
+The current `render` implementation has the intended high-level ownership
+boundaries: one environment per Core/Common/Serial/MPI/GPU build surface,
+compiler and MPI selection through profile/defaults/stack inputs, projected
+views, Spack-owned package-module generation, a compiler front door, and
+mutually exclusive Serial/MPI/GPU selectors. `scripts/spack-build` already
+regenerates each environment's view and runs `spack module tcl refresh` after
+installation.
+
+That output is suitable for the current platform-external pilot tests, but it
+is not yet the final Spack 1.2 full-deployment shape described in
+`stack-planning/docs/spack_1_2_rendered_environment_reference_v1.md`. The full
+renderer must be updated as one coherent slice:
+
+- emit one native `modules.yaml` scope per environment instead of embedding
+  module policy in every `spack.yaml`;
+- render Foundation/Core and stack-built compiler/MPI producers as Spack 1.2
+  groups with explicit `needs` relationships;
+- bind every payload lane, including Serial, to an explicit compiler-only or
+  compiler-plus-MPI toolchain rather than relying on package preference;
+- express GPU's MPI-superset roster as declarative package-set composition;
+  the CSE pilot currently repeats the MPI roster in `science-full.yaml`, which
+  works but can drift;
+- encode and test version-sensitive module relationships for public
+  multi-version packages so incompatible roots cannot be loaded together;
+- complete end-to-end package-module visibility checks after install, view
+  regeneration, and module refresh on both generic Linux and Cray fixtures;
+- replace the first-rendered-lane MPI preference with explicit policy and add
+  the remaining CPE/MPI/GPU compatibility and multi-CPE axes.
+
+`init-workspace` is a CSE pilot convenience only. It is not a third production
+render mode. The supported long-term seams remain `render-static` for reusable
+platform scopes and `render` for complete managed deployments; the pilot
+command can be removed after the static/manual and full-render procedures are
+fully documented and exercised.
+
 ## Deferred / open
 
 - CPE-locked GPU/MPI pairing validation: profile facts (`cpe_version`,
