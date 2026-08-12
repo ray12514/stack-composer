@@ -60,7 +60,9 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
         / "packages.yaml"
     )
     assert mpi_packages["packages"]["mpi"]["require"] == ["cray-mpich"]
-    assert mpi_packages["packages"]["cray-mpich"]["externals"][0]["spec"] == "cray-mpich@8.1.29"
+    assert mpi_packages["packages"]["cray-mpich"]["externals"][0]["spec"] == (
+        "cray-mpich@8.1.29 +wrappers"
+    )
 
     mpi_toolchains = load_yaml(
         workspace
@@ -99,6 +101,129 @@ def test_static_catalog_renders_linux_mpi_pairing(tmp_path: Path) -> None:
     )
     toolchains = load_yaml(mpi_scope / "toolchains.yaml")
     assert "aocc420_openmpi416" in toolchains["toolchains"]
+
+
+def test_static_catalog_maps_classic_intel_and_intel_mpi_packages(
+    tmp_path: Path,
+) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
+    profile["system"]["name"] = "classic-intel"
+    profile["compiler_providers"] = [
+        {
+            "name": "intel",
+            "version": "2021.10.0",
+            "provider_family": "site",
+            "prefix": "/opt/intel/oneapi/compiler/2023.2.4",
+            "modules": ["intel/2023.2.4"],
+            "languages": ["c", "c++", "fortran"],
+        }
+    ]
+    profile["mpi_providers"] = [
+        {
+            "name": "intel-mpi",
+            "version": "2021.10.0",
+            "provider_family": "site",
+            "prefix": "/opt/intel/oneapi/mpi/2021.10",
+            "modules": ["intel-mpi/2021.10"],
+            "compiler": "intel@2021.10.0",
+        }
+    ]
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="trial-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-08-12T00:00:00Z",
+            source_repo=SourceRepo("local-static", "abc123", False),
+        ),
+    )
+
+    manifest = load_yaml(workspace / "manifest.yaml")
+    assert manifest["recommendations"]["compiler"]["package"] == (
+        "intel-oneapi-compilers-classic"
+    )
+    assert manifest["recommendations"]["compiler"]["path"] == (
+        "scopes/compilers/intel/2021.10.0"
+    )
+    assert manifest["recommendations"]["mpi"]["package"] == "intel-oneapi-mpi"
+
+    compiler_scope = workspace / "scopes" / "compilers" / "intel" / "2021.10.0"
+    compiler_packages = load_yaml(compiler_scope / "packages.yaml")["packages"]
+    assert set(compiler_packages) == {"intel-oneapi-compilers-classic"}
+    compiler_external = compiler_packages["intel-oneapi-compilers-classic"]["externals"][0]
+    assert compiler_external["spec"] == "intel-oneapi-compilers-classic@2021.10.0"
+    assert compiler_external["extra_attributes"]["compilers"] == {
+        "c": "/opt/intel/oneapi/compiler/2023.2.4/bin/icc",
+        "cxx": "/opt/intel/oneapi/compiler/2023.2.4/bin/icpc",
+        "fortran": "/opt/intel/oneapi/compiler/2023.2.4/bin/ifort",
+    }
+
+    mpi_scope = (
+        workspace
+        / "scopes"
+        / "mpi"
+        / "intel-mpi"
+        / "2021.10.0"
+        / "intel-2021.10.0"
+    )
+    mpi_packages = load_yaml(mpi_scope / "packages.yaml")["packages"]
+    assert mpi_packages["mpi"]["require"] == ["intel-oneapi-mpi"]
+    assert mpi_packages["intel-oneapi-mpi"]["variants"] == "+classic-names"
+    assert mpi_packages["intel-oneapi-mpi"]["externals"][0]["spec"] == (
+        "intel-oneapi-mpi@2021.10.0 +classic-names "
+        "%intel-oneapi-compilers-classic@2021.10.0"
+    )
+    toolchains = load_yaml(mpi_scope / "toolchains.yaml")["toolchains"]
+    entries = toolchains["intel2021100_intelmpi2021100"]
+    assert {entry["spec"] for entry in entries} == {
+        "%c=intel-oneapi-compilers-classic@2021.10.0",
+        "%cxx=intel-oneapi-compilers-classic@2021.10.0",
+        "%fortran=intel-oneapi-compilers-classic@2021.10.0",
+        "%mpi=intel-oneapi-mpi@2021.10.0+classic-names",
+    }
+
+
+def test_static_catalog_uses_spack_cce_driver_names(tmp_path: Path) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
+    profile["system"]["name"] = "current-cce"
+    profile["compiler_providers"] = [
+        {
+            "name": "cce",
+            "version": "21.0.0",
+            "provider_family": "platform",
+            "prefix": "/opt/cray/pe/cce/21.0.0",
+            "modules": ["PrgEnv-cray", "cce/21.0.0"],
+            "languages": ["c", "c++", "fortran"],
+        }
+    ]
+    profile["mpi_providers"] = []
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="trial-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-08-12T00:00:00Z",
+            source_repo=SourceRepo("local-static", "abc123", False),
+        ),
+    )
+
+    packages = load_yaml(
+        workspace / "scopes" / "compilers" / "cce" / "21.0.0" / "packages.yaml"
+    )["packages"]
+    commands = packages["cce"]["externals"][0]["extra_attributes"]["compilers"]
+    assert commands["c"] == "/opt/cray/pe/cce/21.0.0/bin/craycc"
+    assert commands["cxx"] == "/opt/cray/pe/cce/21.0.0/bin/crayCC"
+    assert commands["fortran"] == "/opt/cray/pe/cce/21.0.0/bin/crayftn"
 
 
 def test_static_catalog_recommends_platform_mpi_without_provider_name_bias(

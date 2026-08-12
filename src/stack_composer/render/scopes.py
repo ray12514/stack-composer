@@ -18,6 +18,7 @@ from stack_composer.render.mpi import (
 )
 from stack_composer.render.plan import vendor_scope_for_provider
 from stack_composer.render.platform import selected_system_externals
+from stack_composer.render.provider_packages import compiler_package_name, mpi_package_name
 from stack_composer.render.spack_specs import (
     external_spec,
     is_absolute_prefix,
@@ -27,14 +28,18 @@ from stack_composer.render.spack_specs import (
 
 _COMPILER_COMMANDS = {
     "aocc": {"c": "clang", "cxx": "clang++", "fortran": "flang"},
-    "cce": {"c": "craycc", "cxx": "craycxx", "fortran": "crayftn"},
+    "cce": {"c": "craycc", "cxx": "crayCC", "fortran": "crayftn"},
     "gcc": {"c": "gcc", "cxx": "g++", "fortran": "gfortran"},
-    "intel": {"c": "icx", "cxx": "icpx", "fortran": "ifx"},
+    "intel": {"c": "icc", "cxx": "icpc", "fortran": "ifort"},
+    "oneapi": {"c": "icx", "cxx": "icpx", "fortran": "ifx"},
     "llvm": {"c": "clang", "cxx": "clang++", "fortran": "flang"},
     "nvhpc": {"c": "nvc", "cxx": "nvc++", "fortran": "nvfortran"},
     "rocmcc": {"c": "amdclang", "cxx": "amdclang++", "fortran": "amdflang"},
 }
-_MPI_PROVIDER_VARIANTS = {"cray-mpich": "+wrappers"}
+_MPI_PROVIDER_VARIANTS = {
+    "cray-mpich": "+wrappers",
+    "intel-mpi": "+classic-names",
+}
 
 
 def make_jinja_environment(template_dir: Path) -> Environment:
@@ -101,13 +106,17 @@ def compiler_external_packages(
         version = provider.get("version")
         if not is_renderable_external_name_version(name, version):
             continue
-        package = packages.setdefault(name, {"name": name, "buildable": False, "externals": []})
+        package_name = compiler_package_name(str(name))
+        package = packages.setdefault(
+            package_name,
+            {"name": package_name, "buildable": False, "externals": []},
+        )
         package["externals"].append(compiler_external(provider))
     return list(packages.values())
 
 
 def compiler_external(provider: dict[str, Any]) -> dict[str, Any]:
-    name = provider["name"]
+    name = compiler_package_name(provider)
     external: dict[str, Any] = {
         "spec": external_spec(name, provider["version"]),
         "prefix": provider["prefix"],
@@ -144,12 +153,13 @@ def mpi_external_packages(
     for provider in selected_mpi_providers(profile, provider_name, rendered_lanes):
         if not is_renderable_external_name_version(provider.get("name"), provider.get("version")):
             continue
+        package_name = mpi_package_name(provider_name)
         variants = mpi_provider_variants(provider_name)
         for external in mpi_provider_externals(profile, provider, rendered_lanes):
             package = packages.setdefault(
-                provider_name,
+                package_name,
                 {
-                    "name": provider_name,
+                    "name": package_name,
                     "buildable": False,
                     "variants": variants,
                     "externals": [],
@@ -166,6 +176,23 @@ def mpi_provider_variants(provider_name: str) -> str | None:
     module so managed and static renders cannot drift.
     """
     return _MPI_PROVIDER_VARIANTS.get(provider_name)
+
+
+def mpi_package_ref(provider: dict[str, Any]) -> str:
+    """Return the exact Spack provider constraint for an MPI record."""
+    ref = f"{mpi_package_name(provider)}@{provider['version']}"
+    variants = mpi_provider_variants(str(provider["name"]))
+    return f"{ref}{variants or ''}"
+
+
+def mpi_external_suffix(provider: dict[str, Any], compiler_ref: str | None = None) -> str:
+    constraints = []
+    variants = mpi_provider_variants(str(provider["name"]))
+    if variants:
+        constraints.append(variants)
+    if compiler_ref:
+        constraints.append(f"%{compiler_ref}")
+    return " ".join(constraints)
 
 
 def selected_mpi_providers(
@@ -243,11 +270,14 @@ def mpi_provider_externals(
     ):
         return []
     compiler_provider = select_compiler_provider(profile, compiler) if compiler else None
-    compiler_ref = compiler_provider_ref(compiler_provider) if compiler_provider else compiler
-    suffix = f"%{compiler_ref}" if compiler_ref else ""
+    compiler_ref = compiler_spec(compiler_provider) if compiler_provider else compiler
     return [
         {
-            "spec": external_spec(provider["name"], provider["version"], suffix),
+            "spec": external_spec(
+                mpi_package_name(provider),
+                provider["version"],
+                mpi_external_suffix(provider, compiler_ref),
+            ),
             "prefix": provider["prefix"],
             "modules": provider.get("modules") or [],
         }
@@ -284,9 +314,17 @@ def flavored_mpi_external_spec(
     selected_refs: set[str] | None,
 ) -> str:
     if provider.get("platform_family") == "cray-pe" and selected_refs is not None:
-        return external_spec(provider["name"], provider["version"])
-    compiler_ref = compiler_provider_ref(compiler_provider)
-    return external_spec(provider["name"], provider["version"], f"%{compiler_ref}")
+        return external_spec(
+            mpi_package_name(provider),
+            provider["version"],
+            mpi_external_suffix(provider),
+        )
+    compiler_ref = compiler_spec(compiler_provider)
+    return external_spec(
+        mpi_package_name(provider),
+        provider["version"],
+        mpi_external_suffix(provider, compiler_ref),
+    )
 
 
 def mpi_toolchains(
@@ -322,7 +360,7 @@ def mpi_toolchains(
             entries = compiler_toolchain_entries(compiler_provider)
             entries.append(
                 {
-                    "spec": f"%mpi={provider['name']}@{provider['version']}",
+                    "spec": f"%mpi={mpi_package_ref(provider)}",
                     "when": "%mpi",
                 }
             )
@@ -369,9 +407,11 @@ def lane_mpi_toolchains(
             continue
         emitted_names.add(name)
         entries = compiler_toolchain_entries(compiler_provider)
-        mpi_spec = provider_name
+        mpi_spec = mpi_package_name(provider_name)
         if lane.get("mpi_source") == "platform" and lane.get("mpi_version"):
-            mpi_spec = f"{provider_name}@{lane['mpi_version']}"
+            mpi_spec = mpi_package_ref(
+                {"name": provider_name, "version": lane["mpi_version"]}
+            )
         entries.append({"spec": f"%mpi={mpi_spec}", "when": "%mpi"})
         toolchains.append({"name": name, "entries": entries})
     return toolchains
@@ -399,7 +439,7 @@ def compiler_name(provider: dict[str, Any]) -> str:
 
 
 def compiler_spec(provider: dict[str, Any]) -> str:
-    return external_spec(provider["name"], provider["version"])
+    return external_spec(compiler_package_name(provider), provider["version"])
 
 
 def compiler_toolchain_entries(provider: dict[str, Any]) -> list[dict[str, str]]:

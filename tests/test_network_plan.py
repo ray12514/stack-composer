@@ -25,9 +25,9 @@ def test_mpi_plan_resolves_selected_cray_mpich_externals_and_toolchains() -> Non
         for package in packages
         for external in package["externals"]
     ]
-    # The lane-selected external is a plain provider spec; the compiler binding
-    # lives in the toolchain, not on the external.
-    assert "cray-mpich@8.1.29" in specs
+    # The external pins the wrapper mode; the compiler binding lives in the
+    # toolchain, not on the external.
+    assert "cray-mpich@8.1.29 +wrappers" in specs
 
     toolchains = {
         toolchain["name"]: toolchain["entries"]
@@ -35,7 +35,9 @@ def test_mpi_plan_resolves_selected_cray_mpich_externals_and_toolchains() -> Non
     }
     assert "gcc1330_craympich8129" in toolchains
     assert {"spec": "%c=gcc@13.3.0", "when": "%c"} in toolchains["gcc1330_craympich8129"]
-    assert {"spec": "%mpi=cray-mpich@8.1.29", "when": "%mpi"} in toolchains["gcc1330_craympich8129"]
+    assert {"spec": "%mpi=cray-mpich@8.1.29+wrappers", "when": "%mpi"} in toolchains[
+        "gcc1330_craympich8129"
+    ]
 
 
 def test_mpi_plan_only_covers_providers_used_by_lanes() -> None:

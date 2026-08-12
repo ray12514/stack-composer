@@ -46,6 +46,12 @@ Primary planning docs:
   user environment to have loaded the platform module already.
 - Generic provider inventory consumption: `compiler_providers` +
   `mpi_providers`.
+- Observed provider identities are translated at one renderer seam when Spack
+  uses a different package name. Current mappings cover Classic Intel
+  (`intel` -> `intel-oneapi-compilers-classic`), LLVM-based Intel
+  (`oneapi` -> `intel-oneapi-compilers`), and Intel MPI
+  (`intel-mpi` -> `intel-oneapi-mpi`). Static catalog paths retain the observed
+  identity and their manifests record the Spack package identity.
 - Baseline compiler default: `gcc` if present, otherwise first reported
   compiler.
 - MPI platform compatibility auto-narrowing for non-explicit compiler defaults.
@@ -107,8 +113,9 @@ renderer must be updated as one coherent slice:
 
 - emit one native `modules.yaml` scope per environment instead of embedding
   module policy in every `spack.yaml`;
-- render Foundation/Core and stack-built compiler/MPI producers as Spack 1.2
-  groups with explicit `needs` relationships;
+- render Foundation/Core and stack-built MPI producers as Spack 1.2 groups
+  with explicit `needs` relationships, and render a separate bootstrap
+  environment plus fixed external view for a stack-built compiler;
 - bind every payload lane, including Serial, to an explicit compiler-only or
   compiler-plus-MPI toolchain rather than relying on package preference;
 - express GPU's MPI-superset roster as declarative package-set composition;

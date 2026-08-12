@@ -30,6 +30,7 @@ from stack_composer.render.platform import (
     is_platform_selected_external,
     platform_family,
 )
+from stack_composer.render.provider_packages import compiler_package_name, mpi_package_name
 from stack_composer.render.release import ReleaseVars
 from stack_composer.render.scopes import (
     add_external,
@@ -212,8 +213,9 @@ def build_compiler_scopes(
             continue
         seen.add(key)
         scope_rel = Path("scopes") / "compilers" / path_token(name) / path_token(version)
+        package_name = compiler_package_name(str(name))
         packages = {
-            str(name): {
+            package_name: {
                 "buildable": False,
                 "externals": [compiler_external(provider)],
             }
@@ -223,6 +225,7 @@ def build_compiler_scopes(
         scope = {
             "kind": "compiler",
             "name": str(name),
+            "package": package_name,
             "version": str(version),
             "compiler_ref": compiler_provider_ref(provider),
             "path": scope_rel,
@@ -298,6 +301,7 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
                     {
                         "kind": "mpi",
                         "name": name,
+                        "package": mpi_package_name(name),
                         "version": version,
                         "provider_family": family,
                         "compiler_ref": compiler_ref,
@@ -342,6 +346,7 @@ def mpi_packages_mapping(
 ) -> dict[str, Any]:
     packages: dict[str, Any] = {}
     name = provider.get("name")
+    package_name = mpi_package_name(str(name))
     externals = mpi_provider_externals(profile, provider, lanes)
     if not externals:
         return {}
@@ -349,8 +354,8 @@ def mpi_packages_mapping(
     variants = mpi_provider_variants(str(name))
     if variants:
         package["variants"] = variants
-    packages[str(name)] = package
-    packages["mpi"] = {"buildable": False, "require": [str(name)]}
+    packages[package_name] = package
+    packages["mpi"] = {"buildable": False, "require": [package_name]}
     return packages
 
 
@@ -586,6 +591,21 @@ def recommendations_for(
     mpi_scope = select_mpi_scope(
         preferred_mpi_provider, mpi_scopes, compiler_scope
     )
+    if (
+        mpi_scope
+        and compiler_scope
+        and mpi_scope.get("compiler_ref") != compiler_scope.get("compiler_ref")
+    ):
+        paired_compiler = next(
+            (
+                scope
+                for scope in compiler_scopes
+                if scope.get("compiler_ref") == mpi_scope.get("compiler_ref")
+            ),
+            None,
+        )
+        if paired_compiler:
+            compiler_scope = paired_compiler
     gpu_recommendations = select_gpu_scopes(gpu_scopes)
 
     include = []
@@ -687,7 +707,7 @@ def manifest_scope(scope: dict[str, Any]) -> dict[str, Any]:
         "kind": scope["kind"],
         "path": scope_path_str(scope),
     }
-    for key in ("name", "version", "compiler_ref", "toolchain"):
+    for key in ("name", "package", "version", "compiler_ref", "toolchain"):
         if scope.get(key):
             entry[key] = scope[key]
     return entry

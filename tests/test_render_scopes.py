@@ -380,7 +380,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     ]
     assert platform_scope["packages"]["cce"]["externals"][0]["extra_attributes"]["compilers"] == {
         "c": "/opt/cray/pe/cce/17.0.1/bin/craycc",
-        "cxx": "/opt/cray/pe/cce/17.0.1/bin/craycxx",
+        "cxx": "/opt/cray/pe/cce/17.0.1/bin/crayCC",
         "fortran": "/opt/cray/pe/cce/17.0.1/bin/crayftn",
     }
     assert platform_scope["packages"]["rocmcc"]["buildable"] is False
@@ -392,7 +392,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     }
     assert cray_mpich["packages"]["cray-mpich"]["variants"] == "+wrappers"
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert mpich_specs == ["cray-mpich@8.1.29"]
+    assert mpich_specs == ["cray-mpich@8.1.29 +wrappers"]
 
     cray_mpich_toolchains = load_yaml(
         workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml"
@@ -401,7 +401,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
         {"spec": "%c=gcc@13.3.0", "when": "%c"},
         {"spec": "%cxx=gcc@13.3.0", "when": "%cxx"},
         {"spec": "%fortran=gcc@13.3.0", "when": "%fortran"},
-        {"spec": "%mpi=cray-mpich@8.1.29", "when": "%mpi"},
+        {"spec": "%mpi=cray-mpich@8.1.29+wrappers", "when": "%mpi"},
     ]
 
     gpu_env = load_yaml(workspace / "environments" / "gcc" / "gpu-craympich-gfx90a" / "spack.yaml")
@@ -1173,7 +1173,7 @@ def test_cray_mpich_external_binds_newer_compiler_and_drops_orphan_flavor(
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert specs == ["cray-mpich@9.1.0"]
+    assert specs == ["cray-mpich@9.1.0 +wrappers"]
     assert not any("aocc" in spec for spec in specs)
 
 
@@ -1247,7 +1247,7 @@ def test_cray_mpich_scope_renders_only_selected_provider_version(tmp_path: Path)
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert specs == ["cray-mpich@9.1.0"]
+    assert specs == ["cray-mpich@9.1.0 +wrappers"]
     assert cray_mpich["packages"]["cray-mpich"]["externals"][0]["prefix"] == (
         "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3"
     )
@@ -1317,16 +1317,16 @@ def test_cray_mpi_baseline_renders_newer_lane_compiler_toolchain(tmp_path: Path)
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    # The external selects the lane's Cray MPICH flavor, but does not add a
-    # compiler suffix. The toolchain below binds the compiler version.
-    assert mpich_specs == ["cray-mpich@9.1.0"]
+    # The external selects the lane's Cray MPICH flavor and wrapper mode, but
+    # does not add a compiler suffix. The toolchain below binds the compiler.
+    assert mpich_specs == ["cray-mpich@9.1.0 +wrappers"]
 
     toolchains = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml")
     assert toolchains["toolchains"]["gcc1430_craympich910"] == [
         {"spec": "%c=gcc@14.3.0", "when": "%c"},
         {"spec": "%cxx=gcc@14.3.0", "when": "%cxx"},
         {"spec": "%fortran=gcc@14.3.0", "when": "%fortran"},
-        {"spec": "%mpi=cray-mpich@9.1.0", "when": "%mpi"},
+        {"spec": "%mpi=cray-mpich@9.1.0+wrappers", "when": "%mpi"},
     ]
 
     gpu_env = load_yaml(
