@@ -296,7 +296,18 @@ def mpi_provider_externals(
             # %<compiler> external.
             compiler_provider = select_flavor_compiler(profile, compiler, provider)
             if not compiler_provider:
-                continue
+                matching_ref = next(
+                    (
+                        ref
+                        for ref in selected_refs or []
+                        if compiler_ref_satisfies_flavor(ref, compiler, provider)
+                    ),
+                    None,
+                )
+                if not matching_ref:
+                    continue
+                name, version = matching_ref.split("@", 1)
+                compiler_provider = {"name": name, "version": version}
             spec = flavored_mpi_external_spec(
                 provider, compiler_provider, selected_refs, dependency_specs
             )

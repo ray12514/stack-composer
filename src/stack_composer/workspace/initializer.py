@@ -60,13 +60,17 @@ def initialize_workspace(
 
     try:
         pending.mkdir(parents=True)
+        snapshot_catalog = bool(blueprint.get("snapshot_catalog", False))
+        if snapshot_catalog:
+            shutil.copytree(catalog_dir, pending / "catalog")
         _render_tree(template_root, pending, context)
         manifest = {
             "schema_version": 1,
             "kind": "initialized-workspace",
             "blueprint": blueprint["name"],
             "catalog": {
-                "root": str(catalog_dir),
+                "source_root": str(catalog_dir),
+                "workspace_root": "catalog" if snapshot_catalog else None,
                 "system": (catalog_manifest.get("system") or {}).get("name"),
                 "release": catalog_manifest.get("release"),
             },
@@ -112,6 +116,16 @@ def _validate_inputs(
     if not (catalog_dir / "scopes").is_dir():
         issues.append(
             Issue("error", "catalog-scopes", str(catalog_dir / "scopes"), "directory missing")
+        )
+    snapshot_catalog = blueprint.get("snapshot_catalog", False)
+    if not isinstance(snapshot_catalog, bool):
+        issues.append(
+            Issue(
+                "error",
+                "snapshot-catalog",
+                "blueprint.snapshot_catalog",
+                "must be true or false",
+            )
         )
     template_root = blueprint.get("template_root")
     if template_root:

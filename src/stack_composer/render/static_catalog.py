@@ -15,8 +15,10 @@ from stack_composer.render.fabric import (
 )
 from stack_composer.render.gpu import cuda_external_packages, rocm_external_packages
 from stack_composer.render.mpi import (
+    compiler_fragment_name_version,
     compiler_provider_ref,
     merge_mpi_variant_records,
+    mpi_flavor_compiler_policy,
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
     select_flavor_compiler,
@@ -209,6 +211,11 @@ def build_static_catalog(
         "schema_version": 1,
         "kind": "static-platform-catalog",
         "system": profile.get("system") or {},
+        "profile_facts": {
+            "fabric": profile.get("fabric") or {},
+            "filesystem": profile.get("filesystem") or {},
+            "node_types": profile.get("node_types") or {},
+        },
         "template_set": template_set_name,
         "release": release_vars.release_tag,
         "rendered_at": release_vars.rendered_at,
@@ -375,6 +382,23 @@ def mpi_scope_compilers(
         )
         if compiler_provider:
             compilers[compiler_provider_ref(compiler_provider)] = compiler_provider
+            continue
+        if mpi_flavor_compiler_policy(provider) != "family_min_version":
+            continue
+        name, version = compiler_fragment_name_version(compiler)
+        if not version:
+            continue
+        # A Cray MPICH product-tree flavor is a supported compiler-family
+        # baseline, not proof that the matching compiler is installed. Keep
+        # that include-ready MPI scope so a later CSE-built compiler of the
+        # same family can consume it.
+        baseline = {
+            "name": name,
+            "version": version,
+            "languages": ["c", "c++", "fortran"],
+            "catalog_baseline_only": True,
+        }
+        compilers[compiler_provider_ref(baseline)] = baseline
     return sorted(
         compilers.values(),
         key=lambda provider: (str(provider.get("name")), version_key(str(provider.get("version")))),

@@ -139,6 +139,29 @@ def test_init_workspace_renders_blueprint_and_valid_yaml(tmp_path: Path) -> None
     assert manifest["blueprint"] == "example-pilot"
     assert manifest["catalog"]["system"] == "example-linux"
     assert manifest["catalog"]["release"] == "alpha-001"
+    assert manifest["catalog"]["source_root"] == str(catalog)
+    assert manifest["catalog"]["workspace_root"] is None
+
+
+def test_init_workspace_can_snapshot_catalog_into_handoff(tmp_path: Path) -> None:
+    blueprint, catalog, values = make_inputs(tmp_path)
+    output = tmp_path / "workspace"
+    blueprint_data = yaml.safe_load(
+        (blueprint / "blueprint.yaml").read_text(encoding="utf-8")
+    )
+    blueprint_data["snapshot_catalog"] = True
+    write_yaml(blueprint / "blueprint.yaml", blueprint_data)
+
+    result = invoke_init(blueprint, catalog, values, output)
+
+    assert result.exit_code == 0, result.output
+    assert (output / "catalog" / "manifest.yaml").is_file()
+    assert (output / "catalog" / "scopes" / "common").is_dir()
+    manifest = yaml.safe_load(
+        (output / "workspace-manifest.yaml").read_text(encoding="utf-8")
+    )
+    assert manifest["catalog"]["source_root"] == str(catalog)
+    assert manifest["catalog"]["workspace_root"] == "catalog"
 
 
 def test_init_workspace_rejects_existing_output_without_overwrite(tmp_path: Path) -> None:

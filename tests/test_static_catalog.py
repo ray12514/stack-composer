@@ -34,6 +34,9 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     manifest = load_yaml(workspace / "manifest.yaml")
     assert manifest["kind"] == "static-platform-catalog"
     assert manifest["scope_root"] == str(workspace / "scopes")
+    assert manifest["profile_facts"]["fabric"]
+    assert manifest["profile_facts"]["filesystem"]
+    assert manifest["profile_facts"]["node_types"]["cpu_compute"]["build_stage"]
     assert manifest["recommendations"]["compiler"]["path"] == "scopes/compilers/gcc/13.3.0"
     assert manifest["recommendations"]["mpi"]["path"] == (
         "scopes/mpi/cray-mpich/8.1.29/gcc-13.3.0"
@@ -81,6 +84,78 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
 
     rocm = load_yaml(workspace / "scopes" / "gpu" / "rocm" / "6.0.0" / "packages.yaml")
     assert {"hip", "hsa-rocr-dev", "rocprim"} <= set(rocm["packages"])
+
+
+def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
+    tmp_path: Path,
+) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-cray", "profile.yaml"))
+    profile["system"]["name"] = "blueback-shaped"
+    profile["compiler_providers"] = [
+        {
+            "name": "cce",
+            "version": "21.0.0",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "prefix": "/opt/cray/pe/cce/21.0.0",
+            "modules": ["PrgEnv-cray/8.7.0", "cce/21.0.0"],
+            "languages": ["c", "c++", "fortran"],
+        }
+    ]
+    profile["mpi_providers"] = [
+        {
+            "name": "cray-mpich",
+            "version": "9.1.0",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "flavors": {
+                "cce@20.0": {
+                    "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/cray/20.0",
+                    "modules": ["cray-mpich/9.1.0"],
+                },
+                "gcc@12.3": {
+                    "prefix": "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3",
+                    "modules": ["cray-mpich/9.1.0"],
+                },
+            },
+        }
+    ]
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="catalog-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-08-13T00:00:00Z",
+            source_repo=SourceRepo("stack-content", "abc123", False),
+        ),
+    )
+
+    gnu_scope = (
+        workspace
+        / "scopes"
+        / "mpi"
+        / "cray-mpich"
+        / "9.1.0"
+        / "gcc-12.3"
+    )
+    assert gnu_scope.is_dir()
+    packages = load_yaml(gnu_scope / "packages.yaml")["packages"]
+    assert packages["cray-mpich"]["externals"][0]["prefix"] == (
+        "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3"
+    )
+    assert "%gcc" not in packages["cray-mpich"]["externals"][0]["spec"]
+    manifest = load_yaml(workspace / "manifest.yaml")
+    scope = next(
+        item
+        for item in manifest["scopes"]
+        if item["path"].endswith("/gcc-12.3")
+    )
+    assert scope["compiler_ref"] == "gcc@12.3"
 
 
 def test_static_catalog_renders_linux_mpi_pairing(tmp_path: Path) -> None:
