@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from stack_composer.render.mpi import compiler_ref_satisfies_flavor
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
 
@@ -56,6 +57,19 @@ def test_cray_mpi_baseline_flavor_matches_newer_same_family_lane_compiler() -> N
     modules, issues = platform_module_prereqs_for_lane(lane, profile)
     assert issues == []
     assert modules == ["PrgEnv-gnu", "gcc-native/14", "cray-mpich/9.1.0", "rocm/7.0.0"]
+
+
+def test_cray_mpi_gnu_baseline_accepts_cse_built_gcc_12_5() -> None:
+    provider = {
+        "name": "cray-mpich",
+        "version": "9.1.0",
+        "provider_family": "platform",
+        "platform_family": "cray-pe",
+    }
+
+    assert compiler_ref_satisfies_flavor("gcc@12.5.0", "gcc@12.3", provider)
+    assert not compiler_ref_satisfies_flavor("gcc@12.2.0", "gcc@12.3", provider)
+    assert not compiler_ref_satisfies_flavor("cce@21.0.0", "gcc@12.3", provider)
 
 
 def test_dedupes_modules_while_preserving_order() -> None:
