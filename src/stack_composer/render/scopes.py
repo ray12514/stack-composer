@@ -18,7 +18,12 @@ from stack_composer.render.mpi import (
 )
 from stack_composer.render.plan import vendor_scope_for_provider
 from stack_composer.render.platform import selected_system_externals
-from stack_composer.render.provider_packages import compiler_package_name, mpi_package_name
+from stack_composer.render.provider_packages import (
+    compiler_package_name,
+    mpi_package_name,
+    mpi_runtime_dependency_names,
+    mpi_scope_dependency_names,
+)
 from stack_composer.render.spack_specs import (
     external_spec,
     is_absolute_prefix,
@@ -166,7 +171,47 @@ def mpi_external_packages(
                 },
             )
             package["externals"].append(external)
+    for dependency in mpi_scope_dependency_externals(profile, provider_name):
+        add_external(packages, dependency)
     return list(packages.values())
+
+
+def selected_mpi_runtime_dependency_externals(
+    profile: dict[str, Any], provider_name: str
+) -> list[dict[str, Any]]:
+    """Select observed platform runtimes required by an external MPI.
+
+    The selection uses the same platform-first, newest-version policy as the
+    common fabric scope so the attached MPI DAG and packages.yaml cannot drift.
+    """
+    selected: list[dict[str, Any]] = []
+    for name in mpi_runtime_dependency_names(provider_name):
+        selected.extend(
+            selected_common_scope_fabric_userspace(
+                profile, "prefer_platform", allowed_names={name}
+            )
+        )
+    return selected
+
+
+def mpi_scope_dependency_externals(
+    profile: dict[str, Any], provider_name: str
+) -> list[dict[str, Any]]:
+    scope_names = set(mpi_scope_dependency_names(provider_name))
+    return [
+        item
+        for item in selected_mpi_runtime_dependency_externals(profile, provider_name)
+        if item.get("name") in scope_names
+    ]
+
+
+def mpi_runtime_dependency_specs(
+    profile: dict[str, Any], provider_name: str
+) -> list[str]:
+    return [
+        external_spec(str(item["name"]), str(item["version"]))
+        for item in selected_mpi_runtime_dependency_externals(profile, provider_name)
+    ]
 
 
 def mpi_provider_variants(provider_name: str) -> str | None:
@@ -185,13 +230,18 @@ def mpi_package_ref(provider: dict[str, Any]) -> str:
     return f"{ref}{variants or ''}"
 
 
-def mpi_external_suffix(provider: dict[str, Any], compiler_ref: str | None = None) -> str:
+def mpi_external_suffix(
+    provider: dict[str, Any],
+    compiler_ref: str | None = None,
+    dependency_specs: list[str] | None = None,
+) -> str:
     constraints = []
     variants = mpi_provider_variants(str(provider["name"]))
     if variants:
         constraints.append(variants)
     if compiler_ref:
         constraints.append(f"%{compiler_ref}")
+    constraints.extend(f"^{spec}" for spec in dependency_specs or [])
     return " ".join(constraints)
 
 
@@ -230,6 +280,7 @@ def mpi_provider_externals(
 ) -> list[dict[str, Any]]:
     if provider.get("flavors"):
         externals = []
+        dependency_specs = mpi_runtime_dependency_specs(profile, str(provider["name"]))
         selected_refs = selected_mpi_lane_compiler_refs(provider, rendered_lanes)
         seen_specs: set[str] = set()
         for compiler, flavor in sorted(provider.get("flavors", {}).items()):
@@ -246,7 +297,9 @@ def mpi_provider_externals(
             compiler_provider = select_flavor_compiler(profile, compiler, provider)
             if not compiler_provider:
                 continue
-            spec = flavored_mpi_external_spec(provider, compiler_provider, selected_refs)
+            spec = flavored_mpi_external_spec(
+                provider, compiler_provider, selected_refs, dependency_specs
+            )
             if spec in seen_specs:
                 continue
             seen_specs.add(spec)
@@ -276,7 +329,11 @@ def mpi_provider_externals(
             "spec": external_spec(
                 mpi_package_name(provider),
                 provider["version"],
-                mpi_external_suffix(provider, compiler_ref),
+                mpi_external_suffix(
+                    provider,
+                    compiler_ref,
+                    mpi_runtime_dependency_specs(profile, str(provider["name"])),
+                ),
             ),
             "prefix": provider["prefix"],
             "modules": provider.get("modules") or [],
@@ -312,18 +369,19 @@ def flavored_mpi_external_spec(
     provider: dict[str, Any],
     compiler_provider: dict[str, Any],
     selected_refs: set[str] | None,
+    dependency_specs: list[str],
 ) -> str:
     if provider.get("platform_family") == "cray-pe" and selected_refs is not None:
         return external_spec(
             mpi_package_name(provider),
             provider["version"],
-            mpi_external_suffix(provider),
+            mpi_external_suffix(provider, dependency_specs=dependency_specs),
         )
     compiler_ref = compiler_spec(compiler_provider)
     return external_spec(
         mpi_package_name(provider),
         provider["version"],
-        mpi_external_suffix(provider, compiler_ref),
+        mpi_external_suffix(provider, compiler_ref, dependency_specs),
     )
 
 

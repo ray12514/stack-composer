@@ -46,6 +46,10 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
 
     common = load_yaml(workspace / "scopes" / "common" / "packages.yaml")
     assert sorted(common["packages"]) == ["curl", "libfabric", "openssl", "ucx"]
+    plan = load_yaml(workspace / "reports" / "static-plan.yaml")
+    assert plan["missing_mpi_dependencies"] == [
+        {"provider": "cray-mpich", "package": "cray-pmi"}
+    ]
 
     compiler = load_yaml(workspace / "scopes" / "compilers" / "gcc" / "13.3.0" / "packages.yaml")
     assert compiler["packages"]["gcc"]["externals"][0]["spec"] == "gcc@13.3.0"
@@ -61,7 +65,7 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     )
     assert mpi_packages["packages"]["mpi"]["require"] == ["cray-mpich"]
     assert mpi_packages["packages"]["cray-mpich"]["externals"][0]["spec"] == (
-        "cray-mpich@8.1.29 +wrappers"
+        "cray-mpich@8.1.29 +wrappers ^libfabric@1.20"
     )
 
     mpi_toolchains = load_yaml(
@@ -224,6 +228,60 @@ def test_static_catalog_uses_spack_cce_driver_names(tmp_path: Path) -> None:
     assert commands["c"] == "/opt/cray/pe/cce/21.0.0/bin/craycc"
     assert commands["cxx"] == "/opt/cray/pe/cce/21.0.0/bin/crayCC"
     assert commands["fortran"] == "/opt/cray/pe/cce/21.0.0/bin/crayftn"
+
+
+def test_static_catalog_keeps_cray_pmi_with_cray_mpich_scope(tmp_path: Path) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-cray", "profile.yaml"))
+    profile["fabric"]["userspace"].append(
+        {
+            "name": "cray-pmi",
+            "version": "6.1.15",
+            "prefix": "/opt/cray/pe/pmi/6.1.15",
+        }
+    )
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="trial-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-08-12T00:00:00Z",
+            source_repo=SourceRepo("local-static", "abc123", False),
+        ),
+    )
+
+    packages = load_yaml(
+        workspace
+        / "scopes"
+        / "mpi"
+        / "cray-mpich"
+        / "8.1.29"
+        / "gcc-13.3.0"
+        / "packages.yaml"
+    )["packages"]
+    assert packages["cray-pmi"] == {
+        "buildable": False,
+        "externals": [
+            {
+                "spec": "cray-pmi@6.1.15",
+                "prefix": "/opt/cray/pe/pmi/6.1.15",
+                "modules": [],
+            }
+        ],
+    }
+    assert packages["cray-mpich"]["externals"][0]["spec"] == (
+        "cray-mpich@8.1.29 +wrappers ^libfabric@1.20 ^cray-pmi@6.1.15"
+    )
+    plan = load_yaml(workspace / "reports" / "static-plan.yaml")
+    assert {item["name"] for item in plan["mpi_dependency_externals"]} == {
+        "cray-pmi"
+    }
+    assert "cray-pmi" not in {item["name"] for item in plan["not_rendered"]}
+    assert plan["missing_mpi_dependencies"] == []
 
 
 def test_static_catalog_recommends_platform_mpi_without_provider_name_bias(

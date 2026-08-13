@@ -9,6 +9,7 @@ from stack_composer.render.fabric import (
 )
 from stack_composer.render.platform import platform_plan
 from stack_composer.render.release import ReleaseVars
+from stack_composer.render.scopes import mpi_scope_dependency_externals
 
 
 def render_plan_report(
@@ -136,12 +137,26 @@ def network_plan(
 
     fabric_mode = (stack.get("externals") or {}).get("fabric_userspace", "prefer_platform")
     selected_fabric = selected_common_scope_fabric_userspace(profile, fabric_mode)
+    selected_mpi_dependencies: list[dict[str, Any]] = []
+    selected_mpi_keys: set[tuple[str, str, str]] = set()
+    for provider_name in {
+        str(lane.get("mpi_provider"))
+        for lane in lanes
+        if lane.get("mpi_source") == "platform"
+    }:
+        for item in mpi_scope_dependency_externals(profile, provider_name):
+            key = (str(item["name"]), str(item["version"]), str(item["prefix"]))
+            if key not in selected_mpi_keys:
+                selected_mpi_keys.add(key)
+                selected_mpi_dependencies.append(item)
+    selected_all = [*selected_fabric, *selected_mpi_dependencies]
     return {
         "mpi_providers": provider_entries,
         "fabric_userspace": {
             "mode": fabric_mode,
             "observed": observed_fabric_userspace(profile),
             "rendered_common_externals": selected_fabric,
-            "not_rendered": unselected_fabric_userspace(profile, selected_fabric),
+            "rendered_mpi_externals": selected_mpi_dependencies,
+            "not_rendered": unselected_fabric_userspace(profile, selected_all),
         },
     }

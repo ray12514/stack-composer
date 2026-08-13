@@ -19,6 +19,18 @@ _MPI_PACKAGES = {
     "intel-mpi": "intel-oneapi-mpi",
 }
 
+# Runtime packages that must remain platform externals when the corresponding
+# MPI provider is external. Both constraints are attached to the external MPI
+# DAG. Libfabric is configured by the common scope; Cray PMI is configured in
+# the provider scope because it is specific to Cray MPICH.
+_MPI_RUNTIME_DEPENDENCIES = {
+    "cray-mpich": ("libfabric", "cray-pmi"),
+}
+
+_MPI_SCOPE_DEPENDENCIES = {
+    "cray-mpich": ("cray-pmi",),
+}
+
 
 def compiler_package_name(provider: dict[str, Any] | str) -> str:
     name = str(provider.get("name") if isinstance(provider, dict) else provider)
@@ -28,3 +40,13 @@ def compiler_package_name(provider: dict[str, Any] | str) -> str:
 def mpi_package_name(provider: dict[str, Any] | str) -> str:
     name = str(provider.get("name") if isinstance(provider, dict) else provider)
     return _MPI_PACKAGES.get(name, name)
+
+
+def mpi_runtime_dependency_names(provider: dict[str, Any] | str) -> tuple[str, ...]:
+    name = str(provider.get("name") if isinstance(provider, dict) else provider)
+    return _MPI_RUNTIME_DEPENDENCIES.get(name, ())
+
+
+def mpi_scope_dependency_names(provider: dict[str, Any] | str) -> tuple[str, ...]:
+    name = str(provider.get("name") if isinstance(provider, dict) else provider)
+    return _MPI_SCOPE_DEPENDENCIES.get(name, ())

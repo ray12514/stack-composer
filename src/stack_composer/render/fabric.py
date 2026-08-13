@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from stack_composer.render.versioning import version_key
+
 DEFAULT_COMMON_SCOPE_FABRIC_EXTERNALS = frozenset({"libfabric", "ucx"})
 
 
@@ -56,7 +58,12 @@ def selected_common_scope_fabric_userspace(
 
     selected: list[dict[str, Any]] = []
     for _name, entries in sorted(by_name.items()):
-        ranked = sorted(entries, key=lambda entry: fabric_userspace_sort_key(profile, entry))
+        ranked = sorted(
+            entries,
+            key=lambda entry: version_key(str(entry.get("version") or "")),
+            reverse=True,
+        )
+        ranked.sort(key=lambda entry: fabric_userspace_sort_key(profile, entry))
         selected.extend(ranked if mode == "mixed" else ranked[:1])
     return selected
 

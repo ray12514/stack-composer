@@ -392,7 +392,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     }
     assert cray_mpich["packages"]["cray-mpich"]["variants"] == "+wrappers"
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert mpich_specs == ["cray-mpich@8.1.29 +wrappers"]
+    assert mpich_specs == ["cray-mpich@8.1.29 +wrappers ^libfabric@1.20"]
 
     cray_mpich_toolchains = load_yaml(
         workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml"
@@ -633,7 +633,7 @@ def test_common_scope_mixed_fabric_userspace_keeps_duplicates_under_one_key(
     ]
 
 
-def test_cray_runtime_fabric_userspace_is_reported_but_not_rendered_by_default(
+def test_cray_pmi_is_rendered_only_with_cray_mpich_scope(
     tmp_path: Path,
 ) -> None:
     profile, _stack = fixture_context("example-cray")
@@ -670,13 +670,36 @@ def test_cray_runtime_fabric_userspace_is_reported_but_not_rendered_by_default(
     assert {"cray-gtl", "cray-pmi", "cray-pals"} <= {
         item["name"] for item in fabric_plan["observed"]
     }
-    assert {"cray-gtl", "cray-pmi", "cray-pals"} <= {
+    assert {"cray-gtl", "cray-pals"} <= {
         item["name"] for item in fabric_plan["not_rendered"]
+    }
+    assert "cray-pmi" not in {
+        item["name"] for item in fabric_plan["not_rendered"]
+    }
+    assert {item["name"] for item in fabric_plan["rendered_mpi_externals"]} == {
+        "cray-pmi"
     }
     assert all(
         item["reason"] == "requires_explicit_package_repo_policy"
         for item in fabric_plan["not_rendered"]
-        if item["name"] in {"cray-gtl", "cray-pmi", "cray-pals"}
+        if item["name"] in {"cray-gtl", "cray-pals"}
+    )
+
+    mpi_scope = load_yaml(
+        workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml"
+    )
+    assert mpi_scope["packages"]["cray-pmi"] == {
+        "buildable": False,
+        "externals": [
+            {
+                "spec": "cray-pmi@6.1.15",
+                "prefix": "/opt/cray/pe/pmi/6.1.15",
+                "modules": [],
+            }
+        ],
+    }
+    assert mpi_scope["packages"]["cray-mpich"]["externals"][0]["spec"] == (
+        "cray-mpich@8.1.29 +wrappers ^libfabric@1.20 ^cray-pmi@6.1.15"
     )
 
 
@@ -1173,7 +1196,7 @@ def test_cray_mpich_external_binds_newer_compiler_and_drops_orphan_flavor(
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert specs == ["cray-mpich@9.1.0 +wrappers"]
+    assert specs == ["cray-mpich@9.1.0 +wrappers ^libfabric@1.20"]
     assert not any("aocc" in spec for spec in specs)
 
 
@@ -1247,7 +1270,7 @@ def test_cray_mpich_scope_renders_only_selected_provider_version(tmp_path: Path)
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert specs == ["cray-mpich@9.1.0 +wrappers"]
+    assert specs == ["cray-mpich@9.1.0 +wrappers ^libfabric@1.20"]
     assert cray_mpich["packages"]["cray-mpich"]["externals"][0]["prefix"] == (
         "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3"
     )
@@ -1319,7 +1342,7 @@ def test_cray_mpi_baseline_renders_newer_lane_compiler_toolchain(tmp_path: Path)
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
     # The external selects the lane's Cray MPICH flavor and wrapper mode, but
     # does not add a compiler suffix. The toolchain below binds the compiler.
-    assert mpich_specs == ["cray-mpich@9.1.0 +wrappers"]
+    assert mpich_specs == ["cray-mpich@9.1.0 +wrappers ^libfabric@1.20"]
 
     toolchains = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml")
     assert toolchains["toolchains"]["gcc1430_craympich910"] == [

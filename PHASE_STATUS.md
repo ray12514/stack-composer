@@ -52,6 +52,9 @@ Primary planning docs:
   (`oneapi` -> `intel-oneapi-compilers`), and Intel MPI
   (`intel-mpi` -> `intel-oneapi-mpi`). Static catalog paths retain the observed
   identity and their manifests record the Spack package identity.
+- Cray MPICH scopes retain the inspected, non-buildable Cray PMI external that
+  the pinned provider recipe requires. The common scope supplies the inspected
+  platform libfabric external; neither runtime is replaced by a source build.
 - Baseline compiler default: `gcc` if present, otherwise first reported
   compiler.
 - MPI platform compatibility auto-narrowing for non-explicit compiler defaults.

@@ -98,6 +98,7 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
             },
             {"name": "ucx", "version": "1.15", "prefix": "/usr", "modules": []},
         ],
+        "rendered_mpi_externals": [],
         "not_rendered": [],
     }
     assert render_plan["module_plan"]["exposure"] == "front_door"

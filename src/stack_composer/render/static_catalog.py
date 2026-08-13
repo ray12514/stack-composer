@@ -30,7 +30,12 @@ from stack_composer.render.platform import (
     is_platform_selected_external,
     platform_family,
 )
-from stack_composer.render.provider_packages import compiler_package_name, mpi_package_name
+from stack_composer.render.provider_packages import (
+    compiler_package_name,
+    mpi_package_name,
+    mpi_runtime_dependency_names,
+    mpi_scope_dependency_names,
+)
 from stack_composer.render.release import ReleaseVars
 from stack_composer.render.scopes import (
     add_external,
@@ -38,8 +43,10 @@ from stack_composer.render.scopes import (
     compiler_toolchain_entries,
     mpi_provider_externals,
     mpi_provider_variants,
+    mpi_scope_dependency_externals,
     mpi_toolchain_compilers,
     mpi_toolchains,
+    selected_mpi_runtime_dependency_externals,
 )
 from stack_composer.render.spack_specs import (
     is_absolute_prefix,
@@ -118,6 +125,8 @@ def build_static_catalog(
     reports: dict[str, Any] = {
         "compiler_scopes": [],
         "mpi_scopes": [],
+        "mpi_dependency_externals": [],
+        "missing_mpi_dependencies": [],
         "gpu_scopes": [],
         "common_externals": [],
         "platform_externals": [],
@@ -147,6 +156,39 @@ def build_static_catalog(
     mpi_scopes = build_mpi_scopes(profile, workspace)
     scopes.extend(mpi_scopes)
     reports["mpi_scopes"] = [scope_report(scope) for scope in mpi_scopes]
+    mpi_dependency_names = {
+        dependency
+        for provider in profile.get("mpi_providers") or []
+        for dependency in mpi_scope_dependency_names(str(provider.get("name")))
+    }
+    rendered_mpi_dependencies: list[dict[str, Any]] = []
+    rendered_mpi_dependency_keys: set[tuple[str, str, str]] = set()
+    for provider in profile.get("mpi_providers") or []:
+        for item in mpi_scope_dependency_externals(
+            profile, str(provider.get("name"))
+        ):
+            key = (str(item["name"]), str(item["version"]), str(item["prefix"]))
+            if key not in rendered_mpi_dependency_keys:
+                rendered_mpi_dependency_keys.add(key)
+                rendered_mpi_dependencies.append(item)
+    reports["mpi_dependency_externals"] = rendered_mpi_dependencies
+    reports["not_rendered"] = [
+        item
+        for item in reports["not_rendered"]
+        if item.get("name") not in mpi_dependency_names
+    ]
+    for provider_name in sorted(
+        {str(provider.get("name")) for provider in profile.get("mpi_providers") or []}
+    ):
+        required = set(mpi_runtime_dependency_names(provider_name))
+        selected = {
+            str(item.get("name"))
+            for item in selected_mpi_runtime_dependency_externals(profile, provider_name)
+        }
+        for missing in sorted(required - selected):
+            reports["missing_mpi_dependencies"].append(
+                {"provider": provider_name, "package": missing}
+            )
 
     gpu_scopes = build_gpu_scopes(profile, workspace)
     scopes.extend(gpu_scopes)
@@ -355,6 +397,14 @@ def mpi_packages_mapping(
     if variants:
         package["variants"] = variants
     packages[package_name] = package
+    dependency_packages: dict[str, dict[str, Any]] = {}
+    for dependency in mpi_scope_dependency_externals(profile, str(name)):
+        add_external(dependency_packages, dependency)
+    for dependency in dependency_packages.values():
+        packages[str(dependency["name"])] = {
+            "buildable": dependency["buildable"],
+            "externals": dependency["externals"],
+        }
     packages["mpi"] = {"buildable": False, "require": [package_name]}
     return packages
 

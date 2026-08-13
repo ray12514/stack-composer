@@ -27,7 +27,7 @@ def test_mpi_plan_resolves_selected_cray_mpich_externals_and_toolchains() -> Non
     ]
     # The external pins the wrapper mode; the compiler binding lives in the
     # toolchain, not on the external.
-    assert "cray-mpich@8.1.29 +wrappers" in specs
+    assert "cray-mpich@8.1.29 +wrappers ^libfabric@1.20" in specs
 
     toolchains = {
         toolchain["name"]: toolchain["entries"]
