@@ -29,21 +29,21 @@ mkdir -p dist/wheelhouse
 "${PYTHON}" -m build --wheel --no-isolation
 "${PYTHON}" -m pip wheel --no-deps --wheel-dir dist/wheelhouse dist/stack_composer-*.whl
 "${PYTHON}" -m pip wheel --no-deps --only-binary=:all: --wheel-dir dist/wheelhouse \
-  'click>=8.1,<8.2' \
-  'fastjsonschema>=2.20,<3' \
-  'Jinja2>=3.1,<4'
+  'click==8.1.8' \
+  'fastjsonschema==2.21.2' \
+  'Jinja2==3.1.6'
 CC=/usr/bin/false "${PYTHON}" -m pip wheel \
   --no-cache-dir \
   --no-deps \
   --no-binary=MarkupSafe \
   --wheel-dir dist/wheelhouse \
-  'MarkupSafe>=2.1,<3'
+  'MarkupSafe==2.1.5'
 PYYAML_FORCE_LIBYAML=0 "${PYTHON}" -m pip wheel \
   --no-cache-dir \
   --no-deps \
   --no-binary=PyYAML \
   --wheel-dir dist/wheelhouse \
-  'PyYAML>=6.0,<7'
+  'PyYAML==6.0.3'
 "${PYTHON}" - <<'PY'
 from pathlib import Path
 

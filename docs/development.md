@@ -31,9 +31,11 @@ git diff --check
 shiv-built `stack-composer.pyz`, project license, third-party manifest, and
 third-party license files.
 
-The third-party script refreshes exact dependency versions and license texts
-from installed runtime distributions, enforces manifest consistency, and syncs
-packaged resources.
+Runtime dependencies are exact release inputs. Their `pyproject.toml` pins,
+the wheelhouse requirements in `scripts/build-pyz.sh`, and the versions in
+`THIRD_PARTY.toml` must agree. The third-party script enforces that consistency,
+refreshes license texts from installed runtime distributions, and syncs packaged
+resources.
 
 Smoke-check the built artifact with:
 

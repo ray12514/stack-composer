@@ -72,6 +72,12 @@ def check_manifest(root: Path) -> list[str]:
     for extra in sorted(manifest_names - runtime_names):
         errors.append(f"THIRD_PARTY.toml contains non-runtime dependency {extra!r}")
     for name, dep in sorted(manifest.items()):
+        declared_requirement = runtime_deps.get(name, "")
+        if is_exact_version(dep.version) and declared_requirement != f"=={dep.version}":
+            errors.append(
+                f"dependency {dep.name!r} manifest version {dep.version!r} requires "
+                f"an exact pyproject pin; found {declared_requirement or 'no version constraint'!r}"
+            )
         if dep.license_spdx not in ALLOWED_LICENSES:
             errors.append(f"dependency {name!r} has unapproved license {dep.license_spdx!r}")
         license_path = root / dep.license_file
@@ -90,8 +96,8 @@ def check_manifest(root: Path) -> list[str]:
     return errors
 
 
-def runtime_dependencies(pyproject: Path) -> list[str]:
-    deps = []
+def runtime_dependencies(pyproject: Path) -> dict[str, str]:
+    deps: dict[str, str] = {}
     in_dependencies = False
     for line in pyproject.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
@@ -102,9 +108,9 @@ def runtime_dependencies(pyproject: Path) -> list[str]:
             return deps
         if not in_dependencies or not stripped or stripped.startswith("#"):
             continue
-        match = re.match(r'"([A-Za-z0-9_.-]+)', stripped)
+        match = re.match(r'"([A-Za-z0-9_.-]+)([^";]*)', stripped)
         if match:
-            deps.append(match.group(1))
+            deps[normalize_name(match.group(1))] = match.group(2).strip()
     return deps
 
 
@@ -153,10 +159,9 @@ def refresh_manifest(root: Path) -> None:
     manifest_path = root / "THIRD_PARTY.toml"
     existing = third_party_manifest(manifest_path)
     dependencies = []
-    for name in runtime_dependencies(pyproject):
-        key = normalize_name(name)
+    for key in runtime_dependencies(pyproject):
         if key not in existing:
-            raise SystemExit(f"{name!r} is missing from THIRD_PARTY.toml; add purpose/URLs first")
+            raise SystemExit(f"{key!r} is missing from THIRD_PARTY.toml; add purpose/URLs first")
         old = existing[key]
         distribution = metadata.distribution(old.name)
         license_file = f"THIRD_PARTY_LICENSES/{old.name}.txt"
