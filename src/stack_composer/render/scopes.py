@@ -237,12 +237,17 @@ def mpi_external_suffix(
     provider: dict[str, Any],
     compiler_ref: str | None = None,
     dependency_specs: list[str] | None = None,
+    c_provider_ref: str | None = None,
 ) -> str:
+    if compiler_ref and c_provider_ref:
+        raise ValueError("MPI external cannot use compiler and C-provider constraints together")
     constraints = []
     variants = mpi_provider_variants(str(provider["name"]))
     if variants:
         constraints.append(variants)
-    if compiler_ref:
+    if c_provider_ref:
+        constraints.append(f"%c={c_provider_ref}")
+    elif compiler_ref:
         constraints.append(f"%{compiler_ref}")
     constraints.extend(f"^{spec}" for spec in dependency_specs or [])
     return " ".join(constraints)
@@ -312,7 +317,11 @@ def mpi_provider_externals(
                 name, version = matching_ref.split("@", 1)
                 compiler_provider = {"name": name, "version": version}
             spec = flavored_mpi_external_spec(
-                provider, compiler_provider, selected_refs, dependency_specs
+                provider,
+                compiler,
+                compiler_provider,
+                selected_refs,
+                dependency_specs,
             )
             if spec in seen_specs:
                 continue
@@ -381,15 +390,29 @@ def selected_mpi_lane_compiler_refs(
 
 def flavored_mpi_external_spec(
     provider: dict[str, Any],
+    flavor_compiler_ref: str,
     compiler_provider: dict[str, Any],
     selected_refs: set[str] | None,
     dependency_specs: list[str],
 ) -> str:
     if provider.get("platform_family") == "cray-pe" and selected_refs is not None:
+        compiler_name, compiler_version = compiler_fragment_name_version(
+            flavor_compiler_ref
+        )
+        if compiler_version:
+            c_provider_ref = external_spec(
+                compiler_package_name(compiler_name), f"{compiler_version}:"
+            )
+        else:
+            c_provider_ref = compiler_spec(compiler_provider)
         return external_spec(
             mpi_package_name(provider),
             provider["version"],
-            mpi_external_suffix(provider, dependency_specs=dependency_specs),
+            mpi_external_suffix(
+                provider,
+                c_provider_ref=c_provider_ref,
+                dependency_specs=dependency_specs,
+            ),
         )
     compiler_ref = compiler_spec(compiler_provider)
     return external_spec(
