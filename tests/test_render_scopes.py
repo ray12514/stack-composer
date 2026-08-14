@@ -392,10 +392,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     }
     assert cray_mpich["packages"]["cray-mpich"]["variants"] == "+wrappers"
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert mpich_specs == [
-        "cray-mpich@8.1.29 +wrappers %c=cce@17.0: ^libfabric@1.20",
-        "cray-mpich@8.1.29 +wrappers %c=gcc@13.3: ^libfabric@1.20",
-    ]
+    assert mpich_specs == ["cray-mpich@8.1.29"]
 
     cray_mpich_toolchains = load_yaml(
         workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml"
@@ -702,8 +699,7 @@ def test_cray_pmi_is_rendered_only_with_cray_mpich_scope(
         ],
     }
     assert mpi_scope["packages"]["cray-mpich"]["externals"][0]["spec"] == (
-        "cray-mpich@8.1.29 +wrappers %c=cce@17.0: "
-        "^libfabric@1.20 ^cray-pmi@6.1.15"
+        "cray-mpich@8.1.29"
     )
 
 
@@ -1146,8 +1142,8 @@ def test_cray_mpich_external_binds_newer_compiler_and_drops_orphan_flavor(
     tmp_path: Path,
 ) -> None:
     # Blueback reality: the lane GCC is newer than the Cray MPICH GNU flavor
-    # baseline, and there is no AOCC lane. The external carries the baseline as
-    # a minimum C provider while toolchains.yaml selects the exact lane compiler.
+    # baseline, and there is no AOCC lane. The scope selects the compatible GNU
+    # prefix while toolchains.yaml selects the exact lane compiler.
     profile, stack = fixture_context("example-cray")
     profile = deepcopy(profile)
     for provider in profile["compiler_providers"]:
@@ -1199,7 +1195,7 @@ def test_cray_mpich_external_binds_newer_compiler_and_drops_orphan_flavor(
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert specs == ["cray-mpich@9.1.0 +wrappers %c=gcc@12.3: ^libfabric@1.20"]
+    assert specs == ["cray-mpich@9.1.0"]
     assert not any("aocc" in spec for spec in specs)
 
 
@@ -1273,7 +1269,7 @@ def test_cray_mpich_scope_renders_only_selected_provider_version(tmp_path: Path)
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    assert specs == ["cray-mpich@9.1.0 +wrappers %c=gcc@12.3: ^libfabric@1.20"]
+    assert specs == ["cray-mpich@9.1.0"]
     assert cray_mpich["packages"]["cray-mpich"]["externals"][0]["prefix"] == (
         "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3"
     )
@@ -1343,11 +1339,9 @@ def test_cray_mpi_baseline_renders_newer_lane_compiler_toolchain(tmp_path: Path)
 
     cray_mpich = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "packages.yaml")
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
-    # The external records the Cray MPICH product-tree minimum C provider. The
-    # toolchain below binds the newer exact compiler selected for the lane.
-    assert mpich_specs == [
-        "cray-mpich@9.1.0 +wrappers %c=gcc@12.3: ^libfabric@1.20"
-    ]
+    # The flavor scope records the compatible prefix. The external stays a
+    # platform leaf and the toolchain below binds the newer exact compiler.
+    assert mpich_specs == ["cray-mpich@9.1.0"]
 
     toolchains = load_yaml(workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml")
     assert toolchains["toolchains"]["gcc1430_craympich910"] == [

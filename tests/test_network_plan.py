@@ -25,10 +25,10 @@ def test_mpi_plan_resolves_selected_cray_mpich_externals_and_toolchains() -> Non
         for package in packages
         for external in package["externals"]
     ]
-    # Cray MPICH itself depends on the C language provider. Each external
-    # carries its product-tree flavor baseline; the lane toolchain below binds
-    # the exact compiler selected for the payload.
-    assert "cray-mpich@8.1.29 +wrappers %c=gcc@13.3: ^libfabric@1.20" in specs
+    # The selected Cray MPICH prefix is a complete platform external. Compiler
+    # and MPI binding belongs to the lane toolchain below, while +wrappers is
+    # enforced as package policy rather than embedded in the external record.
+    assert "cray-mpich@8.1.29" in specs
 
     toolchains = {
         toolchain["name"]: toolchain["entries"]

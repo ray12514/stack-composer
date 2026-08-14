@@ -68,7 +68,7 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     )
     assert mpi_packages["packages"]["mpi"]["require"] == ["cray-mpich"]
     assert mpi_packages["packages"]["cray-mpich"]["externals"][0]["spec"] == (
-        "cray-mpich@8.1.29 +wrappers %c=gcc@13.3: ^libfabric@1.20"
+        "cray-mpich@8.1.29"
     )
 
     mpi_toolchains = load_yaml(
@@ -181,9 +181,8 @@ def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
     assert packages["cray-mpich"]["externals"][0]["prefix"] == (
         "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3"
     )
-    assert packages["cray-mpich"]["externals"][0]["spec"] == (
-        "cray-mpich@9.1.0 +wrappers %c=gcc@12.3: ^libfabric@1.20"
-    )
+    assert packages["cray-mpich"]["externals"][0]["spec"] == "cray-mpich@9.1.0"
+    assert packages["cray-mpich"]["variants"] == "+wrappers"
     manifest = load_yaml(workspace / "manifest.yaml")
     scope = next(
         item
@@ -419,8 +418,7 @@ def test_static_catalog_keeps_cray_pmi_with_cray_mpich_scope(tmp_path: Path) -> 
         ],
     }
     assert packages["cray-mpich"]["externals"][0]["spec"] == (
-        "cray-mpich@8.1.29 +wrappers %c=gcc@13.3: "
-        "^libfabric@1.20 ^cray-pmi@6.1.15"
+        "cray-mpich@8.1.29"
     )
     plan = load_yaml(workspace / "reports" / "static-plan.yaml")
     assert {item["name"] for item in plan["mpi_dependency_externals"]} == {
