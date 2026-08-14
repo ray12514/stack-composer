@@ -55,6 +55,11 @@ Primary planning docs:
 - Cray MPICH scopes retain the inspected, non-buildable Cray PMI external that
   the pinned provider recipe requires. The common scope supplies the inspected
   platform libfabric external; neither runtime is replaced by a source build.
+- Static Cray MPICH scope identities preserve the physical compiler-family
+  baseline from the product tree, such as `gcc@12.3` or `cce@20.0`, instead of
+  replacing it with the newest installed compatible compiler. The manifest
+  lists compatible observed compilers, and the consuming environment selects
+  the exact compiler version.
 - Baseline compiler default: `gcc` if present, otherwise first reported
   compiler.
 - MPI platform compatibility auto-narrowing for non-explicit compiler defaults.

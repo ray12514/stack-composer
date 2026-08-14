@@ -10,8 +10,11 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from stack_composer.render.fabric import selected_common_scope_fabric_userspace
 from stack_composer.render.mpi import (
+    compiler_fragment_name_version,
     compiler_provider_ref,
     compiler_ref_satisfies_flavor,
+    mpi_flavor_compiler_policy,
+    mpi_toolchain_name,
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
     select_flavor_compiler,
@@ -406,39 +409,70 @@ def mpi_toolchains(
             continue
         selected_refs = selected_mpi_lane_compiler_refs(provider, rendered_lanes)
         for compiler in mpi_toolchain_compilers(provider):
-            if selected_refs is not None and not any(
-                compiler_ref_satisfies_flavor(ref, compiler, provider) for ref in selected_refs
-            ):
-                continue
-            compiler_provider = (
-                select_flavor_compiler(profile, compiler, provider)
-                if provider.get("flavors")
-                else compiler_provider_for(profile, compiler)
+            matching_refs = (
+                sorted(
+                    ref
+                    for ref in selected_refs
+                    if compiler_ref_satisfies_flavor(ref, compiler, provider)
+                )
+                if selected_refs is not None
+                else [compiler]
             )
-            if not compiler_provider:
-                continue
-            name = mpi_toolchain_name_for_profile(
-                profile,
-                compiler_provider_ref(compiler_provider),
-                provider_name,
-                str(provider["version"]),
-            )
-            if name in emitted_names:
-                continue
-            emitted_names.add(name)
-            entries = compiler_toolchain_entries(compiler_provider)
-            entries.append(
-                {
-                    "spec": f"%mpi={mpi_package_ref(provider)}",
-                    "when": "%mpi",
-                }
-            )
-            toolchains.append(
-                {
-                    "name": name,
-                    "entries": entries,
-                }
-            )
+            for selected_ref in matching_refs:
+                baseline_toolchain = (
+                    mpi_flavor_compiler_policy(provider) == "family_min_version"
+                    and selected_ref == compiler
+                )
+                if baseline_toolchain:
+                    compiler_name, compiler_version = compiler_fragment_name_version(
+                        compiler
+                    )
+                    if not compiler_version:
+                        continue
+                    compiler_provider = {
+                        "name": compiler_name,
+                        "version": f"{compiler_version}:",
+                        "languages": ["c", "c++", "fortran"],
+                    }
+                    name = mpi_toolchain_name(
+                        compiler_name,
+                        provider_name,
+                        compiler_version,
+                        str(provider["version"]),
+                    )
+                else:
+                    compiler_provider = (
+                        select_compiler_provider(profile, selected_ref)
+                        or (
+                            select_flavor_compiler(profile, compiler, provider)
+                            if provider.get("flavors")
+                            else compiler_provider_for(profile, compiler)
+                        )
+                    )
+                    if not compiler_provider:
+                        continue
+                    name = mpi_toolchain_name_for_profile(
+                        profile,
+                        compiler_provider_ref(compiler_provider),
+                        provider_name,
+                        str(provider["version"]),
+                    )
+                if name in emitted_names:
+                    continue
+                emitted_names.add(name)
+                entries = compiler_toolchain_entries(compiler_provider)
+                entries.append(
+                    {
+                        "spec": f"%mpi={mpi_package_ref(provider)}",
+                        "when": "%mpi",
+                    }
+                )
+                toolchains.append(
+                    {
+                        "name": name,
+                        "entries": entries,
+                    }
+                )
     toolchains.extend(
         lane_mpi_toolchains(profile, rendered_lanes, provider_name, emitted=toolchains)
     )

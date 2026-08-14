@@ -212,8 +212,34 @@ def mpi_toolchain_name_for_profile(
             str(compiler_provider["version"]),
             mpi_version,
         )
-    compiler_name, _ = compiler_fragment_name_version(compiler)
-    return mpi_toolchain_name(compiler_name, provider_name, None, mpi_version)
+    compiler_name, compiler_version = compiler_fragment_name_version(compiler)
+    return mpi_toolchain_name(
+        compiler_name, provider_name, compiler_version, mpi_version
+    )
+
+
+def compatible_compiler_refs(
+    profile: dict[str, Any],
+    flavor_compiler: str,
+    provider: dict[str, Any] | None,
+) -> list[str]:
+    """Return observed compilers allowed to consume one physical MPI flavor."""
+    return sorted(
+        {
+            compiler_provider_ref(candidate)
+            for candidate in profile.get("compiler_providers") or []
+            if is_renderable_external_name_version(
+                candidate.get("name"), candidate.get("version")
+            )
+            and compiler_ref_satisfies_flavor(
+                compiler_provider_ref(candidate), flavor_compiler, provider
+            )
+        },
+        key=lambda ref: (
+            compiler_fragment_name_version(ref)[0],
+            version_key(compiler_fragment_name_version(ref)[1] or ""),
+        ),
+    )
 
 
 def select_platform_mpi(

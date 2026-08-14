@@ -15,10 +15,13 @@ from stack_composer.render.fabric import (
 )
 from stack_composer.render.gpu import cuda_external_packages, rocm_external_packages
 from stack_composer.render.mpi import (
+    compatible_compiler_refs,
     compiler_fragment_name_version,
     compiler_provider_ref,
+    compiler_ref_satisfies_flavor,
     merge_mpi_variant_records,
     mpi_flavor_compiler_policy,
+    mpi_toolchain_name,
     mpi_toolchain_name_for_profile,
     select_compiler_provider,
     select_flavor_compiler,
@@ -322,7 +325,18 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
         for provider in variant_records:
             for compiler_provider in mpi_scope_compilers(profile, provider):
                 compiler_ref = compiler_provider_ref(compiler_provider)
-                toolchain = mpi_toolchain_name_for_profile(profile, compiler_ref, name, version)
+                toolchain = (
+                    mpi_toolchain_name(
+                        str(compiler_provider["name"]),
+                        name,
+                        str(compiler_provider["version"]),
+                        version,
+                    )
+                    if compiler_provider.get("catalog_baseline_only")
+                    else mpi_toolchain_name_for_profile(
+                        profile, compiler_ref, name, version
+                    )
+                )
                 lane = {
                     "compiler": compiler_provider["name"],
                     "compiler_ref": compiler_ref,
@@ -354,6 +368,12 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
                         "version": version,
                         "provider_family": family,
                         "compiler_ref": compiler_ref,
+                        "compiler_compatibility": compiler_provider.get(
+                            "compiler_compatibility"
+                        ),
+                        "compatible_compiler_refs": compiler_provider.get(
+                            "compatible_compiler_refs"
+                        ),
                         "toolchain": toolchain,
                         "path": scope_rel,
                         "absolute_path": workspace / scope_rel,
@@ -373,8 +393,30 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
 def mpi_scope_compilers(
     profile: dict[str, Any], provider: dict[str, Any]
 ) -> list[dict[str, Any]]:
+    """Return one scope identity for every physical MPI compiler flavor.
+
+    Cray MPICH product-tree suffixes are family/minimum-version baselines, so
+    they stay stable even when a newer compatible compiler is installed. Exact
+    compiler policy belongs to the consuming environment.
+    """
     compilers: dict[str, dict[str, Any]] = {}
     for compiler in mpi_toolchain_compilers(provider):
+        if mpi_flavor_compiler_policy(provider) == "family_min_version":
+            name, version = compiler_fragment_name_version(compiler)
+            if not version:
+                continue
+            baseline = {
+                "name": name,
+                "version": version,
+                "languages": ["c", "c++", "fortran"],
+                "catalog_baseline_only": True,
+                "compiler_compatibility": "family_min_version",
+                "compatible_compiler_refs": compatible_compiler_refs(
+                    profile, compiler, provider
+                ),
+            }
+            compilers[compiler_provider_ref(baseline)] = baseline
+            continue
         compiler_provider = (
             select_flavor_compiler(profile, compiler, provider)
             if provider.get("flavors")
@@ -383,22 +425,6 @@ def mpi_scope_compilers(
         if compiler_provider:
             compilers[compiler_provider_ref(compiler_provider)] = compiler_provider
             continue
-        if mpi_flavor_compiler_policy(provider) != "family_min_version":
-            continue
-        name, version = compiler_fragment_name_version(compiler)
-        if not version:
-            continue
-        # A Cray MPICH product-tree flavor is a supported compiler-family
-        # baseline, not proof that the matching compiler is installed. Keep
-        # that include-ready MPI scope so a later CSE-built compiler of the
-        # same family can consume it.
-        baseline = {
-            "name": name,
-            "version": version,
-            "languages": ["c", "c++", "fortran"],
-            "catalog_baseline_only": True,
-        }
-        compilers[compiler_provider_ref(baseline)] = baseline
     return sorted(
         compilers.values(),
         key=lambda provider: (str(provider.get("name")), version_key(str(provider.get("version")))),
@@ -628,17 +654,33 @@ def own_compiler_lines(recommended: dict[str, Any], catalog_root: Path) -> list[
 
 
 def mpi_pairing_lines(recommended: dict[str, Any]) -> list[str]:
-    """State the compiler an MPI scope pairs with, in prose.
+    """State the compiler compatibility carried by an MPI scope.
 
     The static catalog informs rather than enforces: a user assembles their own
-    environment, so the pairing that the managed render checks for them has to
-    be written down here. The scope path already encodes it, but a path is not
-    a statement.
+    environment, so the compatibility that the managed render checks for them
+    has to be written down here. The scope path already encodes it, but a path
+    is not a statement.
     """
     mpi = recommended.get("mpi") or {}
     compiler_ref = mpi.get("compiler_ref")
     if not compiler_ref:
         return []
+    if mpi.get("compiler_compatibility") == "family_min_version":
+        compatible = ", ".join(mpi.get("compatible_compiler_refs") or [])
+        observed = (
+            f" Observed compatible compilers: {compatible}." if compatible else ""
+        )
+        return [
+            "Compiler pairing:",
+            "",
+            f"The {mpi.get('name', 'MPI')} scope above represents one physical "
+            f"compiler-family flavor with minimum compiler baseline {compiler_ref}. "
+            "A selected compiler from the same family may consume this scope when "
+            "its version is at or above that baseline. The exact compiler remains "
+            f"environment policy; the MPI installation is not duplicated per compiler."
+            f"{observed}",
+            "",
+        ]
     return [
         "Compiler pairing:",
         "",
@@ -665,10 +707,8 @@ def recommendations_for(
     mpi_scope = select_mpi_scope(
         preferred_mpi_provider, mpi_scopes, compiler_scope
     )
-    if (
-        mpi_scope
-        and compiler_scope
-        and mpi_scope.get("compiler_ref") != compiler_scope.get("compiler_ref")
+    if mpi_scope and compiler_scope and not mpi_scope_accepts_compiler(
+        mpi_scope, str(compiler_scope.get("compiler_ref") or "")
     ):
         paired_compiler = next(
             (
@@ -734,8 +774,12 @@ def select_mpi_scope(
     if not candidates:
         candidates = mpi_scopes
     if compiler_scope:
-        compiler_ref = compiler_scope.get("compiler_ref")
-        matching = [scope for scope in candidates if scope.get("compiler_ref") == compiler_ref]
+        compiler_ref = str(compiler_scope.get("compiler_ref") or "")
+        matching = [
+            scope
+            for scope in candidates
+            if mpi_scope_accepts_compiler(scope, compiler_ref)
+        ]
         if matching:
             candidates = matching
     # When the preferred provider is not reported, the platform-provided MPI
@@ -745,6 +789,13 @@ def select_mpi_scope(
     if platform:
         candidates = platform
     return max(candidates, key=lambda scope: version_key(str(scope.get("version") or "")))
+
+
+def mpi_scope_accepts_compiler(scope: dict[str, Any], compiler_ref: str) -> bool:
+    flavor_ref = str(scope.get("compiler_ref") or "")
+    if not flavor_ref or not compiler_ref:
+        return False
+    return compiler_ref_satisfies_flavor(compiler_ref, flavor_ref, scope)
 
 
 def select_gpu_scopes(gpu_scopes: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -781,7 +832,15 @@ def manifest_scope(scope: dict[str, Any]) -> dict[str, Any]:
         "kind": scope["kind"],
         "path": scope_path_str(scope),
     }
-    for key in ("name", "package", "version", "compiler_ref", "toolchain"):
+    for key in (
+        "name",
+        "package",
+        "version",
+        "compiler_ref",
+        "compiler_compatibility",
+        "compatible_compiler_refs",
+        "toolchain",
+    ):
         if scope.get(key):
             entry[key] = scope[key]
     return entry

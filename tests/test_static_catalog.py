@@ -39,7 +39,7 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     assert manifest["profile_facts"]["node_types"]["cpu_compute"]["build_stage"]
     assert manifest["recommendations"]["compiler"]["path"] == "scopes/compilers/gcc/13.3.0"
     assert manifest["recommendations"]["mpi"]["path"] == (
-        "scopes/mpi/cray-mpich/8.1.29/gcc-13.3.0"
+        "scopes/mpi/cray-mpich/8.1.29/gcc-13.3"
     )
     assert manifest["recommendations"]["gpu"] == [
         {"kind": "gpu", "name": "rocm", "path": "scopes/gpu/rocm/6.0.0", "version": "6.0.0"}
@@ -63,7 +63,7 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
         / "mpi"
         / "cray-mpich"
         / "8.1.29"
-        / "gcc-13.3.0"
+        / "gcc-13.3"
         / "packages.yaml"
     )
     assert mpi_packages["packages"]["mpi"]["require"] == ["cray-mpich"]
@@ -77,10 +77,10 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
         / "mpi"
         / "cray-mpich"
         / "8.1.29"
-        / "gcc-13.3.0"
+        / "gcc-13.3"
         / "toolchains.yaml"
     )
-    assert "gcc1330_craympich8129" in mpi_toolchains["toolchains"]
+    assert set(mpi_toolchains["toolchains"]) == {"gcc133_craympich8129"}
 
     rocm = load_yaml(workspace / "scopes" / "gpu" / "rocm" / "6.0.0" / "packages.yaml")
     assert {"hip", "hsa-rocr-dev", "rocprim"} <= set(rocm["packages"])
@@ -91,6 +91,13 @@ def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
 ) -> None:
     profile = load_yaml(fixture_path("profiles", "example-cray", "profile.yaml"))
     profile["system"]["name"] = "blueback-shaped"
+    for node_type in profile["node_types"].values():
+        if node_type.get("gpu") is None:
+            node_type["cpu"]["alternates"] = [
+                "x86_64_v3",
+                "x86_64_v2",
+                "x86_64",
+            ]
     profile["compiler_providers"] = [
         {
             "name": "cce",
@@ -100,7 +107,25 @@ def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
             "prefix": "/opt/cray/pe/cce/21.0.0",
             "modules": ["PrgEnv-cray/8.7.0", "cce/21.0.0"],
             "languages": ["c", "c++", "fortran"],
-        }
+        },
+        {
+            "name": "gcc",
+            "version": "12.2.0",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "prefix": "/opt/cray/pe/gcc-native/12.2",
+            "modules": ["PrgEnv-gnu/8.7.0", "gcc-native/12.2"],
+            "languages": ["c", "c++", "fortran"],
+        },
+        {
+            "name": "gcc",
+            "version": "13.3.1",
+            "provider_family": "platform",
+            "platform_family": "cray-pe",
+            "prefix": "/opt/cray/pe/gcc-native/13.3",
+            "modules": ["PrgEnv-gnu/8.7.0", "gcc-native/13.3"],
+            "languages": ["c", "c++", "fortran"],
+        },
     ]
     profile["mpi_providers"] = [
         {
@@ -144,6 +169,14 @@ def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
         / "gcc-12.3"
     )
     assert gnu_scope.is_dir()
+    assert not (
+        workspace
+        / "scopes"
+        / "mpi"
+        / "cray-mpich"
+        / "9.1.0"
+        / "gcc-13.3.1"
+    ).exists()
     packages = load_yaml(gnu_scope / "packages.yaml")["packages"]
     assert packages["cray-mpich"]["externals"][0]["prefix"] == (
         "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3"
@@ -156,6 +189,41 @@ def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
         if item["path"].endswith("/gcc-12.3")
     )
     assert scope["compiler_ref"] == "gcc@12.3"
+    assert scope["compiler_compatibility"] == "family_min_version"
+    assert scope["compatible_compiler_refs"] == ["gcc@13.3.1"]
+
+    gnu_toolchains = load_yaml(gnu_scope / "toolchains.yaml")["toolchains"]
+    assert gnu_toolchains["gcc123_craympich910"] == [
+        {"spec": "%c=gcc@12.3:", "when": "%c"},
+        {"spec": "%cxx=gcc@12.3:", "when": "%cxx"},
+        {"spec": "%fortran=gcc@12.3:", "when": "%fortran"},
+        {"spec": "%mpi=cray-mpich@9.1.0+wrappers", "when": "%mpi"},
+    ]
+
+    cray_scope = (
+        workspace
+        / "scopes"
+        / "mpi"
+        / "cray-mpich"
+        / "9.1.0"
+        / "cce-20.0"
+    )
+    assert cray_scope.is_dir()
+    assert not (
+        workspace
+        / "scopes"
+        / "mpi"
+        / "cray-mpich"
+        / "9.1.0"
+        / "cce-21.0.0"
+    ).exists()
+    cce_scope = next(
+        item
+        for item in manifest["scopes"]
+        if item["path"].endswith("/cce-20.0")
+    )
+    assert cce_scope["compiler_ref"] == "cce@20.0"
+    assert cce_scope["compatible_compiler_refs"] == ["cce@21.0.0"]
 
 
 def test_static_catalog_renders_linux_mpi_pairing(tmp_path: Path) -> None:
@@ -335,7 +403,7 @@ def test_static_catalog_keeps_cray_pmi_with_cray_mpich_scope(tmp_path: Path) -> 
         / "mpi"
         / "cray-mpich"
         / "8.1.29"
-        / "gcc-13.3.0"
+        / "gcc-13.3"
         / "packages.yaml"
     )["packages"]
     assert packages["cray-pmi"] == {
@@ -623,8 +691,8 @@ def test_static_catalog_readme_states_the_mpi_compiler_pairing(tmp_path: Path) -
     )
 
     readme = (workspace / "README.md").read_text(encoding="utf-8")
-    assert "built with" in readme
-    assert "gcc@13.3.0" in readme, "README must name the compiler the MPI scope pairs with"
+    assert "minimum compiler baseline gcc@13.3" in readme
+    assert "gcc@13.3.0" in readme, "README must list observed compatible compilers"
 
 
 def test_static_catalog_readme_documents_isolation_and_own_compiler(tmp_path: Path) -> None:
