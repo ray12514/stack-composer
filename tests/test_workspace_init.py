@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 import yaml
@@ -59,6 +60,9 @@ def make_inputs(tmp_path: Path) -> tuple[Path, Path, Path]:
         encoding="utf-8",
     )
     (templates / "notes.txt").write_text("plain file\n", encoding="utf-8")
+    launcher = templates / "launch.sh.j2"
+    launcher.write_text("#!/bin/sh\necho ready\n", encoding="utf-8")
+    launcher.chmod(0o755)
     partials = templates / "_partials"
     partials.mkdir()
     (partials / "header.txt.j2").write_text("private partial\n", encoding="utf-8")
@@ -121,6 +125,7 @@ def test_init_workspace_renders_blueprint_and_valid_yaml(tmp_path: Path) -> None
         "# example-pilot for example-linux\n"
     )
     assert (output / "notes.txt").read_text(encoding="utf-8") == "plain file\n"
+    assert (output / "launch.sh").stat().st_mode & stat.S_IXUSR
     assert not (output / "_partials").exists()
     assert yaml.safe_load(
         (output / "systems" / "example-linux" / "example-linux.yaml").read_text(

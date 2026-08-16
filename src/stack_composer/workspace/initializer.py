@@ -256,6 +256,7 @@ def _render_tree(template_root: Path, destination: Path, context: dict[str, Any]
             target.write_text(template.render(**context), encoding="utf-8")
         else:
             shutil.copyfile(source, target)
+        shutil.copymode(source, target)
 
 
 def _render_relative_path(
