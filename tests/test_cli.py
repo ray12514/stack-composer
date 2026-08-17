@@ -44,7 +44,7 @@ def test_show_command_prints_provider_families_and_module_chains() -> None:
     assert "modules=PrgEnv-gnu, gcc-native/13" in result.output
     assert "gcc@13.3 modules=cray-mpich/8.1.29" in result.output
     assert "components=8: hip, hsa-rocr-dev, comgr" in result.output
-    assert "system externals (2 candidates)" in result.output
+    assert "system externals (4 candidates)" in result.output
     assert "openssl" in result.output
     assert "curl" in result.output
     assert "scope=vendor/cray" in result.output

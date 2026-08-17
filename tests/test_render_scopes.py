@@ -363,7 +363,7 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
         "modules": [],
     }
     assert common["packages"]["ucx"]["externals"][0] == {
-        "spec": "ucx@1.15",
+        "spec": "ucx@1.15 +thread_multiple",
         "prefix": "/usr",
         "modules": [],
     }
@@ -557,7 +557,8 @@ def test_invalid_system_external_is_not_rendered(tmp_path: Path) -> None:
         "mpi": "prefer_platform",
         "openssl": "system",
         "curl": "system",
-        "fabric_userspace": "prefer_platform",
+        "libfabric": "system",
+        "ucx": "system",
         "bad/pkg": "system",
     }
     workspace = render_profile_with_stack(
@@ -571,9 +572,12 @@ def test_invalid_system_external_is_not_rendered(tmp_path: Path) -> None:
     assert "openssl@3.0.7" in common_text
 
 
-def test_common_scope_prefers_platform_fabric_userspace_duplicates(tmp_path: Path) -> None:
+def test_common_scope_ignores_unverified_fabric_observations(tmp_path: Path) -> None:
     profile, _stack = fixture_context("example-cray")
     profile = deepcopy(profile)
+    profile["system_externals"] = [
+        item for item in profile["system_externals"] if item["name"] != "libfabric"
+    ]
     profile["fabric"]["userspace"].insert(
         0,
         {
@@ -585,52 +589,16 @@ def test_common_scope_prefers_platform_fabric_userspace_duplicates(tmp_path: Pat
     workspace = render_profile(tmp_path / "out", write_profile(tmp_path, profile))
 
     common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(encoding="utf-8")
-    assert common_text.count("\n  libfabric:") == 1
-    common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
-    assert common["packages"]["libfabric"]["externals"] == [
-        {
-            "spec": "libfabric@1.20",
-            "prefix": "/opt/cray/libfabric/1.20",
-            "modules": [],
-        }
-    ]
+    assert "\n  libfabric:" not in common_text
 
 
-def test_common_scope_mixed_fabric_userspace_keeps_duplicates_under_one_key(
-    tmp_path: Path,
-) -> None:
+def test_common_scope_preserves_verified_ucx_capability(tmp_path: Path) -> None:
     profile, _stack = fixture_context("example-cray")
-    profile = deepcopy(profile)
-    profile["fabric"]["userspace"].insert(
-        0,
-        {
-            "name": "libfabric",
-            "version": "1.22.0",
-            "prefix": "/p/app/unsupported/libfabric/1.22.0",
-        },
-    )
-    stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
-    stack["externals"] = {
-        "compilers": "prefer_platform",
-        "mpi": "prefer_platform",
-        "openssl": "system",
-        "curl": "system",
-        "fabric_userspace": "mixed",
-    }
-
-    workspace = render_profile_with_stack(
-        tmp_path / "out",
-        profile_path=write_profile(tmp_path / "profile", profile),
-        stack_path=write_stack(tmp_path / "stack", stack),
-    )
-
-    common_text = (workspace / "configs" / "common" / "packages.yaml").read_text(encoding="utf-8")
-    assert common_text.count("\n  libfabric:") == 1
+    workspace = render_profile(tmp_path / "out", write_profile(tmp_path, profile))
     common = load_yaml(workspace / "configs" / "common" / "packages.yaml")
-    assert [external["prefix"] for external in common["packages"]["libfabric"]["externals"]] == [
-        "/opt/cray/libfabric/1.20",
-        "/p/app/unsupported/libfabric/1.22.0",
-    ]
+    assert common["packages"]["ucx"]["externals"][0]["spec"] == (
+        "ucx@1.15 +thread_multiple"
+    )
 
 
 def test_cray_pmi_is_rendered_only_with_cray_mpich_scope(

@@ -350,12 +350,6 @@
           "enum": ["system", "stack_built"],
           "description": "curl externalization mode."
         },
-        "fabric_userspace": {
-          "type": "string",
-          "enum": ["prefer_platform", "build_all", "mixed"],
-          "default": "prefer_platform",
-          "description": "Fabric userspace (UCX/libfabric) externalization mode."
-        },
         "gpu_toolkit": {
           "type": "string",
           "enum": ["prefer_platform", "build_all", "mixed"],

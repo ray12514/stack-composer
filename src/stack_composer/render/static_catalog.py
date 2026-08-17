@@ -10,7 +10,7 @@ from stack_composer.errors import Issue, ValidationFailed
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults
 from stack_composer.render.fabric import (
-    selected_common_scope_fabric_userspace,
+    selected_build_fabric_externals,
     unselected_fabric_userspace,
 )
 from stack_composer.render.gpu import cuda_external_packages, rocm_external_packages
@@ -34,6 +34,7 @@ from stack_composer.render.platform import (
     classify_system_externals,
     is_platform_selected_external,
     platform_family,
+    selected_system_externals,
 )
 from stack_composer.render.provider_packages import (
     compiler_package_name,
@@ -216,6 +217,7 @@ def build_static_catalog(
         "system": profile.get("system") or {},
         "profile_facts": {
             "fabric": profile.get("fabric") or {},
+            "system_externals": profile.get("system_externals") or [],
             "filesystem": profile.get("filesystem") or {},
             "node_types": profile.get("node_types") or {},
         },
@@ -495,13 +497,9 @@ def build_common_scope(
     profile: dict[str, Any], defaults: dict[str, Any], workspace: Path
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[dict[str, Any]]]:
     external_policy = defaults.get("externals") or {}
-    fabric_policy = external_policy.get("fabric_userspace", "prefer_platform")
     packages: dict[str, dict[str, Any]] = {}
-    selected_fabric = selected_common_scope_fabric_userspace(profile, fabric_policy)
-    for userspace in selected_fabric:
-        add_external(packages, userspace)
 
-    for external in profile.get("system_externals") or []:
+    for external in selected_system_externals(profile, defaults):
         name = external.get("name")
         if external_policy.get(name) != "system":
             continue
@@ -509,6 +507,7 @@ def build_common_scope(
             continue
         add_external(packages, external)
 
+    selected_fabric = selected_build_fabric_externals(profile, defaults)
     not_rendered = unselected_fabric_userspace(profile, selected_fabric)
     if not packages:
         return None, [], not_rendered

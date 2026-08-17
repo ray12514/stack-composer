@@ -41,6 +41,37 @@ system_externals:
   detection:
     confidence: probed
     source: rpm
+- name: libfabric
+  version: '1.20'
+  prefix: /usr
+  provider_family: system
+  detection:
+    confidence: probed
+    source: fi_info version + development surface
+- name: ucx
+  version: '1.15'
+  prefix: /usr
+  provider_family: system
+  variants: +thread_multiple
+  detection:
+    confidence: probed
+    source: ucx_info version + development surface
+- name: slurm
+  version: 23.02.7
+  prefix: /usr
+  provider_family: system
+  capabilities:
+    mpi_launch:
+      command: srun
+      plugins:
+      - pmi2
+      - pmix
+      - pmix_v3
+      development_interfaces:
+      - pmi2
+  detection:
+    confidence: probed
+    source: scontrol version + development surface
 filesystem:
   install_tree_candidates:
   - path: /shared/stack/spack/opt

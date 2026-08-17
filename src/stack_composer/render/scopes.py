@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
-from stack_composer.render.fabric import selected_common_scope_fabric_userspace
+from stack_composer.render.fabric import selected_platform_runtime_userspace
 from stack_composer.render.mpi import (
     compiler_fragment_name_version,
     compiler_provider_ref,
@@ -190,9 +190,7 @@ def selected_mpi_runtime_dependency_externals(
     selected: list[dict[str, Any]] = []
     for name in mpi_runtime_dependency_names(provider_name):
         selected.extend(
-            selected_common_scope_fabric_userspace(
-                profile, "prefer_platform", allowed_names={name}
-            )
+            selected_platform_runtime_userspace(profile, allowed_names={name})
         )
     return selected
 
@@ -571,18 +569,10 @@ def common_external_packages(
     profile: dict[str, Any], stack: dict[str, Any]
 ) -> list[dict[str, Any]]:
     external_policy = stack.get("externals") or {}
-    fabric_policy = external_policy.get("fabric_userspace", "prefer_platform")
     packages: dict[str, dict[str, Any]] = {}
-
-    fabric_names: set[str] = set()
-    for userspace in selected_common_scope_fabric_userspace(profile, fabric_policy):
-        add_external(packages, userspace)
-        fabric_names.add(userspace["name"])
 
     for external in selected_system_externals(profile, stack):
         if external_policy.get(external["name"]) != "system":
-            continue
-        if fabric_policy == "prefer_platform" and external["name"] in fabric_names:
             continue
         add_external(packages, external)
 

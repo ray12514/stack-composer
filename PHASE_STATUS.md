@@ -53,8 +53,10 @@ Primary planning docs:
   (`intel-mpi` -> `intel-oneapi-mpi`). Static catalog paths retain the observed
   identity and their manifests record the Spack package identity.
 - Cray MPICH scopes retain the inspected, non-buildable Cray PMI external that
-  the pinned provider recipe requires. The common scope supplies the inspected
-  platform libfabric external; neither runtime is replaced by a source build.
+  the pinned provider recipe requires. The inspected platform libfabric stays
+  visible as a runtime observation; it enters the common Spack scope only when
+  Cluster Inspector also verifies its development surface. Neither runtime is
+  replaced by a source build.
 - Static Cray MPICH scope identities preserve the physical compiler-family
   baseline from the product tree, such as `gcc@12.3` or `cce@20.0`, instead of
   replacing it with the newest installed compatible compiler. The manifest
@@ -65,8 +67,14 @@ Primary planning docs:
 - MPI platform compatibility auto-narrowing for non-explicit compiler defaults.
 - `deployment.yaml` as a first-class render input; render emits
   `configs/common/config.yaml` and lane view/module roots from deployment.
-- System externals (`openssl`, `curl`) flow from `profile.yaml` into rendered
-  `configs/common/packages.yaml` when stack/defaults policy allows them.
+- Development-verified system externals (`openssl`, `curl`, `libfabric`, UCX,
+  scheduler, and explicitly selected filesystem/runtime packages) flow from
+  `profile.yaml` into rendered `configs/common/packages.yaml` when
+  stack/defaults policy allows them. Runtime-only `fabric.userspace`
+  observations remain report data and are not promoted into build externals.
+- The static manifest preserves package-specific system-external capabilities,
+  including Slurm MPI-launch plugins and development interfaces, for
+  downstream policy without any renderer-side host probe.
 - Docker/Spack smoke path using `cse-stack/docker/smoke/run-smoke.sh` passes
   profile -> render -> Spack 1.1.1 concretize/fetch/install/verify for the
   Stack Content smoke lane.
@@ -124,6 +132,12 @@ renderer must be updated as one coherent slice:
 - render Foundation/Core and stack-built MPI producers as Spack 1.2 groups
   with explicit `needs` relationships, and render a separate bootstrap
   environment plus fixed external view for a stack-built compiler;
+- add generic full-render policy resolution for build-sourced MPI launch
+  support: consume the profile's verified scheduler `mpi_launch` capability,
+  render deterministic provider-specific launcher variants from
+  defaults/template policy, and fail when requested support is not proven. The
+  CSE `init-workspace` helper currently implements the Open MPI/Slurm trial
+  policy; production `render` currently only accepts and preserves the facts;
 - bind every payload lane, including Serial, to an explicit compiler-only or
   compiler-plus-MPI toolchain rather than relying on package preference;
 - express GPU's MPI-superset roster as declarative package-set composition;
@@ -163,10 +177,8 @@ fully documented and exercised.
   `module-smoke`; package-module visibility after a fresh concretization and
   real-system module-tool validation remain.
   Package module generation remains owned by Spack (`spack module tcl refresh`).
-- Fabric userspace external inventory still needs first-system evidence and
-  render coverage.
 - Broader ordinary package external inventory remains focused/hints-driven;
-  `openssl` and `curl` are covered by the current smoke path.
+  the current smoke and trial paths cover the packages they actually consume.
 
 ## Definition of ready for first full iteration
 

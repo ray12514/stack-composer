@@ -134,7 +134,7 @@
     },
     "system_externals": {
       "type": "array",
-      "description": "Ordinary system or site package externals such as openssl and curl. Profile facts say what exists; defaults/stack policy decides whether render may use them.",
+      "description": "System or site package externals such as openssl, curl, fabrics, and schedulers. Profile facts and optional capabilities say what exists; defaults/stack policy decides whether and how render may use them.",
       "items": {
         "$ref": "#/$defs/system_external"
       }
@@ -445,7 +445,7 @@
     },
     "system_external": {
       "type": "object",
-      "description": "A non-compiler, non-MPI, non-GPU-toolkit external package candidate.",
+      "description": "A non-compiler, non-MPI, non-GPU-toolkit external package candidate with optional observed runtime capabilities.",
       "properties": {
         "name": {
           "type": "string",
@@ -472,6 +472,15 @@
           "description": "Modules to load for this external, if module-backed.",
           "items": { "type": "string" }
         },
+        "capabilities": {
+          "type": "object",
+          "description": "Observed package-specific runtime capabilities. These are machine facts, not stack or Spack variant selections.",
+          "properties": {
+            "mpi_launch": { "$ref": "#/$defs/mpi_launch_capability" }
+          },
+          "minProperties": 1,
+          "additionalProperties": false
+        },
         "detection": {
           "type": "object",
           "description": "How this external fact was obtained.",
@@ -490,6 +499,35 @@
         }
       },
       "required": ["name", "version", "prefix", "provider_family"],
+      "additionalProperties": false
+    },
+    "mpi_launch_capability": {
+      "type": "object",
+      "description": "MPI launch interfaces advertised by a scheduler package and the matching development interfaces available to build an MPI implementation.",
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Launcher command that reported the plugin inventory, for example srun."
+        },
+        "plugins": {
+          "type": "array",
+          "description": "Exact normalized plugin identifiers advertised by the launcher.",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "development_interfaces": {
+          "type": "array",
+          "description": "Normalized PMI/PMIx interfaces for which both headers and libraries were verified under the external prefix.",
+          "items": {
+            "type": "string",
+            "enum": ["pmi1", "pmi2", "pmix"]
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": ["command", "plugins", "development_interfaces"],
       "additionalProperties": false
     },
     "node_type": {

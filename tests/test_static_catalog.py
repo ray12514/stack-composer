@@ -35,6 +35,7 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     assert manifest["kind"] == "static-platform-catalog"
     assert manifest["scope_root"] == str(workspace / "scopes")
     assert manifest["profile_facts"]["fabric"]
+    assert manifest["profile_facts"]["system_externals"]
     assert manifest["profile_facts"]["filesystem"]
     assert manifest["profile_facts"]["node_types"]["cpu_compute"]["build_stage"]
     assert manifest["recommendations"]["compiler"]["path"] == "scopes/compilers/gcc/13.3.0"
@@ -241,6 +242,17 @@ def test_static_catalog_renders_linux_mpi_pairing(tmp_path: Path) -> None:
     )
 
     assert_yaml_files_parse(workspace)
+    manifest = load_yaml(workspace / "manifest.yaml")
+    slurm = next(
+        item
+        for item in manifest["profile_facts"]["system_externals"]
+        if item["name"] == "slurm"
+    )
+    assert slurm["capabilities"]["mpi_launch"] == {
+        "command": "srun",
+        "plugins": ["pmi2", "pmix", "pmix_v3"],
+        "development_interfaces": ["pmi2"],
+    }
     mpi_scope = workspace / "scopes" / "mpi" / "openmpi" / "4.1.6" / "aocc-4.2.0"
     assert mpi_scope.exists()
     packages = load_yaml(mpi_scope / "packages.yaml")

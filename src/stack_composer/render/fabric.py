@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from stack_composer.render.platform import selected_system_externals
 from stack_composer.render.versioning import version_key
 
 DEFAULT_COMMON_SCOPE_FABRIC_EXTERNALS = frozenset({"libfabric", "ucx"})
@@ -34,22 +35,43 @@ def observed_fabric_userspace(profile: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
-def selected_common_scope_fabric_userspace(
-    profile: dict[str, Any],
-    mode: str,
-    *,
-    allowed_names: set[str] | frozenset[str] = DEFAULT_COMMON_SCOPE_FABRIC_EXTERNALS,
+def selected_build_fabric_externals(
+    profile: dict[str, Any], stack: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """Select fabric userspace facts safe to emit in the common Spack scope.
+    """Return development-verified fabric externals selected for builds.
+
+    ``fabric.userspace`` is observational. Only ``system_externals`` carries
+    the development-surface evidence required to place a package in
+    ``packages.yaml`` for a source build.
+    """
+    policy = stack.get("externals") or {}
+    return sorted(
+        [
+            item
+            for item in selected_system_externals(profile, stack)
+            if item.get("name") in DEFAULT_COMMON_SCOPE_FABRIC_EXTERNALS
+            and policy.get(str(item.get("name"))) == "system"
+        ],
+        key=lambda item: (
+            str(item.get("name") or ""),
+            str(item.get("version") or ""),
+            str(item.get("prefix") or ""),
+        ),
+    )
+
+
+def selected_platform_runtime_userspace(
+    profile: dict[str, Any],
+    *,
+    allowed_names: set[str] | frozenset[str],
+) -> list[dict[str, Any]]:
+    """Select observed runtimes needed by one external platform MPI.
 
     Cluster Inspector may report Cray runtime facts such as GTL, PMI, and PALS.
-    Those are useful for the network plan, but they should not be rendered as
-    Spack package externals unless the stack also ships the package repo policy
-    that defines those packages. The default common scope remains conservative.
+    This selection is intentionally separate from build externals: an external
+    platform MPI may need an observed runtime from its own product tree, while
+    a source build requires a development-verified ``system_externals`` fact.
     """
-    if mode not in {"prefer_platform", "mixed"}:
-        return []
-
     by_name: dict[str, list[dict[str, Any]]] = {}
     for item in observed_fabric_userspace(profile):
         if item["name"] not in allowed_names:
@@ -64,7 +86,7 @@ def selected_common_scope_fabric_userspace(
             reverse=True,
         )
         ranked.sort(key=lambda entry: fabric_userspace_sort_key(profile, entry))
-        selected.extend(ranked if mode == "mixed" else ranked[:1])
+        selected.extend(ranked[:1])
     return selected
 
 
@@ -80,7 +102,7 @@ def unselected_fabric_userspace(
     for item in observed_fabric_userspace(profile):
         if (item["name"], item["version"], item["prefix"]) in selected_keys:
             continue
-        reason = "not_selected_by_policy"
+        reason = "observation_not_selected_as_platform_mpi_runtime"
         if item["name"] not in DEFAULT_COMMON_SCOPE_FABRIC_EXTERNALS:
             reason = "requires_explicit_package_repo_policy"
         out.append({**item, "reason": reason})

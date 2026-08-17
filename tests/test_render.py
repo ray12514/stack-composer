@@ -79,7 +79,6 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
         }
     ]
     assert render_plan["network_plan"]["fabric_userspace"] == {
-        "mode": "prefer_platform",
         "observed": [
             {
                 "name": "libfabric",
@@ -94,9 +93,23 @@ def test_render_workspace_writes_valid_draft_manifest(tmp_path: Path) -> None:
                 "name": "libfabric",
                 "version": "1.20",
                 "prefix": "/opt/cray/libfabric/1.20",
-                "modules": [],
+                "provider_family": "system",
+                "detection": {
+                    "confidence": "probed",
+                    "source": "fi_info version + development surface",
+                },
             },
-            {"name": "ucx", "version": "1.15", "prefix": "/usr", "modules": []},
+            {
+                "name": "ucx",
+                "version": "1.15",
+                "prefix": "/usr",
+                "provider_family": "system",
+                "variants": "+thread_multiple",
+                "detection": {
+                    "confidence": "probed",
+                    "source": "ucx_info version + development surface",
+                },
+            },
         ],
         "rendered_mpi_externals": [],
         "not_rendered": [],
@@ -639,8 +652,9 @@ def build_all_stack(tmp_path: Path) -> Path:
         "mpi": "prefer_platform",
         "openssl": "system",
         "curl": "system",
+        "libfabric": "system",
+        "ucx": "system",
         "cray-libsci": "system",
-        "fabric_userspace": "prefer_platform",
     }
     for build in stack["builds"]:
         build["compilers"] = ["gcc@14.3.0"]

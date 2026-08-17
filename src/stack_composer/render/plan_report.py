@@ -4,7 +4,7 @@ from typing import Any
 
 from stack_composer.render.fabric import (
     observed_fabric_userspace,
-    selected_common_scope_fabric_userspace,
+    selected_build_fabric_externals,
     unselected_fabric_userspace,
 )
 from stack_composer.render.platform import platform_plan
@@ -135,8 +135,7 @@ def network_plan(
     for entry in provider_entries:
         entry["toolchains"].sort(key=lambda item: item["name"])
 
-    fabric_mode = (stack.get("externals") or {}).get("fabric_userspace", "prefer_platform")
-    selected_fabric = selected_common_scope_fabric_userspace(profile, fabric_mode)
+    selected_fabric = selected_build_fabric_externals(profile, stack)
     selected_mpi_dependencies: list[dict[str, Any]] = []
     selected_mpi_keys: set[tuple[str, str, str]] = set()
     for provider_name in {
@@ -153,7 +152,6 @@ def network_plan(
     return {
         "mpi_providers": provider_entries,
         "fabric_userspace": {
-            "mode": fabric_mode,
             "observed": observed_fabric_userspace(profile),
             "rendered_common_externals": selected_fabric,
             "rendered_mpi_externals": selected_mpi_dependencies,
