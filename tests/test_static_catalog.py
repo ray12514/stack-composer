@@ -3,10 +3,12 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 
+import pytest
 import yaml
 from click.testing import CliRunner
 
 from stack_composer.cli import cli
+from stack_composer.errors import ValidationFailed
 from stack_composer.render.release import ReleaseVars, SourceRepo
 from stack_composer.render.static_catalog import render_static_catalog
 from tests.conftest import fixture_path
@@ -306,7 +308,7 @@ def test_static_catalog_does_not_render_unknown_cuda_version(tmp_path: Path) -> 
     )
 
 
-def test_static_catalog_keeps_mpi_without_verified_compiler_pairing(
+def test_static_catalog_rejects_mpi_without_verified_compiler_pairing(
     tmp_path: Path,
 ) -> None:
     profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
@@ -322,40 +324,25 @@ def test_static_catalog_keeps_mpi_without_verified_compiler_pairing(
     profile_path = tmp_path / "profile.yaml"
     profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
 
-    workspace = render_static_catalog(
-        profile_path=profile_path,
-        templates_root=fixture_path("template-sets"),
-        template_set_name="v6",
-        release_vars=ReleaseVars(
-            release_tag="catalog-001",
-            output_root=str(tmp_path / "output"),
-            rendered_at="2026-08-17T00:00:00Z",
-            source_repo=SourceRepo("stack-content", "abc123", False),
-        ),
-    )
+    with pytest.raises(ValidationFailed) as exc_info:
+        render_static_catalog(
+            profile_path=profile_path,
+            templates_root=fixture_path("template-sets"),
+            template_set_name="v6",
+            release_vars=ReleaseVars(
+                release_tag="catalog-001",
+                output_root=str(tmp_path / "output"),
+                rendered_at="2026-08-17T00:00:00Z",
+                source_repo=SourceRepo("stack-content", "abc123", False),
+            ),
+        )
 
-    mpi_scope = workspace / "scopes" / "mpi" / "openmpi" / "1.10.0" / "unpaired"
-    packages = load_yaml(mpi_scope / "packages.yaml")["packages"]
-    assert packages["openmpi"]["externals"] == [
-        {"spec": "openmpi@1.10.0", "prefix": "/usr", "modules": []}
-    ]
-    assert not (mpi_scope / "toolchains.yaml").exists()
-
-    manifest = load_yaml(workspace / "manifest.yaml")
-    unpaired = next(
-        scope
-        for scope in manifest["scopes"]
-        if scope["path"] == "scopes/mpi/openmpi/1.10.0/unpaired"
-    )
-    assert "compiler_ref" not in unpaired
-    assert "toolchain" not in unpaired
-    assert manifest["recommendations"]["mpi"] is None
-
-    readme = (workspace / "README.md").read_text(encoding="utf-8")
-    assert "Unpaired MPI inventory:" in readme
-    assert "scopes/mpi/openmpi/1.10.0/unpaired" in readme
-    assert "- hdf5 +mpi" not in readme
-    assert "- zlib" in readme
+    assert [issue.code for issue in exc_info.value.issues] == ["mpi-compiler-unresolved"]
+    message = exc_info.value.issues[0].message
+    assert "openmpi@1.10.0" in message
+    assert "prefix=/usr" in message
+    assert "modules=(none)" in message
+    assert not (tmp_path / "output" / "unpaired-mpi").exists()
 
 
 def test_static_catalog_maps_classic_intel_and_intel_mpi_packages(

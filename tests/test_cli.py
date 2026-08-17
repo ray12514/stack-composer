@@ -174,6 +174,34 @@ def test_show_command_prints_toolchain_names() -> None:
     assert "toolchain=gcc1330_craympich8129" in result.output
 
 
+def test_show_command_flags_unresolved_mpi_with_review_evidence(tmp_path) -> None:
+    import yaml
+
+    profile = yaml.safe_load(
+        fixture_path("profiles", "example-linux", "profile.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    profile["mpi_providers"] = [
+        {
+            "name": "openmpi",
+            "version": "4.1.7",
+            "provider_family": "site",
+            "prefix": "/p/app/penguin/openmpi/4.1.7/intel-2024.2.1",
+            "modules": ["testpenguin/openmpi/4.1.7/intel-2024.2.1"],
+        }
+    ]
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile), encoding="utf-8")
+
+    result = CliRunner().invoke(cli, ["show", "--profile", str(profile_path)])
+
+    assert result.exit_code == 0, result.output
+    assert "!! compiler pairing unresolved" in result.output
+    assert "prefix=/p/app/penguin/openmpi/4.1.7/intel-2024.2.1" in result.output
+    assert "modules=testpenguin/openmpi/4.1.7/intel-2024.2.1" in result.output
+
+
 def test_show_command_marks_ambiguous_mpi_versions(tmp_path) -> None:
     import yaml
 

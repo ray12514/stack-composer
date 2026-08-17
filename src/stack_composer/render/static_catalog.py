@@ -79,6 +79,8 @@ def render_static_catalog(
     defaults_path = templates_root / template_set_name / "defaults.yaml"
     defaults, defaults_issues = load_defaults(defaults_path)
     issues = [*profile_issues, *defaults_issues]
+    if not profile_issues:
+        issues.extend(unresolved_mpi_issues(profile))
     if issues:
         raise ValidationFailed(issues)
 
@@ -115,6 +117,28 @@ def render_static_catalog(
         shutil.rmtree(workspace)
     pending.rename(workspace)
     return workspace
+
+
+def unresolved_mpi_issues(profile: dict[str, Any]) -> list[Issue]:
+    issues: list[Issue] = []
+    for index, provider in enumerate(profile.get("mpi_providers") or []):
+        if mpi_scope_compilers(profile, provider):
+            continue
+        name = str(provider.get("name") or "(unknown)")
+        version = str(provider.get("version") or "(unknown)")
+        prefix = str(provider.get("prefix") or "(none)")
+        modules = ",".join(str(item) for item in provider.get("modules") or []) or "(none)"
+        issues.append(
+            Issue(
+                "error",
+                "mpi-compiler-unresolved",
+                f"mpi_providers[{index}]",
+                f"{name}@{version} prefix={prefix} modules={modules} has no "
+                "verified compiler pairing; correct discovery evidence or exclude "
+                "the reviewed module before rendering",
+            )
+        )
+    return issues
 
 
 def build_static_catalog(
@@ -324,42 +348,7 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
         for provider in variant_records:
             compiler_providers = mpi_scope_compilers(profile, provider)
             if not compiler_providers:
-                packages = mpi_packages_mapping(profile, provider, [])
-                if not packages:
-                    continue
-                base_scope_rel = (
-                    Path("scopes")
-                    / "mpi"
-                    / path_token(name)
-                    / path_token(version)
-                    / "unpaired"
-                )
-                scope_rel = base_scope_rel
-                suffix = 2
-                while scope_rel.as_posix() in seen_paths:
-                    scope_rel = base_scope_rel.with_name(f"unpaired-{suffix}")
-                    suffix += 1
-                seen_paths.add(scope_rel.as_posix())
-                scopes.append(
-                    {
-                        "kind": "mpi",
-                        "name": name,
-                        "package": mpi_package_name(name),
-                        "version": version,
-                        "provider_family": family,
-                        "path": scope_rel,
-                        "absolute_path": workspace / scope_rel,
-                        "packages": packages,
-                        "toolchains": {},
-                        "modules": sorted(
-                            module
-                            for package in packages.values()
-                            for ext in package.get("externals", [])
-                            for module in ext.get("modules", [])
-                        ),
-                    }
-                )
-                continue
+                raise ValidationFailed(unresolved_mpi_issues({"mpi_providers": [provider]}))
             for compiler_provider in compiler_providers:
                 compiler_ref = compiler_provider_ref(compiler_provider)
                 toolchain = (
@@ -638,7 +627,6 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
         ]
     )
     lines.extend(mpi_pairing_lines(recommended))
-    lines.extend(unpaired_mpi_lines(manifest, catalog_root))
     lines.extend(own_compiler_lines(recommended, catalog_root))
     lines.append("See `manifest.yaml` for all scopes and defaults.")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -712,34 +700,6 @@ def own_compiler_lines(recommended: dict[str, Any], catalog_root: Path) -> list[
         "uses it. They need Spack 1.2 or newer.",
         "",
     ]
-
-
-def unpaired_mpi_lines(manifest: dict[str, Any], catalog_root: Path) -> list[str]:
-    unpaired = [
-        scope
-        for scope in manifest.get("scopes") or []
-        if scope.get("kind") == "mpi" and not scope.get("toolchain")
-    ]
-    if not unpaired:
-        return []
-    lines = [
-        "Unpaired MPI inventory:",
-        "",
-        "The following verified MPI installations remain available as package-only scopes,",
-        "but their build compiler was not proven. They are not part of the recommended",
-        "include block and contain no `toolchains.yaml`:",
-        "",
-    ]
-    lines.extend(f"- `{catalog_root / str(scope['path'])}`" for scope in unpaired)
-    lines.extend(
-        [
-            "",
-            "Do not use one for a managed compiler/MPI lane until the profile records one",
-            "exact compatible compiler pairing.",
-            "",
-        ]
-    )
-    return lines
 
 
 def mpi_pairing_lines(recommended: dict[str, Any]) -> list[str]:

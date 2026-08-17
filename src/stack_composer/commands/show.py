@@ -16,7 +16,12 @@ import click
 
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
-from stack_composer.render.mpi import mpi_toolchain_name_for_profile
+from stack_composer.render.mpi import (
+    compiler_provider_ref,
+    mpi_toolchain_name_for_profile,
+    select_compiler_provider,
+    select_flavor_compiler,
+)
 from stack_composer.render.plan import _BASELINE_TARGET, plan_lanes, runtime_nodes
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
@@ -266,13 +271,13 @@ def mpi_variant_groups(entries: list[dict[str, Any]]) -> list[list[dict[str, Any
 def mpi_entry_lines(profile: dict[str, Any], name: str, entry: dict[str, Any]) -> list[str]:
     version = str(entry.get("version") or "(n/a)")
     family = entry.get("provider_family") or "?"
-    compilers = mpi_entry_compilers(entry)
-    compiler_text = f"compilers: {', '.join(compilers)}" if compilers else ""
+    compiler_refs = mpi_entry_compiler_refs(profile, entry)
+    compiler_text = f"compilers: {', '.join(compiler_refs)}" if compiler_refs else ""
     toolchain_text = ""
-    if compilers:
+    if compiler_refs:
         names = ", ".join(
             mpi_toolchain_name_for_profile(profile, compiler, name, str(entry.get("version")))
-            for compiler in compilers
+            for compiler in compiler_refs
         )
         toolchain_text = f"toolchains: {names}"
     modules = _fmt_modules(entry.get("modules") or [])
@@ -281,6 +286,9 @@ def mpi_entry_lines(profile: dict[str, Any], name: str, entry: dict[str, Any]) -
         parts.append(compiler_text)
     if toolchain_text:
         parts.append(toolchain_text)
+    if not compiler_refs:
+        parts.append("!! compiler pairing unresolved")
+    parts.append(f"prefix={entry.get('prefix') or '(flavor prefixes)'}")
     parts.append(f"modules={modules}")
     lines = [" ".join(parts).rstrip() + "   [platform]"]
     for compiler, flavor in (entry.get("flavors") or {}).items():
@@ -294,7 +302,9 @@ def mpi_variant_group_lines(
     first = entries[0]
     version = str(first.get("version") or "(n/a)")
     family = first.get("provider_family") or "?"
-    compiler_refs = sorted({ref for entry in entries for ref in mpi_entry_compiler_refs(entry)})
+    compiler_refs = sorted(
+        {ref for entry in entries for ref in mpi_entry_compiler_refs(profile, entry)}
+    )
     compiler_text = f"compilers: {_fmt_limited(compiler_refs)}" if compiler_refs else ""
     toolchain_text = ""
     if compiler_refs:
@@ -315,30 +325,40 @@ def mpi_variant_group_lines(
         parts.append(toolchain_text)
     parts.append(f"prefixes={prefix_count}")
     parts.append(f"modules={module_count}")
+    if not compiler_refs:
+        parts.append("!! compiler pairing unresolved")
     parts.append("[platform]")
-    return [" ".join(parts).rstrip()]
+    lines = [" ".join(parts).rstrip()]
+    for entry in entries:
+        refs = mpi_entry_compiler_refs(profile, entry)
+        pairing = _fmt_limited(refs) if refs else "UNRESOLVED"
+        lines.append(
+            f"    compiler={pairing} prefix={entry.get('prefix') or '(flavor prefixes)'} "
+            f"modules={_fmt_modules(entry.get('modules') or [])}"
+        )
+    return lines
 
 
-def mpi_entry_compilers(entry: dict[str, Any]) -> list[str]:
-    compilers = {
-        str(compiler).split("@", 1)[0]
-        for compiler in (entry.get("compatibility") or {}).get("compilers") or []
-    }
-    compilers |= {str(compiler).split("@", 1)[0] for compiler in entry.get("flavors") or {}}
-    if entry.get("compiler"):
-        compilers.add(str(entry["compiler"]).split("@", 1)[0])
-    return sorted(compilers)
-
-
-def mpi_entry_compiler_refs(entry: dict[str, Any]) -> list[str]:
-    refs = {str(compiler) for compiler in entry.get("flavors") or {}}
-    refs |= {
+def mpi_entry_compiler_refs(
+    profile: dict[str, Any], entry: dict[str, Any]
+) -> list[str]:
+    observed_refs = {str(compiler) for compiler in entry.get("flavors") or {}}
+    observed_refs |= {
         str(compiler)
         for compiler in (entry.get("compatibility") or {}).get("compilers") or []
     }
     if entry.get("compiler"):
-        refs.add(str(entry["compiler"]))
-    return sorted(refs)
+        observed_refs.add(str(entry["compiler"]))
+
+    resolved_refs: set[str] = set()
+    for compiler in observed_refs:
+        provider = (
+            select_flavor_compiler(profile, compiler, entry)
+            if entry.get("flavors")
+            else select_compiler_provider(profile, compiler)
+        )
+        resolved_refs.add(compiler_provider_ref(provider) if provider else compiler)
+    return sorted(resolved_refs)
 
 
 def gpu_arches(profile: dict[str, Any]) -> list[str]:

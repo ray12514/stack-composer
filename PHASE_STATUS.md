@@ -34,10 +34,9 @@ Primary planning docs:
   environments, package repos, and draft `release-manifest.yaml`.
 - `render-static`: reusable, include-ready Spack configuration catalogs from a
   Cluster Inspector profile, independent of managed stack lanes and deployment
-  roots. Every verified MPI external is retained. An exact observed
-  compiler/MPI pairing produces a toolchain scope; an MPI whose build compiler
-  is unknown produces a package-only `unpaired` scope and is not selected as a
-  recommendation.
+  roots. An exact observed compiler/MPI pairing produces a toolchain scope;
+  unresolved MPI observations are rejected with their prefix and module
+  evidence and never produce an `unpaired` scope.
 - `publish-manifest`: finalizes a draft manifest from downstream build evidence.
 - `spack-build`: local Spack-driving companion script.
 - Front-door Tcl modulefiles are rendered under the workspace's `modulefiles/`
