@@ -322,7 +322,45 @@ def build_mpi_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
         # every other compiler's build without reporting it.
         variant_records = [merged] if merged.get("flavors") else records
         for provider in variant_records:
-            for compiler_provider in mpi_scope_compilers(profile, provider):
+            compiler_providers = mpi_scope_compilers(profile, provider)
+            if not compiler_providers:
+                packages = mpi_packages_mapping(profile, provider, [])
+                if not packages:
+                    continue
+                base_scope_rel = (
+                    Path("scopes")
+                    / "mpi"
+                    / path_token(name)
+                    / path_token(version)
+                    / "unpaired"
+                )
+                scope_rel = base_scope_rel
+                suffix = 2
+                while scope_rel.as_posix() in seen_paths:
+                    scope_rel = base_scope_rel.with_name(f"unpaired-{suffix}")
+                    suffix += 1
+                seen_paths.add(scope_rel.as_posix())
+                scopes.append(
+                    {
+                        "kind": "mpi",
+                        "name": name,
+                        "package": mpi_package_name(name),
+                        "version": version,
+                        "provider_family": family,
+                        "path": scope_rel,
+                        "absolute_path": workspace / scope_rel,
+                        "packages": packages,
+                        "toolchains": {},
+                        "modules": sorted(
+                            module
+                            for package in packages.values()
+                            for ext in package.get("externals", [])
+                            for module in ext.get("modules", [])
+                        ),
+                    }
+                )
+                continue
+            for compiler_provider in compiler_providers:
                 compiler_ref = compiler_provider_ref(compiler_provider)
                 toolchain = (
                     mpi_toolchain_name(
@@ -566,6 +604,7 @@ def write_static_catalog(workspace: Path, catalog: dict[str, Any]) -> None:
 def write_readme(path: Path, manifest: dict[str, Any]) -> None:
     recommended = manifest.get("recommendations") or {}
     includes = recommended.get("include") or []
+    example_spec = "hdf5 +mpi" if recommended.get("mpi") else "zlib"
     catalog_root = Path(str(manifest["scope_root"])).parent
     lines = [
         f"# Static Spack platform catalog: {manifest['system'].get('name', 'unknown')}",
@@ -587,7 +626,7 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
     lines.extend(
         [
             "  specs:",
-            "  - hdf5 +mpi",
+            f"  - {example_spec}",
             "```",
             "",
             "`include::` with two colons is deliberate. It overrides every ambient",
@@ -599,6 +638,7 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
         ]
     )
     lines.extend(mpi_pairing_lines(recommended))
+    lines.extend(unpaired_mpi_lines(manifest, catalog_root))
     lines.extend(own_compiler_lines(recommended, catalog_root))
     lines.append("See `manifest.yaml` for all scopes and defaults.")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -617,6 +657,31 @@ def own_compiler_lines(recommended: dict[str, Any], catalog_root: Path) -> list[
     compiler_path = compiler.get("path")
     if not compiler_path:
         return []
+    if not mpi.get("path"):
+        return [
+            "Building your own compiler:",
+            "",
+            "A compiler scope declares that compiler as a non-buildable external. To build",
+            "your own instead, leave that scope out and name the compiler directly on the",
+            "specs that use it.",
+            "",
+            "```yaml",
+            "spack:",
+            "  include::",
+            f"  - {catalog_root / 'scopes' / 'common'}",
+            f"  # {catalog_root / compiler_path} left out on purpose",
+            "  specs:",
+            "  - group: compiler",
+            "    specs: [gcc@14.3.0]",
+            "  - group: apps",
+            "    needs: [compiler]",
+            "    specs: ['zlib %gcc@14.3.0']",
+            "```",
+            "",
+            "The `group` and `needs` keys order the compiler build ahead of everything that",
+            "uses it. They need Spack 1.2 or newer.",
+            "",
+        ]
     mpi_compiler = mpi.get("compiler_ref") or "the version its MPI scope names"
     return [
         "Building your own compiler:",
@@ -647,6 +712,34 @@ def own_compiler_lines(recommended: dict[str, Any], catalog_root: Path) -> list[
         "uses it. They need Spack 1.2 or newer.",
         "",
     ]
+
+
+def unpaired_mpi_lines(manifest: dict[str, Any], catalog_root: Path) -> list[str]:
+    unpaired = [
+        scope
+        for scope in manifest.get("scopes") or []
+        if scope.get("kind") == "mpi" and not scope.get("toolchain")
+    ]
+    if not unpaired:
+        return []
+    lines = [
+        "Unpaired MPI inventory:",
+        "",
+        "The following verified MPI installations remain available as package-only scopes,",
+        "but their build compiler was not proven. They are not part of the recommended",
+        "include block and contain no `toolchains.yaml`:",
+        "",
+    ]
+    lines.extend(f"- `{catalog_root / str(scope['path'])}`" for scope in unpaired)
+    lines.extend(
+        [
+            "",
+            "Do not use one for a managed compiler/MPI lane until the profile records one",
+            "exact compatible compiler pairing.",
+            "",
+        ]
+    )
+    return lines
 
 
 def mpi_pairing_lines(recommended: dict[str, Any]) -> list[str]:
@@ -765,10 +858,13 @@ def select_mpi_scope(
     candidates = [
         scope
         for scope in mpi_scopes
-        if not preferred_provider or scope["name"] == preferred_provider
+        if scope.get("toolchain")
+        and (not preferred_provider or scope["name"] == preferred_provider)
     ]
     if not candidates:
-        candidates = mpi_scopes
+        candidates = [scope for scope in mpi_scopes if scope.get("toolchain")]
+    if not candidates:
+        return None
     if compiler_scope:
         compiler_ref = str(compiler_scope.get("compiler_ref") or "")
         matching = [

@@ -306,6 +306,58 @@ def test_static_catalog_does_not_render_unknown_cuda_version(tmp_path: Path) -> 
     )
 
 
+def test_static_catalog_keeps_mpi_without_verified_compiler_pairing(
+    tmp_path: Path,
+) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
+    profile["system"]["name"] = "unpaired-mpi"
+    profile["mpi_providers"] = [
+        {
+            "name": "openmpi",
+            "version": "1.10.0",
+            "provider_family": "system",
+            "prefix": "/usr",
+        }
+    ]
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="catalog-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-08-17T00:00:00Z",
+            source_repo=SourceRepo("stack-content", "abc123", False),
+        ),
+    )
+
+    mpi_scope = workspace / "scopes" / "mpi" / "openmpi" / "1.10.0" / "unpaired"
+    packages = load_yaml(mpi_scope / "packages.yaml")["packages"]
+    assert packages["openmpi"]["externals"] == [
+        {"spec": "openmpi@1.10.0", "prefix": "/usr", "modules": []}
+    ]
+    assert not (mpi_scope / "toolchains.yaml").exists()
+
+    manifest = load_yaml(workspace / "manifest.yaml")
+    unpaired = next(
+        scope
+        for scope in manifest["scopes"]
+        if scope["path"] == "scopes/mpi/openmpi/1.10.0/unpaired"
+    )
+    assert "compiler_ref" not in unpaired
+    assert "toolchain" not in unpaired
+    assert manifest["recommendations"]["mpi"] is None
+
+    readme = (workspace / "README.md").read_text(encoding="utf-8")
+    assert "Unpaired MPI inventory:" in readme
+    assert "scopes/mpi/openmpi/1.10.0/unpaired" in readme
+    assert "- hdf5 +mpi" not in readme
+    assert "- zlib" in readme
+
+
 def test_static_catalog_maps_classic_intel_and_intel_mpi_packages(
     tmp_path: Path,
 ) -> None:

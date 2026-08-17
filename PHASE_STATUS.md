@@ -34,7 +34,10 @@ Primary planning docs:
   environments, package repos, and draft `release-manifest.yaml`.
 - `render-static`: reusable, include-ready Spack configuration catalogs from a
   Cluster Inspector profile, independent of managed stack lanes and deployment
-  roots.
+  roots. Every verified MPI external is retained. An exact observed
+  compiler/MPI pairing produces a toolchain scope; an MPI whose build compiler
+  is unknown produces a package-only `unpaired` scope and is not selected as a
+  recommendation.
 - `publish-manifest`: finalizes a draft manifest from downstream build evidence.
 - `spack-build`: local Spack-driving companion script.
 - Front-door Tcl modulefiles are rendered under the workspace's `modulefiles/`
@@ -138,8 +141,9 @@ renderer must be updated as one coherent slice:
   defaults/template policy, and fail when requested support is not proven. The
   CSE `init-workspace` helper currently implements the Open MPI/Slurm trial
   policy; production `render` currently only accepts and preserves the facts;
-- bind every payload lane, including Serial, to an explicit compiler-only or
-  compiler-plus-MPI toolchain rather than relying on package preference;
+- bind every payload lane, including Serial, to an explicit direct compiler
+  constraint or compiler-plus-MPI toolchain rather than relying on package
+  preference;
 - express GPU's MPI-superset roster as declarative package-set composition;
   the CSE pilot currently repeats the MPI roster in `science-full.yaml`, which
   works but can drift;
