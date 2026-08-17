@@ -46,7 +46,6 @@ from stack_composer.render.release import ReleaseVars
 from stack_composer.render.scopes import (
     add_external,
     compiler_external,
-    compiler_toolchain_entries,
     mpi_provider_externals,
     mpi_provider_variants,
     mpi_scope_dependency_externals,
@@ -274,8 +273,6 @@ def build_compiler_scopes(
                 "externals": [compiler_external(provider)],
             }
         }
-        toolchain_name = path_token(f"{name}-{version}")
-        toolchains = {toolchain_name: compiler_toolchain_entries(provider)}
         scope = {
             "kind": "compiler",
             "name": str(name),
@@ -285,7 +282,7 @@ def build_compiler_scopes(
             "path": scope_rel,
             "absolute_path": workspace / scope_rel,
             "packages": packages,
-            "toolchains": toolchains,
+            "toolchains": {},
             "modules": provider.get("modules") or [],
         }
         scopes.append(scope)
@@ -472,7 +469,7 @@ def build_gpu_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
             key=lambda item: version_key(str(item.get("version") or "")),
         ):
             version = toolkit.get("version")
-            if not version:
+            if not is_renderable_external_name_version(output_name, version):
                 continue
             packages = packages_mapping(builder(toolkit))
             if not packages:

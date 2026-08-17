@@ -11,7 +11,11 @@ def is_spack_package_name(value: object) -> bool:
 
 
 def is_spack_version(value: object) -> bool:
-    return isinstance(value, str) and bool(_VERSION_RE.fullmatch(value))
+    return (
+        isinstance(value, str)
+        and value.lower() != "unknown"
+        and bool(_VERSION_RE.fullmatch(value))
+    )
 
 
 def is_renderable_external_name_version(name: object, version: object) -> bool:

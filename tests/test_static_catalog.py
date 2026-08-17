@@ -57,6 +57,14 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
 
     compiler = load_yaml(workspace / "scopes" / "compilers" / "gcc" / "13.3.0" / "packages.yaml")
     assert compiler["packages"]["gcc"]["externals"][0]["spec"] == "gcc@13.3.0"
+    assert not (
+        workspace
+        / "scopes"
+        / "compilers"
+        / "gcc"
+        / "13.3.0"
+        / "toolchains.yaml"
+    ).exists()
 
     mpi_packages = load_yaml(
         workspace
@@ -261,6 +269,41 @@ def test_static_catalog_renders_linux_mpi_pairing(tmp_path: Path) -> None:
     )
     toolchains = load_yaml(mpi_scope / "toolchains.yaml")
     assert "aocc420_openmpi416" in toolchains["toolchains"]
+
+
+def test_static_catalog_does_not_render_unknown_cuda_version(tmp_path: Path) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
+    profile["system"]["name"] = "unknown-cuda"
+    profile.setdefault("gpu_toolkit_modules", {})["cudatoolkit"] = [
+        {
+            "version": "unknown",
+            "module": "cuda/default",
+            "prefix": "/usr/local/cuda",
+        }
+    ]
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="catalog-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-08-17T00:00:00Z",
+            source_repo=SourceRepo("stack-content", "abc123", False),
+        ),
+    )
+
+    assert not (workspace / "scopes" / "gpu" / "cuda" / "unknown").exists()
+    manifest = load_yaml(workspace / "manifest.yaml")
+    assert not any(
+        scope["kind"] == "gpu"
+        and scope["name"] == "cuda"
+        and scope["version"] == "unknown"
+        for scope in manifest["scopes"]
+    )
 
 
 def test_static_catalog_maps_classic_intel_and_intel_mpi_packages(
