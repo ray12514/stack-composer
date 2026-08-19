@@ -112,6 +112,7 @@ def render_static_catalog(
         template_set_name=template_set_name,
     )
     write_static_catalog(pending, catalog)
+    shutil.copyfile(profile_path, pending / "profile.yaml")
 
     if workspace.exists():
         shutil.rmtree(workspace)
@@ -257,6 +258,7 @@ def build_static_catalog(
             "dirty": release_vars.source_repo.dirty,
         },
         "scope_root": str(published_workspace / "scopes"),
+        "profile_snapshot": "profile.yaml",
         "recommendations": recommendations,
         "scopes": [manifest_scope(scope) for scope in scopes],
     }
@@ -628,6 +630,8 @@ def write_readme(path: Path, manifest: dict[str, Any]) -> None:
     )
     lines.extend(mpi_pairing_lines(recommended))
     lines.extend(own_compiler_lines(recommended, catalog_root))
+    lines.append("The exact reviewed Cluster Inspector input is retained as `profile.yaml`.")
+    lines.append("")
     lines.append("See `manifest.yaml` for all scopes and defaults.")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

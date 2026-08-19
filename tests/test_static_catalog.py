@@ -30,11 +30,15 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     assert workspace == tmp_path / "example-cray" / "static" / "alpha-001"
     assert (workspace / "README.md").exists()
     assert (workspace / "manifest.yaml").exists()
+    assert (workspace / "profile.yaml").read_bytes() == fixture_path(
+        "profiles", "example-cray", "profile.yaml"
+    ).read_bytes()
     assert (workspace / "reports" / "static-plan.yaml").exists()
 
     assert_yaml_files_parse(workspace)
     manifest = load_yaml(workspace / "manifest.yaml")
     assert manifest["kind"] == "static-platform-catalog"
+    assert manifest["profile_snapshot"] == "profile.yaml"
     assert manifest["scope_root"] == str(workspace / "scopes")
     assert manifest["profile_facts"]["fabric"]
     assert manifest["profile_facts"]["system_externals"]
@@ -49,6 +53,7 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     ]
     readme = (workspace / "README.md").read_text(encoding="utf-8")
     assert f"  - {workspace}/scopes/common" in readme
+    assert "retained as `profile.yaml`" in readme
 
     common = load_yaml(workspace / "scopes" / "common" / "packages.yaml")
     assert sorted(common["packages"]) == ["curl", "libfabric", "openssl", "ucx"]

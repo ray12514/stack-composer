@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import stat
+import sys
 from pathlib import Path
 
 import yaml
@@ -167,6 +169,66 @@ def test_init_workspace_can_snapshot_catalog_into_handoff(tmp_path: Path) -> Non
     )
     assert manifest["catalog"]["source_root"] == str(catalog)
     assert manifest["catalog"]["workspace_root"] == "catalog"
+
+
+def test_init_workspace_applies_declared_group_collaboration_modes(
+    tmp_path: Path,
+) -> None:
+    blueprint, catalog, values = make_inputs(tmp_path)
+    output = tmp_path / "workspace"
+    blueprint_data = yaml.safe_load(
+        (blueprint / "blueprint.yaml").read_text(encoding="utf-8")
+    )
+    blueprint_data["apply_workspace_permissions"] = True
+    blueprint_data["snapshot_catalog"] = True
+    write_yaml(blueprint / "blueprint.yaml", blueprint_data)
+    values_data = yaml.safe_load(values.read_text(encoding="utf-8"))
+    values_data["permissions"] = {
+        "group": "cse",
+        "read": "group",
+        "write": "group",
+    }
+    write_yaml(values, values_data)
+
+    previous_umask = os.umask(0o077)
+    try:
+        result = invoke_init(blueprint, catalog, values, output)
+    finally:
+        os.umask(previous_umask)
+
+    assert result.exit_code == 0, result.output
+    assert stat.S_IMODE(output.stat().st_mode) & 0o777 == 0o770
+    assert stat.S_IMODE((output / "catalog" / "scopes").stat().st_mode) & 0o777 == 0o770
+    if sys.platform.startswith("linux"):
+        assert output.stat().st_mode & stat.S_ISGID
+        assert (output / "catalog" / "scopes").stat().st_mode & stat.S_ISGID
+    assert stat.S_IMODE((output / "README.md").stat().st_mode) == 0o660
+    assert stat.S_IMODE((output / "workspace-manifest.yaml").stat().st_mode) == 0o660
+    assert stat.S_IMODE((output / "launch.sh").stat().st_mode) == 0o770
+
+
+def test_init_workspace_applies_consumer_read_only_modes(tmp_path: Path) -> None:
+    blueprint, catalog, values = make_inputs(tmp_path)
+    output = tmp_path / "workspace"
+    blueprint_data = yaml.safe_load(
+        (blueprint / "blueprint.yaml").read_text(encoding="utf-8")
+    )
+    blueprint_data["apply_workspace_permissions"] = True
+    write_yaml(blueprint / "blueprint.yaml", blueprint_data)
+    values_data = yaml.safe_load(values.read_text(encoding="utf-8"))
+    values_data["permissions"] = {
+        "group": "cse",
+        "read": "world",
+        "write": "user",
+    }
+    write_yaml(values, values_data)
+
+    result = invoke_init(blueprint, catalog, values, output)
+
+    assert result.exit_code == 0, result.output
+    assert stat.S_IMODE(output.stat().st_mode) & 0o777 == 0o755
+    assert stat.S_IMODE((output / "README.md").stat().st_mode) == 0o644
+    assert stat.S_IMODE((output / "launch.sh").stat().st_mode) == 0o755
 
 
 def test_init_workspace_rejects_existing_output_without_overwrite(tmp_path: Path) -> None:

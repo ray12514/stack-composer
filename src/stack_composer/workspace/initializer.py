@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import stat
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +79,8 @@ def initialize_workspace(
         }
         write_yaml(pending / "workspace-manifest.yaml", manifest)
         _validate_generated_yaml(pending)
+        if blueprint.get("apply_workspace_permissions", False):
+            _apply_workspace_permissions(pending, values["permissions"])
         if output_dir.exists():
             shutil.rmtree(output_dir)
         pending.replace(output_dir)
@@ -127,6 +130,55 @@ def _validate_inputs(
                 "must be true or false",
             )
         )
+    apply_workspace_permissions = blueprint.get("apply_workspace_permissions", False)
+    if not isinstance(apply_workspace_permissions, bool):
+        issues.append(
+            Issue(
+                "error",
+                "apply-workspace-permissions",
+                "blueprint.apply_workspace_permissions",
+                "must be true or false",
+            )
+        )
+    elif apply_workspace_permissions:
+        permissions = values.get("permissions")
+        if not isinstance(permissions, dict):
+            issues.append(
+                Issue(
+                    "error",
+                    "workspace-permissions",
+                    "values.permissions",
+                    "must be a mapping",
+                )
+            )
+        else:
+            if not str(permissions.get("group") or "").strip():
+                issues.append(
+                    Issue(
+                        "error",
+                        "workspace-permissions",
+                        "values.permissions.group",
+                        "required",
+                    )
+                )
+            if permissions.get("read") not in {"group", "world"}:
+                issues.append(
+                    Issue(
+                        "error",
+                        "workspace-permissions",
+                        "values.permissions.read",
+                        "must be group or world",
+                    )
+                )
+            if permissions.get("write") not in {"user", "group"}:
+                issues.append(
+                    Issue(
+                        "error",
+                        "workspace-permissions",
+                        "values.permissions.write",
+                        "must be user or group",
+                    )
+                )
     template_root = blueprint.get("template_root")
     if template_root:
         try:
@@ -257,6 +309,38 @@ def _render_tree(template_root: Path, destination: Path, context: dict[str, Any]
         else:
             shutil.copyfile(source, target)
         shutil.copymode(source, target)
+
+
+def _apply_workspace_permissions(root: Path, permissions: dict[str, Any]) -> None:
+    """Apply the declared access policy only to the newly rendered workspace."""
+    read = str(permissions["read"])
+    write = str(permissions["write"])
+    group_access = read in {"group", "world"} or write == "group"
+    world_access = read == "world"
+
+    directory_mode = stat.S_ISGID | stat.S_IRWXU
+    file_mode = stat.S_IRUSR | stat.S_IWUSR
+    executable_mode = file_mode | stat.S_IXUSR
+    if group_access:
+        directory_mode |= stat.S_IRGRP | stat.S_IXGRP
+        file_mode |= stat.S_IRGRP
+        executable_mode |= stat.S_IRGRP | stat.S_IXGRP
+    if write == "group":
+        directory_mode |= stat.S_IWGRP
+        file_mode |= stat.S_IWGRP
+        executable_mode |= stat.S_IWGRP
+    if world_access:
+        directory_mode |= stat.S_IROTH | stat.S_IXOTH
+        file_mode |= stat.S_IROTH
+        executable_mode |= stat.S_IROTH | stat.S_IXOTH
+
+    paths = [*root.rglob("*"), root]
+    for path in paths:
+        if path.is_dir():
+            path.chmod(directory_mode)
+        elif path.is_file():
+            current_mode = stat.S_IMODE(path.stat().st_mode)
+            path.chmod(executable_mode if current_mode & 0o111 else file_mode)
 
 
 def _render_relative_path(

@@ -18,7 +18,8 @@ Current implementation status:
 - `render` writes deterministic draft workspaces with rendered config scopes,
   lane environments, package repos, and `release-manifest.yaml`.
 - `render-static` writes a reusable catalog of observed platform scopes for
-  package managers who want to author their own Spack environments.
+  package managers who want to author their own Spack environments. The exact
+  reviewed input is retained as `profile.yaml` beside the catalog.
 - `init-workspace` is a CSE pilot convenience that assembles an authored
   starter blueprint against an exact static catalog selection. It is not a
   production render mode or a supported long-term consumption seam; it does
@@ -68,7 +69,9 @@ stack-composer init-workspace \
 The blueprint owns package intent and exposure policy. The values file selects
 real catalog scopes and deployment roots. The command rejects missing or
 escaping catalog paths, unsupported provider modes, incomplete values, and
-invalid generated YAML before publishing the workspace atomically.
+invalid generated YAML before publishing the workspace atomically. A blueprint
+may also request that the declared read/write policy be applied to the files and
+directories in the newly initialized workspace.
 
 ## GitLab Note
 
