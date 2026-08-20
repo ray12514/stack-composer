@@ -25,6 +25,7 @@ from stack_composer.render.provider_packages import (
     compiler_package_name,
     mpi_package_name,
     mpi_runtime_dependency_names,
+    mpi_runtime_environment_paths,
     mpi_scope_dependency_names,
 )
 from stack_composer.render.spack_specs import (
@@ -279,6 +280,7 @@ def mpi_provider_externals(
     provider: dict[str, Any],
     rendered_lanes: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    extra_attributes = mpi_external_extra_attributes(profile, str(provider["name"]))
     if provider.get("flavors"):
         externals = []
         dependency_specs = mpi_runtime_dependency_specs(profile, str(provider["name"]))
@@ -318,13 +320,14 @@ def mpi_provider_externals(
             if spec in seen_specs:
                 continue
             seen_specs.add(spec)
-            externals.append(
-                {
-                    "spec": spec,
-                    "prefix": flavor["prefix"],
-                    "modules": flavor.get("modules") or [],
-                }
-            )
+            external = {
+                "spec": spec,
+                "prefix": flavor["prefix"],
+                "modules": flavor.get("modules") or [],
+            }
+            if extra_attributes:
+                external["extra_attributes"] = extra_attributes
+            externals.append(external)
         return externals
 
     if not is_absolute_prefix(provider.get("prefix")):
@@ -339,21 +342,46 @@ def mpi_provider_externals(
         return []
     compiler_provider = select_compiler_provider(profile, compiler) if compiler else None
     compiler_ref = compiler_spec(compiler_provider) if compiler_provider else compiler
-    return [
-        {
-            "spec": external_spec(
-                mpi_package_name(provider),
-                provider["version"],
-                mpi_external_suffix(
-                    provider,
-                    compiler_ref,
-                    mpi_runtime_dependency_specs(profile, str(provider["name"])),
-                ),
+    external = {
+        "spec": external_spec(
+            mpi_package_name(provider),
+            provider["version"],
+            mpi_external_suffix(
+                provider,
+                compiler_ref,
+                mpi_runtime_dependency_specs(profile, str(provider["name"])),
             ),
-            "prefix": provider["prefix"],
-            "modules": provider.get("modules") or [],
-        }
-    ]
+        ),
+        "prefix": provider["prefix"],
+        "modules": provider.get("modules") or [],
+    }
+    if extra_attributes:
+        external["extra_attributes"] = extra_attributes
+    return [external]
+
+
+def mpi_external_extra_attributes(
+    profile: dict[str, Any], provider_name: str
+) -> dict[str, Any] | None:
+    """Build clean-environment runtime search paths for an external MPI.
+
+    Dependency versions and prefixes come from Cluster Inspector facts.  Only
+    the provider adapter supplies the product-specific library subdirectory.
+    """
+    mappings = mpi_runtime_environment_paths(provider_name)
+    if not mappings:
+        return None
+    prepend_path: dict[str, str] = {}
+    for dependency in selected_mpi_runtime_dependency_externals(profile, provider_name):
+        mapping = mappings.get(str(dependency.get("name") or ""))
+        prefix = dependency.get("prefix")
+        if not mapping or not is_absolute_prefix(prefix):
+            continue
+        variable, subdirectory = mapping
+        prepend_path[variable] = path_join(str(prefix), subdirectory)
+    if not prepend_path:
+        return None
+    return {"environment": {"prepend_path": prepend_path}}
 
 
 def selected_mpi_lane_compiler_refs(

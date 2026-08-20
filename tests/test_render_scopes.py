@@ -393,6 +393,13 @@ def test_rendered_cray_workspace_contains_external_scopes(tmp_path: Path) -> Non
     assert cray_mpich["packages"]["cray-mpich"]["variants"] == "+wrappers"
     mpich_specs = [entry["spec"] for entry in cray_mpich["packages"]["cray-mpich"]["externals"]]
     assert mpich_specs == ["cray-mpich@8.1.29"]
+    assert cray_mpich["packages"]["cray-mpich"]["externals"][0]["extra_attributes"] == {
+        "environment": {
+            "prepend_path": {
+                "LD_LIBRARY_PATH": "/opt/cray/libfabric/1.20/lib64",
+            }
+        }
+    }
 
     cray_mpich_toolchains = load_yaml(
         workspace / "configs" / "mpi" / "cray-mpich" / "toolchains.yaml"

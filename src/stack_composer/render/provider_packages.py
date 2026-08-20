@@ -31,6 +31,16 @@ _MPI_SCOPE_DEPENDENCIES = {
     "cray-mpich": ("cray-pmi",),
 }
 
+# Provider-owned runtime search paths that must be present when Spack uses an
+# external MPI from a clean build environment.  Keep this mapping at the
+# provider adapter seam: the renderer selects the observed dependency version
+# and prefix, while this table owns only the product-tree layout.
+_MPI_RUNTIME_ENVIRONMENT_PATHS = {
+    "cray-mpich": {
+        "libfabric": ("LD_LIBRARY_PATH", "lib64"),
+    },
+}
+
 
 def compiler_package_name(provider: dict[str, Any] | str) -> str:
     name = str(provider.get("name") if isinstance(provider, dict) else provider)
@@ -50,3 +60,11 @@ def mpi_runtime_dependency_names(provider: dict[str, Any] | str) -> tuple[str, .
 def mpi_scope_dependency_names(provider: dict[str, Any] | str) -> tuple[str, ...]:
     name = str(provider.get("name") if isinstance(provider, dict) else provider)
     return _MPI_SCOPE_DEPENDENCIES.get(name, ())
+
+
+def mpi_runtime_environment_paths(
+    provider: dict[str, Any] | str,
+) -> dict[str, tuple[str, str]]:
+    """Return dependency-to-environment mappings for one external MPI."""
+    name = str(provider.get("name") if isinstance(provider, dict) else provider)
+    return dict(_MPI_RUNTIME_ENVIRONMENT_PATHS.get(name, {}))

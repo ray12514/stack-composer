@@ -143,6 +143,13 @@ def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
             "languages": ["c", "c++", "fortran"],
         },
     ]
+    profile["fabric"]["userspace"].append(
+        {
+            "name": "libfabric",
+            "version": "2.3.1",
+            "prefix": "/opt/cray/libfabric/2.3.1",
+        }
+    )
     profile["mpi_providers"] = [
         {
             "name": "cray-mpich",
@@ -198,6 +205,13 @@ def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
         "/opt/cray/pe/mpich/9.1.0/ofi/gnu/12.3"
     )
     assert packages["cray-mpich"]["externals"][0]["spec"] == "cray-mpich@9.1.0"
+    assert packages["cray-mpich"]["externals"][0]["extra_attributes"] == {
+        "environment": {
+            "prepend_path": {
+                "LD_LIBRARY_PATH": "/opt/cray/libfabric/2.3.1/lib64",
+            }
+        }
+    }
     assert packages["cray-mpich"]["variants"] == "+wrappers"
     manifest = load_yaml(workspace / "manifest.yaml")
     scope = next(
