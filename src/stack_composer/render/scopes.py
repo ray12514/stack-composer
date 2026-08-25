@@ -23,6 +23,7 @@ from stack_composer.render.plan import vendor_scope_for_provider
 from stack_composer.render.platform import selected_system_externals
 from stack_composer.render.provider_packages import (
     compiler_package_name,
+    compiler_package_prefix,
     mpi_package_name,
     mpi_runtime_dependency_names,
     mpi_runtime_environment_paths,
@@ -128,7 +129,7 @@ def compiler_external(provider: dict[str, Any]) -> dict[str, Any]:
     name = compiler_package_name(provider)
     external: dict[str, Any] = {
         "spec": external_spec(name, provider["version"]),
-        "prefix": provider["prefix"],
+        "prefix": compiler_package_prefix(provider),
         "modules": provider.get("modules") or [],
     }
     compilers = compiler_commands(provider)

@@ -36,8 +36,10 @@ refresh, verification, and buildcache publication.
   workspace validation.
 - Generic compiler, MPI, GPU, OS, target, external-package, view, and
   front-door module planning from profile/defaults/stack/deployment inputs.
-- Provider identity translation at one adapter seam when Spack package names
-  differ from observed names: Classic Intel, LLVM-based oneAPI, and Intel MPI.
+- Provider identity and package-layout translation at one adapter seam when
+  Spack differs from observed facts: Classic Intel, LLVM-based oneAPI, Intel
+  MPI, and oneAPI component-prefix normalization to the Spack suite root while
+  preserving exact driver paths.
 - Static catalogs that retain the exact reviewed profile, compiler scopes,
   compiler-specific MPI scopes and toolchains, platform/common/GPU scopes,
   recommendations, and a machine-readable plan.

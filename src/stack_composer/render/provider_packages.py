@@ -8,6 +8,7 @@ vendor checks through templates.
 
 from __future__ import annotations
 
+import posixpath
 from typing import Any
 
 _COMPILER_PACKAGES = {
@@ -45,6 +46,26 @@ _MPI_RUNTIME_ENVIRONMENT_PATHS = {
 def compiler_package_name(provider: dict[str, Any] | str) -> str:
     name = str(provider.get("name") if isinstance(provider, dict) else provider)
     return _COMPILER_PACKAGES.get(name, name)
+
+
+def compiler_package_prefix(provider: dict[str, Any]) -> str:
+    """Translate an observed compiler prefix to the package's external root.
+
+    Cluster Inspector reports the directory containing oneAPI's verified
+    drivers, which ends in ``compiler/<major.minor>``. Spack's
+    ``intel-oneapi-compilers`` package treats its external prefix as the suite
+    root and appends that component path itself. Passing the observed component
+    directory through unchanged therefore repeats ``compiler/<major.minor>``.
+    """
+    prefix = str(provider["prefix"])
+    if provider.get("name") != "oneapi":
+        return prefix
+
+    component_parent, component_version = posixpath.split(posixpath.normpath(prefix))
+    suite_root, component_name = posixpath.split(component_parent)
+    if component_name == "compiler" and component_version:
+        return suite_root
+    return prefix
 
 
 def mpi_package_name(provider: dict[str, Any] | str) -> str:

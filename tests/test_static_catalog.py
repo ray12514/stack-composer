@@ -449,6 +449,63 @@ def test_static_catalog_maps_classic_intel_and_intel_mpi_packages(
     }
 
 
+def test_static_catalog_uses_oneapi_suite_root_for_wheat_component_prefix(
+    tmp_path: Path,
+) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
+    profile["system"]["name"] = "wheat"
+    profile["compiler_providers"] = [
+        {
+            "name": "oneapi",
+            "version": "2024.2.1",
+            "provider_family": "site",
+            "prefix": "/p/app/intel/2024.2.1/compiler/2024.2",
+            "modules": [
+                "intel/2024.2.1/compiler/latest",
+                "intel/2024.2.1/compiler-rt/latest",
+                "intel/2024.2.1/tbb/latest",
+            ],
+            "languages": ["c", "c++", "fortran"],
+        }
+    ]
+    profile["mpi_providers"] = []
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile, sort_keys=False), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="wheat-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-08-25T00:00:00Z",
+            source_repo=SourceRepo("stack-content", "abc123", False),
+        ),
+    )
+
+    packages_path = (
+        workspace
+        / "scopes"
+        / "compilers"
+        / "oneapi"
+        / "2024.2.1"
+        / "packages.yaml"
+    )
+    external = load_yaml(packages_path)["packages"]["intel-oneapi-compilers"][
+        "externals"
+    ][0]
+    assert external["prefix"] == "/p/app/intel/2024.2.1"
+    assert external["extra_attributes"]["compilers"] == {
+        "c": "/p/app/intel/2024.2.1/compiler/2024.2/bin/icx",
+        "cxx": "/p/app/intel/2024.2.1/compiler/2024.2/bin/icpx",
+        "fortran": "/p/app/intel/2024.2.1/compiler/2024.2/bin/ifx",
+    }
+    assert "compiler/2024.2/compiler/2024.2" not in packages_path.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_static_catalog_uses_spack_cce_driver_names(tmp_path: Path) -> None:
     profile = load_yaml(fixture_path("profiles", "example-linux", "profile.yaml"))
     profile["system"]["name"] = "current-cce"
