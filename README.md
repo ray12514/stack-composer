@@ -82,11 +82,16 @@ PYTHON=.venv/bin/python scripts/build-pyz.sh
 Initialize an authored pilot workspace from a static catalog with:
 
 ```bash
+export STACK_CONTENT_ROOT="<site-selected Stack Content checkout>"
+export CATALOG_ROOT="<site-selected catalog root>"
+export WORKSPACE_ROOT="<site-selected workspace root>"
+export SITE_VALUES_FILE="<reviewed site-values file>"
+
 stack-composer init-workspace \
-  --blueprint /path/to/stack-content/pilots/cse-pilot \
-  --catalog /path/to/rendered-static/<system>/static/<catalog-release> \
-  --values /path/to/<system>-cse-pilot-values.yaml \
-  --output /path/to/workspaces/<system>/cse-pilot/<release>
+  --blueprint "$STACK_CONTENT_ROOT/pilots/cse-pilot" \
+  --catalog "$CATALOG_ROOT/<system>/static/<catalog-release>" \
+  --values "$SITE_VALUES_FILE" \
+  --output "$WORKSPACE_ROOT/<system>/cse-pilot/<release>"
 ```
 
 The blueprint owns package intent and exposure policy. The values file selects
@@ -99,11 +104,15 @@ directories in the newly initialized workspace.
 Render a reusable static catalog with:
 
 ```bash
+export PROFILE_FILE="<reviewed system profile>"
+export STACK_CONTENT_ROOT="<site-selected Stack Content checkout>"
+export CATALOG_ROOT="<site-selected catalog root>"
+
 stack-composer render-static \
-  --profile /path/to/profile.yaml \
-  --templates /path/to/stack-content/templates \
+  --profile "$PROFILE_FILE" \
+  --templates "$STACK_CONTENT_ROOT/templates" \
   --template-set v6 \
-  --output-root /path/to/catalogs \
+  --output-root "$CATALOG_ROOT" \
   --release <catalog-release> \
   --rendered-at <utc-timestamp> \
   --source-repo <source-identifier> \

@@ -50,11 +50,13 @@ CLI subcommand.
 ## Static catalog
 
 ```bash
+export CATALOG_ROOT="<site-selected catalog root>"
+
 stack-composer render-static \
   --profile systems/example-cray/profile.yaml \
   --templates templates \
   --template-set v6 \
-  --output-root /shared/catalogs \
+  --output-root "$CATALOG_ROOT" \
   --release example-cray-catalog-001 \
   --rendered-at 2026-08-24T00:00:00Z \
   --source-repo stack-content \
@@ -92,11 +94,16 @@ inspect Git; all provenance fields remain explicit inputs.
 ## Initial Conversion Trials workspace
 
 ```bash
+export CATALOG_ROOT="<site-selected catalog root>"
+export WORKSPACE_ROOT="<site-selected workspace root>"
+export STACK_CONTENT_ROOT="<site-selected Stack Content checkout>"
+export SITE_VALUES_FILE="<reviewed site-values file>"
+
 stack-composer init-workspace \
-  --blueprint /path/to/stack-content/pilots/cse-pilot \
-  --catalog /shared/catalogs/example-cray/static/example-cray-catalog-001 \
-  --values /path/to/example-cray-values.yaml \
-  --output /shared/workspaces/example-cray/example-cray-trial-001
+  --blueprint "$STACK_CONTENT_ROOT/pilots/cse-pilot" \
+  --catalog "$CATALOG_ROOT/example-cray/static/example-cray-catalog-001" \
+  --values "$SITE_VALUES_FILE" \
+  --output "$WORKSPACE_ROOT/example-cray/example-cray-trial-001"
 ```
 
 The blueprint owns the generated file set and required values. The initializer

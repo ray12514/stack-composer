@@ -5,10 +5,10 @@ spec-native stack-generation model.
 
 ## Read these first
 
-1. `~/Development/stack-planning/docs/stack_generation_structure_v1.md`
-2. `~/Development/stack-planning/docs/end_to_end_map_v1.md`
-3. `~/Development/stack-planning/docs/deployment_inputs_and_ownership_v1.md`
-4. `~/Development/stack-planning/docs/stack_build_handoff_note_v1.md`
+1. `../stack-planning/docs/stack_generation_structure_v1.md`
+2. `../stack-planning/docs/end_to_end_map_v1.md`
+3. `../stack-planning/docs/deployment_inputs_and_ownership_v1.md`
+4. `../stack-planning/docs/stack_build_handoff_note_v1.md`
 5. `PHASE_STATUS.md`
 
 ## Current model
@@ -63,7 +63,8 @@ If a tool proposes one, remove it before committing.
 
 If render behavior changes, also render a reference fixture and inspect the
 workspace. If the rendered tree or `spack-build` seam changes, run the available
-Docker/Spack smoke path from `~/Development/cse-stack/scripts` when feasible.
+Docker/Spack smoke path from the sibling `cse-stack/scripts` checkout when
+feasible.
 
 ## Keep the model narrow
 
