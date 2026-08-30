@@ -10,6 +10,9 @@ from stack_composer.commands import (
     publish_manifest as publish_manifest_command,
 )
 from stack_composer.commands import (
+    publish_static as publish_static_command,
+)
+from stack_composer.commands import (
     render as render_command,
 )
 from stack_composer.commands import (
@@ -34,7 +37,7 @@ from stack_composer.errors import ValidationFailed, format_issues
 @click.option("--licenses", "show_licenses", is_flag=True, help="Print bundled license metadata.")
 @click.pass_context
 def cli(ctx: click.Context, show_licenses: bool) -> None:
-    """Render and validate declarative Spack stack workspaces."""
+    """Render, publish, and validate declarative Spack stack artifacts."""
     if show_licenses:
         print_licenses()
         ctx.exit(0)
@@ -178,6 +181,39 @@ def render_static(
         source_commit=source_commit,
         source_dirty=source_dirty,
         overwrite=overwrite,
+    )
+
+
+@cli.command("publish-static")
+@click.option("--catalog", required=True, help="Reviewed static catalog directory.")
+@click.option("--output-root", required=True, help="Published static catalog output root.")
+@click.option("--published-at", required=True, help="Explicit UTC publication timestamp.")
+@click.option("--reviewed-by", required=True, help="Recorded catalog reviewer or role.")
+@click.option("--approved-by", required=True, help="Recorded publication authority or role.")
+@click.option(
+    "--group",
+    "publication_group",
+    help="Unix group assigned to the published namespace and release tree.",
+)
+@click.option("--set-current", is_flag=True, help="Point current at the published release.")
+def publish_static(
+    catalog: str,
+    output_root: str,
+    published_at: str,
+    reviewed_by: str,
+    approved_by: str,
+    publication_group: str | None,
+    set_current: bool,
+) -> None:
+    """Promote one reviewed static catalog into an immutable public release."""
+    publish_static_command.run(
+        catalog=catalog,
+        output_root=output_root,
+        published_at=published_at,
+        reviewed_by=reviewed_by,
+        approved_by=approved_by,
+        publication_group=publication_group,
+        set_current=set_current,
     )
 
 

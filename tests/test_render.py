@@ -505,6 +505,8 @@ def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
         "netcdf-c@4.9.2~mpi",
     ]
     assert modules["default"]["tcl"]["projections"]["all"] == "{name}/{version}"
+    assert modules["default"]["tcl"]["all"]["autoload"] == "direct"
+    assert modules["default"]["tcl"]["all"]["conflict"] == ["{name}"]
 
 
 def test_core_default_view_contains_only_ambient_foundation(tmp_path: Path) -> None:

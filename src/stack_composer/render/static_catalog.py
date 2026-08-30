@@ -107,7 +107,6 @@ def render_static_catalog(
         profile=profile,
         defaults=defaults,
         workspace=pending,
-        published_workspace=workspace,
         release_vars=release_vars,
         template_set_name=template_set_name,
     )
@@ -147,7 +146,6 @@ def build_static_catalog(
     profile: dict[str, Any],
     defaults: dict[str, Any],
     workspace: Path,
-    published_workspace: Path,
     release_vars: ReleaseVars,
     template_set_name: str,
 ) -> dict[str, Any]:
@@ -257,7 +255,7 @@ def build_static_catalog(
             "commit": release_vars.source_repo.commit,
             "dirty": release_vars.source_repo.dirty,
         },
-        "scope_root": str(published_workspace / "scopes"),
+        "scope_root": "scopes",
         "profile_snapshot": "profile.yaml",
         "recommendations": recommendations,
         "scopes": [manifest_scope(scope) for scope in scopes],

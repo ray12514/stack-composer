@@ -15,6 +15,7 @@ There are two long-term render products and one temporary helper:
 | Command | Output | Intended consumer |
 |---|---|---|
 | `render-static` | Reusable, include-ready platform scopes from one reviewed `profile.yaml` | Package managers authoring their own Spack environments |
+| `publish-static` | An immutable public copy of one reviewed static catalog, with checksums and approval metadata | Package managers and `init-workspace` |
 | `render` | A complete managed workspace from profile, deployment, defaults, stack intent, package content, and templates | A downstream build path such as bare Spack, `spack-build`, `spacktools`, or Ansible |
 | `init-workspace` | A workspace rendered from an authored blueprint plus one exact static catalog | Initial Conversion Trials only |
 
@@ -35,9 +36,17 @@ Current implementation status:
   package managers who want to author their own Spack environments. The exact
   reviewed input is retained as `profile.yaml` beside the catalog. An MPI
   provider without a verified compiler pairing is rejected rather than emitted
-  as an ambiguous scope.
+  as an ambiguous scope. Catalog manifests and README examples use relative
+  scope paths so the reviewed tree can be promoted without rerendering.
+- `publish-static` validates and copies one reviewed catalog into
+  `<output-root>/<system>/static/<release>/`, records a SHA-256 inventory and
+  approval metadata, applies CSE-group management and outside-consumer read
+  modes, and can update a relative `current` symlink. It does not render or
+  modify the restricted source tree.
 - `init-workspace` is a CSE pilot convenience that assembles an authored
-  starter blueprint against an exact static catalog selection. It is not a
+  starter blueprint against an exact restricted or published static catalog
+  selection. Published input is verified against `SHA256SUMS`, and its approval
+  metadata is retained in `workspace-manifest.yaml`. It is not a
   production render mode or a supported long-term consumption seam; it does
   not probe, build, or replace full `render`.
 - `render` requires `deployment.yaml` and emits installer-owned install/cache
@@ -122,6 +131,43 @@ stack-composer render-static \
 The catalog is platform configuration, not a build workspace. It contains no
 package roster, managed lane, view, operational module tree, or deployment
 root.
+
+Publish the reviewed catalog without running `render-static` again:
+
+```bash
+export REVIEWED_CATALOG="$CATALOG_ROOT/<system>/static/<catalog-release>"
+export PUBLISHED_CATALOG_ROOT="<site-selected public catalog root>"
+export CSE_GROUP="<site-cse-group>"
+
+stack-composer publish-static \
+  --catalog "$REVIEWED_CATALOG" \
+  --output-root "$PUBLISHED_CATALOG_ROOT" \
+  --published-at <utc-timestamp> \
+  --reviewed-by "<reviewer-or-role>" \
+  --approved-by "<release-authority-or-role>" \
+  --group "$CSE_GROUP" \
+  --set-current
+```
+
+The public path is
+`<published-root>/<system>/static/<catalog-release>/`. Publication fails if the
+reviewed catalog is not relocatable, has unresolved MPI dependencies, contains
+symlinks, or already exists at the public release path. `--set-current` is
+optional and is not used as a reproducible environment input.
+
+`--group` assigns the CSE group to the published namespace and every released
+catalog file. Directories are `2775`, executable files are `0775`, and ordinary
+files are `0664`. Every CSE group member retains management access, while users
+outside CSE receive read/traverse access without write access. An accepted
+versioned release is immutable by process: `publish-static` will not overwrite
+it, and a correction is rendered and published under a new release identifier.
+
+Stack Composer does not infer whether an output root is restricted or public.
+The CSE runbook passes the restricted root to `render-static`, retains that
+catalog as the CSE workspace input, and later passes the public root to
+`publish-static`. Keeping promotion as a separate command preserves the review
+gate and prevents publication from rerendering or silently changing the CSE
+catalog of record.
 
 ## GitLab Note
 

@@ -39,7 +39,7 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     manifest = load_yaml(workspace / "manifest.yaml")
     assert manifest["kind"] == "static-platform-catalog"
     assert manifest["profile_snapshot"] == "profile.yaml"
-    assert manifest["scope_root"] == str(workspace / "scopes")
+    assert manifest["scope_root"] == "scopes"
     assert manifest["profile_facts"]["fabric"]
     assert manifest["profile_facts"]["system_externals"]
     assert manifest["profile_facts"]["filesystem"]
@@ -52,7 +52,8 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
         {"kind": "gpu", "name": "rocm", "path": "scopes/gpu/rocm/6.0.0", "version": "6.0.0"}
     ]
     readme = (workspace / "README.md").read_text(encoding="utf-8")
-    assert f"  - {workspace}/scopes/common" in readme
+    assert "  - scopes/common" in readme
+    assert str(workspace) not in readme
     assert "retained as `profile.yaml`" in readme
 
     common = load_yaml(workspace / "scopes" / "common" / "packages.yaml")

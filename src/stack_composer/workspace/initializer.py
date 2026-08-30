@@ -9,6 +9,7 @@ import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateError
 
 from stack_composer.errors import Issue, ValidationFailed
+from stack_composer.publish.static_catalog import verify_static_catalog_publication
 from stack_composer.yaml_io import load_yaml, write_yaml
 
 
@@ -34,6 +35,7 @@ def initialize_workspace(
 
     blueprint = _load_mapping(blueprint_dir / "blueprint.yaml", "blueprint")
     catalog_manifest = _load_mapping(catalog_dir / "manifest.yaml", "catalog")
+    catalog_publication = _load_catalog_publication(catalog_dir, catalog_manifest)
     values = _load_mapping(values_path, "values")
     issues = _validate_inputs(
         blueprint=blueprint,
@@ -65,16 +67,24 @@ def initialize_workspace(
         if snapshot_catalog:
             shutil.copytree(catalog_dir, pending / "catalog")
         _render_tree(template_root, pending, context)
+        catalog_record = {
+            "source_root": str(catalog_dir),
+            "workspace_root": "catalog" if snapshot_catalog else None,
+            "system": (catalog_manifest.get("system") or {}).get("name"),
+            "release": catalog_manifest.get("release"),
+        }
+        if catalog_publication:
+            catalog_record["publication"] = {
+                "published_at": catalog_publication["published_at"],
+                "reviewed_by": catalog_publication["reviewed_by"],
+                "approved_by": catalog_publication["approved_by"],
+                "checksum_inventory": catalog_publication["checksum_inventory"],
+            }
         manifest = {
             "schema_version": 1,
             "kind": "initialized-workspace",
             "blueprint": blueprint["name"],
-            "catalog": {
-                "source_root": str(catalog_dir),
-                "workspace_root": "catalog" if snapshot_catalog else None,
-                "system": (catalog_manifest.get("system") or {}).get("name"),
-                "release": catalog_manifest.get("release"),
-            },
+            "catalog": catalog_record,
             "values": str(values_path),
         }
         write_yaml(pending / "workspace-manifest.yaml", manifest)
@@ -271,6 +281,40 @@ def _load_mapping(path: Path, label: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise _failure(f"{label}-shape", path, "expected a YAML mapping")
     return data
+
+
+def _load_catalog_publication(
+    catalog_dir: Path,
+    catalog_manifest: dict[str, Any],
+) -> dict[str, Any] | None:
+    path = catalog_dir / "publication.yaml"
+    if not path.exists():
+        return None
+    publication = _load_mapping(path, "catalog-publication")
+    required = (
+        "published_at",
+        "reviewed_by",
+        "approved_by",
+        "checksum_inventory",
+    )
+    if publication.get("kind") != "static-catalog-publication":
+        raise _failure(
+            "catalog-publication-kind",
+            path,
+            "expected a static-catalog-publication record",
+        )
+    for key in required:
+        if not str(publication.get(key) or "").strip():
+            raise _failure("catalog-publication-field", f"{path}:{key}", "required")
+    if publication.get("system") != (catalog_manifest.get("system") or {}).get("name"):
+        raise _failure("catalog-publication-system", path, "system does not match manifest")
+    if publication.get("release") != catalog_manifest.get("release"):
+        raise _failure("catalog-publication-release", path, "release does not match manifest")
+    verify_static_catalog_publication(
+        catalog_dir=catalog_dir,
+        publication=publication,
+    )
+    return publication
 
 
 def _load_data_files(blueprint_dir: Path, entries: Any) -> dict[str, Any]:

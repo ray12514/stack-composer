@@ -12,6 +12,9 @@ model directly.
   one reviewed Cluster Inspector profile. It contains no package intent,
   deployment roots, environment, lane, view, operational module tree, or build
   workspace.
+- `publish-static` promotes one exact reviewed static catalog into a versioned,
+  consumer-readable release. It does not rerender platform facts or add package
+  intent.
 - `render` produces the complete managed workspace from `profile.yaml`,
   `deployment.yaml`, `defaults.yaml`, `stack.yaml`, package content, and the
   active template set. It stops at the workspace handoff and never runs Spack.
@@ -29,7 +32,7 @@ refresh, verification, and buildcache publication.
 
 - Packaged schemas for profile, defaults, deployment, stack, package sets, and
   release manifests, with cross-repository schema drift checks.
-- Deterministic `validate`, `show`, `render`, `render-static`,
+- Deterministic `validate`, `show`, `render`, `render-static`, `publish-static`,
   `init-workspace`, `validate-template-set`, and `publish-manifest` command
   paths.
 - Atomic full and static rendering with strict template variables and generated
@@ -43,6 +46,12 @@ refresh, verification, and buildcache publication.
 - Static catalogs that retain the exact reviewed profile, compiler scopes,
   compiler-specific MPI scopes and toolchains, platform/common/GPU scopes,
   recommendations, and a machine-readable plan.
+- Relocatable static catalog manifests and README examples, plus immutable
+  versioned public promotion with approval metadata, a SHA-256 inventory,
+  CSE-group management access, outside-consumer read access, and an optional
+  relative `current` pointer.
+- Published-catalog checksum verification and approval provenance in
+  `init-workspace`.
 - Unresolved MPI/compiler observations are a static-render error. They are not
   emitted as `unpaired` scopes.
 - Cray MPICH catalog scopes preserve the physical compiler-family baseline from

@@ -5,6 +5,7 @@ Implemented command surface:
 - `stack-composer show`
 - `stack-composer validate`
 - `stack-composer render-static`
+- `stack-composer publish-static`
 - `stack-composer render`
 - `stack-composer init-workspace`
 - `stack-composer validate-template-set`
@@ -30,11 +31,16 @@ Command status:
   and path-independent template-set policy. It accepts no stack or deployment
   input and emits no environment, lane, view, operational module tree, or build
   workspace. It rejects an MPI provider whose compiler pairing is unresolved.
+- `publish-static` promotes one reviewed static catalog into an immutable,
+  consumer-readable release. It writes approval metadata and `SHA256SUMS`; it
+  does not rerender the catalog.
 - `render` writes a deterministic draft workspace and `release-manifest.yaml`.
   It requires `--deployment`; install tree, build stage, caches, view roots, and
   module roots are installer-owned deployment inputs, not profile guesses.
 - `init-workspace` initializes an authored Initial Conversion Trials blueprint
-  against one exact static catalog selection. It is a temporary pilot helper,
+  against one exact restricted or published static catalog selection. It
+  verifies a published input's checksums and retains its approval metadata in
+  the workspace manifest. It is a temporary pilot helper,
   not a production render mode. It does not probe, concretize, fetch, install,
   or replace `render`.
 - `validate-template-set` renders a smoke stack for each supplied profile and
@@ -69,6 +75,34 @@ The output path is
 and a generated usage README. Pass `--overwrite` only when intentionally
 replacing that exact output path. Rendering uses a side path and publishes the
 completed tree atomically.
+
+Promote the reviewed catalog after approval:
+
+```bash
+stack-composer publish-static \
+  --catalog "$CATALOG_ROOT/example-cray/static/example-cray-catalog-001" \
+  --output-root "$PUBLISHED_CATALOG_ROOT" \
+  --published-at 2026-08-24T12:00:00Z \
+  --reviewed-by "CSE Package Review" \
+  --approved-by "CSE Release Authority" \
+  --group "$CSE_GROUP" \
+  --set-current
+```
+
+The output path is the same system/static/release shape under the published
+root. The command copies the reviewed bytes, adds `publication.yaml` and
+`SHA256SUMS`, and optionally updates a relative `current` symlink. With
+`--group`, namespace and release directories are `2775`, executable files are
+`0775`, and ordinary files are `0664`. The named CSE group owns the complete
+tree and retains write access; users outside that group receive read/traverse
+access without write access. Existing published release directories are never
+overwritten. Immutability is the versioned publication rule, not owner-only
+filesystem access.
+
+`render-static` and `publish-static` require explicit output roots. Stack
+Composer does not classify a filesystem path as restricted or public. Site
+procedure supplies those roots and decides when the reviewed catalog crosses
+the publication seam.
 
 `render` requires explicit release/source variables so deterministic manifest
 fields do not come from ambient git state or the wall clock:
