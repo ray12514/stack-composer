@@ -12,6 +12,7 @@ def draft_manifest(
     *,
     profile_path: Path,
     stack_path: Path,
+    deployment_path: Path,
     template_set: Path,
     package_sets_dir: Path,
     context: dict[str, Any],
@@ -53,6 +54,13 @@ def draft_manifest(
             "system_name": profile["system"]["name"],
         },
         "stack_file": {"path": stack_path.as_posix(), "digest": sha256_file(stack_path)},
+        "deployment": {
+            "path": deployment_path.as_posix(), "digest": sha256_file(deployment_path)
+        },
+        "package_repositories": [
+            {"name": repo["name"], "path": repo["path"], "digest": sha256_tree(Path(repo["path"]))}
+            for repo in context["package_repos"]
+        ],
         "package_sets": package_set_entries,
         "templates": {
             "set": stack["templates"]["set"],

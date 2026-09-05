@@ -11,6 +11,7 @@ Options:
   --lanes GLOB           Lane glob relative to environments/, default '*/*'.
   --reports DIR          Report directory, default '<workspace>/reports'.
   --concretize-jobs N    spack concretize parallelism, default 1.
+  --reconcretize         Explicitly replace existing locks with a fresh solve.
   --jobs N               spack install parallelism, default half local CPUs.
   --buildcache NAME=URL  Buildcache mirror to push after each lane; repeatable.
   --skip-push            Skip buildcache push steps.
@@ -32,10 +33,17 @@ JOBS=""
 CONCRETIZE_JOBS="${SPACK_CONCRETIZE_JOBS:-1}"
 SKIP_PUSH=0
 FAIL_FAST=0
+RECONCRETIZE=0
 BUILDCACHE_NAMES=()
 BUILDCACHE_URLS=()
+PUSHED=()
 
 while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --workspace|--spack-root|--lanes|--reports|--jobs|--concretize-jobs|--buildcache)
+      [[ $# -ge 2 && -n $2 && $2 != --* ]] || die "$1 requires a value"
+      ;;
+  esac
   case "$1" in
     --workspace)
       WORKSPACE=${2:-}
@@ -64,6 +72,9 @@ while [[ $# -gt 0 ]]; do
     --buildcache)
       entry=${2:-}
       [[ $entry == *=* ]] || die "--buildcache expects NAME=URL"
+      mirror_name=${entry%%=*}
+      [[ $mirror_name =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]*$ && -n ${entry#*=} ]] || \
+        die "--buildcache requires a safe mirror name and a nonempty URL"
       BUILDCACHE_NAMES+=("${entry%%=*}")
       BUILDCACHE_URLS+=("${entry#*=}")
       shift 2
@@ -74,6 +85,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --fail-fast)
       FAIL_FAST=1
+      shift
+      ;;
+    --reconcretize)
+      RECONCRETIZE=1
       shift
       ;;
     -h|--help)
@@ -114,10 +129,14 @@ if [[ -z $JOBS ]]; then
     JOBS=1
   fi
 fi
+[[ $JOBS =~ ^[1-9][0-9]*$ ]] || die "--jobs expects a positive integer"
 
 yaml_escape() {
-  value=${1//\\/\\\\}
-  value=${value//"/\\"}
+  local value=${1//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
   printf '%s' "$value"
 }
 
@@ -176,6 +195,9 @@ done < <(find "$WORKSPACE/environments" -mindepth 3 -maxdepth 3 -name spack.yaml
 [[ ${#LANES[@]} -gt 0 ]] || die "no lanes matched $LANES_GLOB"
 
 lane_roots="$REPORTS/.lane-roots.tmp"
+mkdir "$REPORTS/.spack-build.running" 2>/dev/null || \
+  die "another build owns $REPORTS/.spack-build.running; it was not modified"
+trap 'rm -f "$lane_roots"; rmdir "$REPORTS/.spack-build.running"' EXIT
 : > "$lane_roots"
 failure_count=0
 libraries_status=passed
@@ -183,8 +205,7 @@ manifest_status=passed
 smoke_status=skipped
 
 run_step() {
-  lane=$1
-  step=$2
+  local lane=$1 step=$2 lane_report_dir log
   shift 2
   lane_report_dir="$REPORTS/$lane"
   mkdir -p "$lane_report_dir"
@@ -195,22 +216,21 @@ run_step() {
   fi
   printf 'failed' > "$lane_report_dir/$step.status"
   failure_count=$((failure_count + 1))
-  if [[ $FAIL_FAST -eq 1 ]]; then
-    die "lane $lane failed at $step; see $log"
-  fi
   return 1
 }
 
-verify_non_external_manifests() {
+verify_non_external_manifests() (
+  set -e
   env_path=$1
   scratch=$(mktemp -d "${TMPDIR:-/tmp}/spack-build-verify.XXXXXX")
+  trap 'rm -rf "$scratch"' EXIT
   all_hashes="$scratch/all"
   external_hashes="$scratch/external"
   local_hashes="$scratch/local"
 
-  spack -e "$env_path" find -H | sort > "$all_hashes"
-  spack -e "$env_path" find -e -H | sort > "$external_hashes"
-  comm -23 "$all_hashes" "$external_hashes" > "$local_hashes"
+  spack -e "$env_path" find -H | LC_ALL=C sort > "$all_hashes" || return 1
+  spack -e "$env_path" find -e -H | LC_ALL=C sort > "$external_hashes" || return 1
+  LC_ALL=C comm -23 "$all_hashes" "$external_hashes" > "$local_hashes" || return 1
 
   hashes=()
   while IFS= read -r hash; do
@@ -218,22 +238,38 @@ verify_non_external_manifests() {
     hashes+=("$hash")
   done < "$local_hashes"
 
-  rm -rf "$scratch"
-
   if [[ ${#hashes[@]} -eq 0 ]]; then
     printf 'no non-external Spack installs found to verify\n'
     return 0
   fi
   spack -e "$env_path" verify manifest "${hashes[@]}"
-}
+)
 
 for lane in "${LANES[@]}"; do
   env_path="$WORKSPACE/environments/$lane"
   lane_name=${lane//\//-}
   lane_failed=0
-  run_step "$lane" concretize spack -e "$env_path" concretize --force -j "$CONCRETIZE_JOBS" || lane_failed=1
-  run_step "$lane" fetch spack -e "$env_path" fetch -D || lane_failed=1
-  run_step "$lane" install spack -e "$env_path" install -j "$JOBS" || lane_failed=1
+  mkdir -p "$REPORTS/$lane"
+  for step in concretize fetch install view-regenerate module-refresh verify-libraries verify-manifest; do
+    printf 'skipped' > "$REPORTS/$lane/$step.status"
+  done
+  if [[ $RECONCRETIZE -eq 1 ]]; then
+    run_step "$lane" concretize spack -e "$env_path" concretize --force -j "$CONCRETIZE_JOBS" || lane_failed=1
+  elif [[ ! -f "$env_path/spack.lock" ]]; then
+    run_step "$lane" concretize spack -e "$env_path" concretize -j "$CONCRETIZE_JOBS" || lane_failed=1
+  fi
+  if [[ $lane_failed -eq 0 ]]; then
+    run_step "$lane" fetch spack -e "$env_path" fetch -D || lane_failed=1
+  fi
+  if [[ $lane_failed -eq 0 ]]; then
+    run_step "$lane" install spack -e "$env_path" install -j "$JOBS" || lane_failed=1
+  fi
+  if [[ $lane_failed -ne 0 ]]; then
+    [[ $libraries_status == failed ]] || libraries_status=skipped
+    [[ $manifest_status == failed ]] || manifest_status=skipped
+    if [[ $FAIL_FAST -eq 1 ]]; then break; fi
+    continue
+  fi
   install_root=$(spack -e "$env_path" find --explicit --format '{prefix}' 2>/dev/null | while IFS= read -r line; do
     if [[ -n $line ]]; then
       printf '%s' "$line"
@@ -257,10 +293,16 @@ for lane in "${LANES[@]}"; do
   }
   if [[ $SKIP_PUSH -eq 0 && ${#BUILDCACHE_NAMES[@]} -gt 0 && $lane_failed -eq 0 ]]; then
     for i in "${!BUILDCACHE_NAMES[@]}"; do
-      run_step "$lane" "buildcache-${BUILDCACHE_NAMES[$i]}" \
-        spack -e "$env_path" buildcache push --update-index "${BUILDCACHE_URLS[$i]}" || lane_failed=1
+      if run_step "$lane" "buildcache-${BUILDCACHE_NAMES[$i]}" \
+        spack -e "$env_path" buildcache push --update-index "${BUILDCACHE_URLS[$i]}"; then
+        PUSHED+=("$i|$lane_name")
+      else
+        lane_failed=1
+        if [[ $FAIL_FAST -eq 1 ]]; then break; fi
+      fi
     done
   fi
+  if [[ $lane_failed -ne 0 && $FAIL_FAST -eq 1 ]]; then break; fi
 done
 
 {
@@ -281,7 +323,7 @@ done
   printf 'lanes:\n'
   if [[ -s $lane_roots ]]; then
     while IFS='|' read -r lane_name install_root; do
-      printf '  %s:\n' "$lane_name"
+      printf '  "%s":\n' "$(yaml_escape "$lane_name")"
       printf '    install_root: "%s"\n' "$(yaml_escape "$install_root")"
     done < "$lane_roots"
   else
@@ -297,20 +339,27 @@ done
     for i in "${!BUILDCACHE_NAMES[@]}"; do
       printf '  - name: "%s"\n' "$(yaml_escape "${BUILDCACHE_NAMES[$i]}")"
       printf '    url: "%s"\n' "$(yaml_escape "${BUILDCACHE_URLS[$i]}")"
-      printf '    lanes_pushed:\n'
-      for lane in "${LANES[@]}"; do
-        printf '      - "%s"\n' "$(yaml_escape "${lane//\//-}")"
+      pushed_count=0
+      for pushed in "${PUSHED[@]+"${PUSHED[@]}"}"; do
+        [[ ${pushed%%|*} == "$i" ]] || continue
+        if [[ $pushed_count -eq 0 ]]; then printf '    lanes_pushed:\n'; fi
+        printf '      - "%s"\n' "$(yaml_escape "${pushed#*|}")"
+        pushed_count=$((pushed_count + 1))
       done
+      if [[ $pushed_count -eq 0 ]]; then printf '    lanes_pushed: []\n'; fi
     done
   fi
 } > "$REPORTS/buildcache-destinations.yaml"
 
-{
-  printf 'lanes:\n'
-  for lane in "${LANES[@]}"; do
-    printf '  %s: []\n' "${lane//\//-}"
-  done
-} > "$REPORTS/platform-module-prereqs.yaml"
+prereqs_source="$WORKSPACE/reports/platform-module-prereqs.yaml"
+prereqs_report="$REPORTS/platform-module-prereqs.yaml"
+if [[ -f $prereqs_source ]]; then
+  if [[ ! $prereqs_source -ef $prereqs_report ]]; then
+    cp "$prereqs_source" "$prereqs_report" || die "cannot copy rendered module prerequisites"
+  fi
+else
+  printf 'spack-build: no rendered module-prerequisite evidence; review is required before publication\n' >&2
+fi
 
 rm -f "$lane_roots"
 

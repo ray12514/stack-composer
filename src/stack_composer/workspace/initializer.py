@@ -9,7 +9,9 @@ import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, TemplateError
 
 from stack_composer.errors import Issue, ValidationFailed
+from stack_composer.output import output_transaction
 from stack_composer.publish.static_catalog import verify_static_catalog_publication
+from stack_composer.render.digest import sha256_file, sha256_tree
 from stack_composer.yaml_io import load_yaml, write_yaml
 
 
@@ -25,13 +27,9 @@ def initialize_workspace(
     blueprint_dir = blueprint_dir.resolve()
     catalog_dir = catalog_dir.resolve()
     values_path = values_path.resolve()
+    if output_dir.is_symlink():
+        raise _failure("output-symlink", output_dir, "refusing to replace an output symlink")
     output_dir = output_dir.resolve()
-    pending = output_dir.with_name(f"{output_dir.name}.initializing")
-
-    if output_dir.exists() and not overwrite:
-        raise _failure("workspace-exists", output_dir, "workspace already exists")
-    if pending.exists():
-        raise _failure("stale-initializing-path", pending, "stale initialization path exists")
 
     blueprint = _load_mapping(blueprint_dir / "blueprint.yaml", "blueprint")
     catalog_manifest = _load_mapping(catalog_dir / "manifest.yaml", "catalog")
@@ -62,45 +60,55 @@ def initialize_workspace(
     }
 
     try:
-        pending.mkdir(parents=True)
-        snapshot_catalog = bool(blueprint.get("snapshot_catalog", False))
-        if snapshot_catalog:
-            shutil.copytree(catalog_dir, pending / "catalog")
-        _render_tree(template_root, pending, context)
-        catalog_record = {
-            "source_root": str(catalog_dir),
-            "workspace_root": "catalog" if snapshot_catalog else None,
-            "system": (catalog_manifest.get("system") or {}).get("name"),
-            "release": catalog_manifest.get("release"),
-        }
-        if catalog_publication:
-            catalog_record["publication"] = {
-                "published_at": catalog_publication["published_at"],
-                "reviewed_by": catalog_publication["reviewed_by"],
-                "approved_by": catalog_publication["approved_by"],
-                "checksum_inventory": catalog_publication["checksum_inventory"],
+        with output_transaction(
+            output_dir,
+            overwrite=overwrite,
+            suffix=".initializing",
+            pending_code="stale-initializing-path",
+        ) as pending:
+            snapshot_catalog = bool(blueprint.get("snapshot_catalog", False))
+            if snapshot_catalog:
+                shutil.copytree(catalog_dir, pending / "catalog")
+            _render_tree(template_root, pending, context)
+            catalog_record = {
+                "source_root": str(catalog_dir),
+                "workspace_root": "catalog" if snapshot_catalog else None,
+                "system": (catalog_manifest.get("system") or {}).get("name"),
+                "release": catalog_manifest.get("release"),
             }
-        manifest = {
-            "schema_version": 1,
-            "kind": "initialized-workspace",
-            "blueprint": blueprint["name"],
-            "catalog": catalog_record,
-            "values": str(values_path),
-        }
-        write_yaml(pending / "workspace-manifest.yaml", manifest)
-        _validate_generated_yaml(pending)
-        if blueprint.get("apply_workspace_permissions", False):
-            _apply_workspace_permissions(pending, values["permissions"])
-        if output_dir.exists():
-            shutil.rmtree(output_dir)
-        pending.replace(output_dir)
+            if catalog_publication:
+                catalog_record["publication"] = {
+                    "published_at": catalog_publication["published_at"],
+                    "reviewed_by": catalog_publication["reviewed_by"],
+                    "approved_by": catalog_publication["approved_by"],
+                    "checksum_inventory": catalog_publication["checksum_inventory"],
+                }
+            manifest = {
+                "schema_version": 1,
+                "kind": "initialized-workspace",
+                "blueprint": blueprint["name"],
+                "catalog": catalog_record,
+                "values": str(values_path),
+                "input_digests": {
+                    "blueprint": sha256_file(blueprint_dir / "blueprint.yaml"),
+                    "templates": sha256_tree(template_root),
+                    "data_files": {
+                        name: sha256_file(_child_path(blueprint_dir, path, "blueprint.data_files"))
+                        for name, path in sorted((blueprint.get("data_files") or {}).items())
+                    },
+                    "catalog": sha256_tree(
+                        pending / "catalog" if snapshot_catalog else catalog_dir
+                    ),
+                    "values": sha256_file(values_path),
+                },
+            }
+            write_yaml(pending / "workspace-manifest.yaml", manifest)
+            _validate_generated_yaml(pending)
+            if blueprint.get("apply_workspace_permissions", False):
+                _apply_workspace_permissions(pending, values["permissions"])
     except ValidationFailed:
-        if pending.exists():
-            shutil.rmtree(pending)
         raise
     except (OSError, TemplateError, ValueError, yaml.YAMLError) as exc:
-        if pending.exists():
-            shutil.rmtree(pending)
         raise _failure("template-render", blueprint_dir, str(exc)) from exc
     return output_dir
 
@@ -405,7 +413,7 @@ def _validate_generated_yaml(root: Path) -> None:
     issues: list[Issue] = []
     for path in sorted((*root.rglob("*.yaml"), *root.rglob("*.yml"))):
         try:
-            load_yaml(path)
+            load_yaml(path, unique_keys=True)
         except ValueError as exc:
             issues.append(Issue("error", "generated-yaml", str(path), str(exc)))
     if issues:

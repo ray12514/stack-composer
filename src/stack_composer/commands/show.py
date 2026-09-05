@@ -22,7 +22,7 @@ from stack_composer.render.mpi import (
     select_compiler_provider,
     select_flavor_compiler,
 )
-from stack_composer.render.plan import _BASELINE_TARGET, plan_lanes, runtime_nodes
+from stack_composer.render.plan import plan_lanes, runtime_nodes, target_for
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
 # Fallback for `show` when no --defaults/--templates is given (bare-profile mode).
@@ -106,9 +106,10 @@ def render_menu(
     system = profile.get("system", {}).get("name", "?")
     os_data = profile.get("os", {})
     os_label = f"{os_data.get('name', '?')}{os_data.get('major', '')}"
-    native = _native_target(profile)
+    native = _profile_target(profile, "native")
     targets = f"{native} (native)" if native else "(no cpu node)"
-    targets += f", {_BASELINE_TARGET} (baseline)"
+    baseline = _profile_target(profile, "baseline")
+    targets += f", {baseline or 'unavailable'} (baseline)"
     families = provider_families(profile)
     family_label = ", ".join(families) if families else "none"
     lines.append(f"{system} · {os_label} · provider families: {family_label}")
@@ -419,13 +420,13 @@ def system_external_lines(profile: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _native_target(profile: dict[str, Any]) -> str | None:
+def _profile_target(profile: dict[str, Any], policy: str) -> str | None:
     cpu_nodes = runtime_nodes(profile, want_gpu=False)
     if cpu_nodes:
-        return cpu_nodes[0][1].get("cpu", {}).get("preferred")
+        return target_for(policy, cpu_nodes[0][1])
     gpu_nodes = runtime_nodes(profile, want_gpu=True)
     if gpu_nodes:
-        return gpu_nodes[0][1].get("cpu", {}).get("preferred")
+        return target_for(policy, gpu_nodes[0][1])
     return None
 
 

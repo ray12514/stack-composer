@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PYTHON=${PYTHON:-python3}
+PYTHON=$("$PYTHON" -c 'import sys; print(sys.executable)')
 
 cd "${ROOT_DIR}"
 
@@ -18,15 +19,24 @@ fi
 
 "${PYTHON}" scripts/generate-third-party.py --check --sync-resources
 
-rm -rf \
-  dist/build-pyz \
-  dist/wheelhouse \
-  dist/stack-composer.pyz \
-  dist/stack-composer-* \
-  dist/stack_composer-*.whl
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/stack-composer-release.XXXXXX")
+trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$ROOT_DIR/dist"
+mkdir "$ROOT_DIR/dist/.build-pyz.running" 2>/dev/null || {
+  echo 'build-pyz: another build owns dist/.build-pyz.running; it was not modified' >&2
+  exit 1
+}
+trap 'rm -rf "$STAGE"; rmdir "$ROOT_DIR/dist/.build-pyz.running"' EXIT
+"$PYTHON" "$ROOT_DIR/scripts/release_support.py" stage "$ROOT_DIR" "$STAGE/source"
+# Build in a new source export. Persistent build/lib and egg-info can contain
+# removed modules and must never feed the next wheel or executable.
+cd "$STAGE/source"
 mkdir -p dist/wheelhouse
 
 "${PYTHON}" -m build --wheel --no-isolation
+APP_WHEELS=(dist/stack_composer-*.whl)
+[[ ${#APP_WHEELS[@]} -eq 1 && -f ${APP_WHEELS[0]} ]]
+"$PYTHON" "$ROOT_DIR/scripts/release_support.py" verify "$STAGE/source" "${APP_WHEELS[0]}"
 "${PYTHON}" -m pip wheel --no-deps --wheel-dir dist/wheelhouse dist/stack_composer-*.whl
 "${PYTHON}" -m pip wheel --no-deps --only-binary=:all: --wheel-dir dist/wheelhouse \
   'click==8.1.8' \
@@ -77,12 +87,14 @@ PY
   --no-index \
   --find-links dist/wheelhouse \
   "stack-composer==${VERSION}"
+"$PYTHON" "$ROOT_DIR/scripts/release_support.py" verify "$STAGE/source" dist/stack-composer.pyz
+SHIV_ROOT="$STAGE/smoke-cache" "$PYTHON" -S dist/stack-composer.pyz --help >/dev/null
+SHIV_ROOT="$STAGE/smoke-cache" "$PYTHON" -S dist/stack-composer.pyz --licenses >/dev/null
 
 RELEASE_DIR="dist/stack-composer-${VERSION}"
-rm -rf "${RELEASE_DIR}"
 mkdir -p "${RELEASE_DIR}"
 cp dist/stack-composer.pyz "${RELEASE_DIR}/stack-composer.pyz"
-cp scripts/spack-build "${RELEASE_DIR}/spack-build"
+cp "$ROOT_DIR/scripts/spack-build" "${RELEASE_DIR}/spack-build"
 cp README.md LICENSE THIRD_PARTY.toml "${RELEASE_DIR}/"
 cp -R THIRD_PARTY_LICENSES "${RELEASE_DIR}/THIRD_PARTY_LICENSES"
 
@@ -93,5 +105,15 @@ Run with:
 No pip install is required on the target. Python 3.9+ is required.
 EOF
 
+"$PYTHON" "$ROOT_DIR/scripts/release_support.py" inventory "$STAGE/source" \
+  > "$RELEASE_DIR/APPLICATION_FILES.json"
+"$PYTHON" "$ROOT_DIR/scripts/release_support.py" checksums "$RELEASE_DIR"
+
 tar -C dist -czf "dist/stack-composer-${VERSION}.tar.gz" "stack-composer-${VERSION}"
+# Replace only complete, smoke-tested files. Failed builds leave the old
+# artifacts intact; unrelated distributions and staging trees are untouched.
+for artifact in stack-composer.pyz "stack-composer-${VERSION}.tar.gz"; do
+  cp "dist/$artifact" "$ROOT_DIR/dist/.$artifact.pending"
+  mv -f "$ROOT_DIR/dist/.$artifact.pending" "$ROOT_DIR/dist/$artifact"
+done
 echo "dist/stack-composer-${VERSION}.tar.gz"

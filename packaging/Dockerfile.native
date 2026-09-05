@@ -1,0 +1,13 @@
+FROM almalinux@sha256:4a87d2615a770506e204c27d6248ac97f4df67f4e41e2e9c47c81f0ed0be98cb
+
+# Dependency acquisition happens only while preparing this isolated candidate
+# builder. The actual source freeze can run with --network=none.
+RUN dnf -y install python3.12 python3.12-pip binutils file tar gzip findutils \
+    && dnf clean all
+RUN python3.12 -m venv /opt/stack-composer-builder
+COPY native-build-requirements.txt /tmp/native-build-requirements.txt
+RUN /opt/stack-composer-builder/bin/python -m pip install --no-cache-dir -r /tmp/native-build-requirements.txt \
+    && /opt/stack-composer-builder/bin/python -m pip install --no-cache-dir \
+       click==8.1.8 fastjsonschema==2.21.2 Jinja2==3.1.6 MarkupSafe==2.1.5 PyYAML==6.0.3
+ENV PYTHON=/opt/stack-composer-builder/bin/python PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
+WORKDIR /src

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import stat
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -145,12 +147,18 @@ def lockfile_for_lane(lockfiles_dir: Path, lane: dict[str, Any]) -> tuple[Path, 
 
 
 def atomic_write_manifest(path: Path, manifest: dict[str, Any]) -> None:
+    if path.is_symlink():
+        raise ValueError(f"refusing to replace a manifest symlink: {path}")
+    previous = path.stat()
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=path.parent, delete=False
     ) as handle:
         tmp_path = Path(handle.name)
     try:
         write_yaml(tmp_path, manifest)
+        if tmp_path.stat().st_gid != previous.st_gid:
+            os.chown(tmp_path, -1, previous.st_gid)
+        tmp_path.chmod(stat.S_IMODE(previous.st_mode))
         tmp_path.replace(path)
     except Exception:
         if tmp_path.exists():

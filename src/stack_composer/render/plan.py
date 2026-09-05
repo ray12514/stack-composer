@@ -19,22 +19,31 @@ from stack_composer.render.mpi import (
 )
 from stack_composer.render.spack_specs import is_renderable_external_name_version
 from stack_composer.render.versioning import version_key
-from stack_composer.resolve.build_kind import normalize_builds
+from stack_composer.resolve.build_kind import normalize_builds, validate_build_names
 
 # Conservative shared target for `target: baseline`.
 _BASELINE_TARGET = "x86_64_v3"
+# Reviewed v3 descendants used by existing profiles. Unknown architectures
+# require an explicit generic alternate or target; never guess from their name.
+# Ancestry: archspec/archspec-json, cpu/microarchitectures.json.
+_V3_TARGETS = {"zen", "zen2", "zen3", "zen4", "zen5", "haswell", "broadwell", "skylake"}
 
 # Reason codes that fail the whole plan even when the owning build is not
 # required. These mark input-authoring defects (an ambiguous or nonexistent
 # MPI version selection), not "this system lacks that lane" — silently
 # skipping them would be as surprising as silently picking a version.
-_HARD_REASON_CODES = {"mpi_ambiguous", "mpi_version_unresolved", "compiler_ambiguous"}
+_HARD_REASON_CODES = {
+    "mpi_ambiguous", "mpi_version_unresolved", "mpi_platform_unavailable", "compiler_ambiguous",
+    "target_unavailable",
+}
 
 
 def plan_lanes(
     profile: dict[str, Any], stack: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any] | None, list[Issue]]:
-    issues: list[Issue] = []
+    issues = validate_build_names(stack)
+    if issues:
+        return [], [], None, issues
     lanes: list[dict[str, Any]] = []
     skipped: list[dict[str, str]] = []
     applied_narrowing = None
@@ -45,7 +54,9 @@ def plan_lanes(
     for build in stack.get("builds", []):
         candidates, reason_code, reason = lane_candidates_for_build(profile, stack, build)
         had_candidates_before_narrowing = bool(candidates)
-        candidates, narrowing_result = apply_narrowing(candidates, narrowing.get(build["name"], {}))
+        candidates, narrowing_result = apply_narrowing(
+            candidates, narrowing.get(build["name"], {}), profile=profile
+        )
         if narrowing_result:
             applied_narrowing = applied_narrowing or {"system": system_name, "builds": {}}
             applied_narrowing["builds"][build["name"]] = narrowing_result
@@ -241,7 +252,7 @@ def lane_candidates_for_build(
                 f"{kind} build needs an MPI provider; set defaults.mpi.provider",
             )
         if mpi_source == "platform":
-            mpi_config = build.get("mpi") or stack.get("mpi") or {}
+            mpi_config = resolved_mpi_config(stack, build)
             requested_version = mpi_config.get("version") if isinstance(mpi_config, dict) else None
             # version_policy is site policy: it comes from the merged defaults,
             # never from a per-build override (those pin exact versions).
@@ -254,6 +265,13 @@ def lane_candidates_for_build(
             )
             if error_code:
                 return [], error_code, error
+            if mpi_record is None:
+                return (
+                    [],
+                    "mpi_platform_unavailable",
+                    f"requested platform MPI {mpi_provider!r} is not reported by the profile; "
+                    "select a reported provider or explicitly use source: build",
+                )
         # Auto-narrow a default (non-explicit) compiler set to those the chosen
         # platform MPI was actually built against. An explicit compiler list is
         # honored as-is (a missing platform flavor then errors, or use source:build).
@@ -296,6 +314,12 @@ def lane_candidates_for_build(
                 arch = (node.get("gpu") or {}).get("arch_target")
                 if arch not in selected_set:
                     continue
+                target = target_for(target_policy, node)
+                if target is None:
+                    return [], "target_unavailable", (
+                        f"no supported baseline target is recorded for {node_name!r}; "
+                        "record compatible targets or select an explicit reviewed target"
+                    )
                 lanes.append(
                     make_lane(
                         profile,
@@ -306,7 +330,7 @@ def lane_candidates_for_build(
                         mpi_provider,
                         mpi_source,
                         mpi_record,
-                        target_for(target_policy, node),
+                        target,
                         node_name,
                         arch,
                     )
@@ -314,6 +338,11 @@ def lane_candidates_for_build(
     else:
         node_name, node = node_types[0]
         target = target_for(target_policy, node)
+        if target is None:
+            return [], "target_unavailable", (
+                f"no supported baseline target is recorded for {node_name!r}; "
+                "record compatible targets or select an explicit reviewed target"
+            )
         for compiler in compilers:
             lanes.append(
                 make_lane(
@@ -555,21 +584,29 @@ def vendor_scope_for_provider(stack: dict[str, Any], provider: dict[str, Any]) -
     return default_scope
 
 
+def resolved_mpi_config(stack: dict[str, Any], build: dict[str, Any]) -> dict[str, Any]:
+    """Apply field-level build overrides without dropping site policy."""
+    defaults = stack.get("mpi")
+    config = dict(defaults) if isinstance(defaults, dict) else {}
+    override = build.get("mpi")
+    if isinstance(override, dict):
+        config.update(override)
+    return config
+
+
 def resolve_mpi(
     profile: dict[str, Any], stack: dict[str, Any], build: dict[str, Any]
 ) -> tuple[str | None, str]:
     """Resolve (provider, source). source policy:
       - auto (default): use the platform MPI the profile reports if any, else
         build the requested provider from source;
-      - platform: use the platform MPI (falls back to requested);
+      - platform: use the named platform MPI, never substitute another name;
       - build: build the requested provider regardless.
     The requested provider comes from the per-build override or defaults.mpi."""
     build_mpi = build.get("mpi")
-    mpi = build_mpi or stack.get("mpi") or {}
-    if not isinstance(mpi, dict):
-        mpi = {}
+    mpi = resolved_mpi_config(stack, build)
     requested = mpi.get("provider")
-    explicit_requested = requested if isinstance(build_mpi, dict) else None
+    explicit_requested = build_mpi.get("provider") if isinstance(build_mpi, dict) else None
     source = mpi.get("source", "auto")
     # Platform MPI = an mpi_provider the profile reports. Profile order is the
     # default priority; templates may supply a provider-family priority list.
@@ -609,10 +646,7 @@ def resolve_mpi(
     if source == "build":
         return requested, "build"
     if source == "platform":
-        return (
-            requested_provider or platform_provider or explicit_requested or requested,
-            "platform",
-        )
+        return requested or platform_provider, "platform"
     if explicit_requested:
         if requested_provider:
             return requested_provider, "platform"
@@ -644,13 +678,22 @@ def resolve_gpu_archs(
     return selected, missing
 
 
-def target_for(policy: str, node: dict[str, Any]) -> str:
+def target_for(policy: str, node: dict[str, Any]) -> str | None:
     """Resolve a lane's CPU target: native = the node's preferred uarch;
     baseline = the conservative shared target; anything else = explicit."""
     if policy == "native":
         return node["cpu"]["preferred"]
     if policy == "baseline":
-        return _BASELINE_TARGET
+        cpu = node["cpu"]
+        supported = {cpu.get("detected"), cpu.get("preferred"), *(cpu.get("alternates") or [])}
+        # Preserve the existing v3 cap for reviewed descendants. A literal v2
+        # profile must not be promoted, and a non-x86 profile must not become x86.
+        if supported & (_V3_TARGETS | {"x86_64_v4"}):
+            supported.add(_BASELINE_TARGET)
+        for target in (_BASELINE_TARGET, "x86_64_v2", "x86_64"):
+            if target in supported:
+                return target
+        return None
     return policy
 
 
@@ -722,8 +765,17 @@ def spec_source_id(build: dict[str, Any]) -> str:
     return "inline:" + build["name"]
 
 
+def compiler_narrowing_matches(
+    lane: dict[str, Any], selection: str, profile: dict[str, Any]
+) -> bool:
+    if selection == lane["compiler"]:
+        return True
+    provider = select_compiler_provider(profile, lane.get("compiler_ref") or lane["compiler"])
+    return provider is not None and selection == compiler_provider_ref(provider)
+
+
 def apply_narrowing(
-    lanes: list[dict[str, Any]], narrowing: dict[str, Any]
+    lanes: list[dict[str, Any]], narrowing: dict[str, Any], *, profile: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
     """Subset-narrow resolved lanes by compiler / gpu arch / mpi provider."""
     if not narrowing:
@@ -735,13 +787,22 @@ def apply_narrowing(
         if not allowed:
             continue
         allowed_set = set(allowed)
-        before = {lane[lane_key] for lane in narrowed if lane.get(lane_key)}
-        narrowed = [
-            lane for lane in narrowed if not lane.get(lane_key) or lane[lane_key] in allowed_set
-        ]
-        after = {lane[lane_key] for lane in narrowed if lane.get(lane_key)}
+        report_key = "compiler_ref" if axis == "compilers" and any(
+            "@" in selected for selected in allowed
+        ) else lane_key
+        before = {lane[report_key] for lane in narrowed if lane.get(report_key)}
+        if axis == "compilers":
+            narrowed = [
+                lane for lane in narrowed
+                if any(compiler_narrowing_matches(lane, selected, profile) for selected in allowed)
+            ]
+        else:
+            narrowed = [
+                lane for lane in narrowed if not lane.get(lane_key) or lane[lane_key] in allowed_set
+            ]
+        after = {lane[report_key] for lane in narrowed if lane.get(report_key)}
         dropped = sorted(before - after)
-        if dropped:
+        if dropped or (axis == "compilers" and len(narrowed) < len(lanes)):
             narrowed_by[axis] = {"kept": sorted(after), "dropped": dropped}
     if narrowing.get("mpi"):
         allowed_mpi = set(narrowing["mpi"])

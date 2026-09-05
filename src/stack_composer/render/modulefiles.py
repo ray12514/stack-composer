@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from stack_composer.errors import ValidationFailed
+from stack_composer.output import managed_output_path
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 
 
@@ -50,7 +51,7 @@ def render_front_door_modules(
             common_module_root=init_entry["common_module_root"],
             lane_module_root=init_entry["lane_module_root"],
         )
-        path = pending / init_entry["file"]
+        path = managed_output_path(pending, *Path(init_entry["file"]).parts)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
@@ -65,7 +66,7 @@ def render_front_door_modules(
             platform_module_policy=module_plan["platform_module_policy"],
             conflicts=lane_entry["conflicts"],
         )
-        path = pending / lane_entry["file"]
+        path = managed_output_path(pending, *Path(lane_entry["file"]).parts)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 

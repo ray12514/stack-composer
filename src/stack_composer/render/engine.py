@@ -4,8 +4,9 @@ import shutil
 from pathlib import Path
 
 from stack_composer import __version__
-from stack_composer.errors import Issue, ValidationFailed
+from stack_composer.errors import ValidationFailed
 from stack_composer.manifest.draft import draft_manifest
+from stack_composer.output import managed_output_path, output_transaction
 from stack_composer.render.common import build_common_plan
 from stack_composer.render.compilers import build_compiler_plan
 from stack_composer.render.context import build_render_context
@@ -91,42 +92,36 @@ def render_workspace(
         release_vars=release_vars,
         renderer_identity={"name": "stack-composer render", "version": __version__},
     )
-    workspace = (
-        Path(release_vars.output_root)
-        / profile["system"]["name"]
-        / stack["name"]
-        / release_vars.release_tag
+    workspace = managed_output_path(
+        Path(release_vars.output_root),
+        profile["system"]["name"],
+        stack["name"],
+        release_vars.release_tag,
     )
-    pending = workspace.with_name(workspace.name + ".rendering")
-    if workspace.exists() and not release_vars.overwrite:
-        raise ValidationFailed(
-            [Issue("error", "workspace-exists", str(workspace), "workspace already exists")]
-        )
-    if pending.exists():
-        raise ValidationFailed(
-            [Issue("error", "stale-render-path", str(pending), "stale render side path exists")]
-        )
-    try:
-        pending.mkdir(parents=True)
+    with output_transaction(workspace, overwrite=release_vars.overwrite) as pending:
         jinja_env = make_jinja_environment(template_set)
         context_dict = dict(render_context)
         rendered_scopes = required_scopes(profile, rendered_lanes)
         for scope in rendered_scopes:
             render_template_tree(
                 template_set / "configs" / scope,
-                pending / "configs" / scope,
+                managed_output_path(pending, "configs", *Path(scope).parts),
                 jinja_env,
                 context_dict,
             )
         materialize_package_repositories(context["package_repos"], pending / "package-repos")
+        lane_prereqs = {}
         for lane in rendered_lanes:
-            render_lane_environment(
+            lane_prereqs[lane["name"]] = render_lane_environment(
                 template_dir=template_set,
                 pending=pending,
                 env=jinja_env,
                 ctx=context_dict,
                 lane=lane,
             )
+        write_yaml(
+            pending / "reports/platform-module-prereqs.yaml", {"lanes": lane_prereqs}
+        )
         render_front_door_modules(
             pending=pending,
             lanes=rendered_lanes,
@@ -144,7 +139,7 @@ def render_workspace(
                 applied_narrowing=applied_narrowing,
                 release_vars=release_vars,
                 module_plan=render_context["module_plan"],
-                        rendered_scopes=rendered_scopes,
+                rendered_scopes=rendered_scopes,
             ),
         )
         rendered_issues = validate_rendered_workspace(pending)
@@ -153,6 +148,7 @@ def render_workspace(
         manifest = draft_manifest(
             profile_path=profile_path,
             stack_path=stack_path,
+            deployment_path=deployment_path,
             template_set=template_set,
             package_sets_dir=package_sets_dir,
             context=context_dict,
@@ -162,13 +158,6 @@ def render_workspace(
         if manifest_issues:
             raise ValidationFailed(manifest_issues)
         write_yaml(pending / "release-manifest.yaml", manifest)
-        if workspace.exists() and release_vars.overwrite:
-            shutil.rmtree(workspace)
-        pending.replace(workspace)
-    except Exception:
-        if pending.exists():
-            shutil.rmtree(pending)
-        raise
     return workspace
 
 
@@ -176,6 +165,6 @@ def materialize_package_repositories(repos: list[dict], destination: Path) -> No
     destination.mkdir(parents=True, exist_ok=True)
     for repo in repos:
         source = Path(repo["path"])
-        target = destination / repo["name"]
+        target = managed_output_path(destination, repo["name"])
         if source.is_dir():
             shutil.copytree(source, target)

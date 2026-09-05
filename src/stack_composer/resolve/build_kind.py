@@ -13,9 +13,31 @@ from __future__ import annotations
 
 from typing import Any
 
+from stack_composer.errors import Issue, ValidationFailed
+from stack_composer.output import safe_segment
+
 # GPU markers win over MPI: a `+mpi+rocm` spec is a GPU build.
 _GPU_SPEC_MARKERS = ("+rocm", "+cuda", "+sycl", "cuda_arch", "amdgpu_target")
 _MPI_SPEC_MARKERS = ("+mpi",)
+
+
+def validate_build_names(stack: dict[str, Any]) -> list[Issue]:
+    """Build names are unique identities and become output path segments."""
+    seen: set[str] = set()
+    issues: list[Issue] = []
+    for index, build in enumerate(stack.get("builds") or []):
+        field = f"stack.builds[{index}].name"
+        try:
+            name = safe_segment(build.get("name"), field)
+        except ValidationFailed as exc:
+            issues.extend(exc.issues)
+            continue
+        if name in seen:
+            issues.append(
+                Issue("error", "duplicate-build-name", field, f"duplicate build {name!r}")
+            )
+        seen.add(name)
+    return issues
 
 
 def _spec_strings(build: dict[str, Any]) -> list[str]:

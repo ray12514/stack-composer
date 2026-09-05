@@ -1,0 +1,75 @@
+{
+  "checked_on": "2026-09-04",
+  "reviewed_commit": "2edb6f789ae70c0ca3acafe682ea62c9412c1292",
+  "endpoint": "https://api.osv.dev/v1/querybatch",
+  "scope": "Five exact direct runtime PyPI requirements; not a complete artifact or build-dependency scan.",
+  "queries": [
+    {
+      "package": {
+        "name": "click",
+        "ecosystem": "PyPI"
+      },
+      "version": "8.1.8"
+    },
+    {
+      "package": {
+        "name": "fastjsonschema",
+        "ecosystem": "PyPI"
+      },
+      "version": "2.21.2"
+    },
+    {
+      "package": {
+        "name": "Jinja2",
+        "ecosystem": "PyPI"
+      },
+      "version": "3.1.6"
+    },
+    {
+      "package": {
+        "name": "MarkupSafe",
+        "ecosystem": "PyPI"
+      },
+      "version": "2.1.5"
+    },
+    {
+      "package": {
+        "name": "PyYAML",
+        "ecosystem": "PyPI"
+      },
+      "version": "6.0.3"
+    }
+  ],
+  "response": {
+    "results": [
+      {
+        "vulns": [
+          {
+            "id": "PYSEC-2026-2132",
+            "modified": "2026-07-13T07:15:21.899333Z"
+          }
+        ]
+      },
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "assessment": {
+    "click": {
+      "aliases": [
+        "CVE-2026-7246",
+        "GHSA-47fr-3ffg-hgmw"
+      ],
+      "fixed_version": "8.3.3",
+      "reachability": "No click.edit, click.launch, or Click pager call sites found in the reviewed Stack Composer source. No reachable application exploit established.",
+      "sources": [
+        "https://github.com/pallets/click/releases/tag/8.3.3",
+        "https://github.com/tsigouris007/security-advisories/security/advisories/GHSA-47fr-3ffg-hgmw",
+        "https://click.palletsprojects.com/en/stable/changes/#version-8-2-0"
+      ]
+    },
+    "no_match_caveat": "No matching database entry does not prove that a component is secure."
+  }
+}

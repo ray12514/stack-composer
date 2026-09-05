@@ -1,5 +1,11 @@
 # Development
 
+The [September 2026 assessment](assessment-2026-09.md) records the current
+baseline test evidence, reproduced defects, and stabilization order. The
+[packaging assessment](packaging-assessment-2026-09.md) evaluates a native
+executable distribution. See [stabilization results](stabilization-2026-09.md)
+for implemented corrections and the native candidate acceptance boundary.
+
 `stack-composer` follows the current cross-repository model in
 `stack-planning/docs/stack_generation_structure_v1.md`,
 `stack-planning/docs/end_to_end_map_v1.md`, and
@@ -68,3 +74,13 @@ Smoke-check the built artifact with:
 dist/stack-composer.pyz --help
 dist/stack-composer.pyz --licenses
 ```
+
+Release staging is private and starts from current source files, not the
+persistent `build/lib` tree. The build checks every application file in both
+wheel and zipapp against that source export. Failed builds leave the previous
+artifact intact. The tarball includes `APPLICATION_FILES.json` and `SHA256SUMS`.
+
+For an optional Linux executable, use the isolated builder and
+`scripts/build-native.sh --candidate --output <new-directory>` described in
+[the native build plan](native-build-plan-2026-09.md). Run its `stack-composer`
+directly and keep `_internal` beside it. This does not replace the `.pyz` default.

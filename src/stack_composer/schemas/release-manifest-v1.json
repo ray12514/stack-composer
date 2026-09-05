@@ -90,6 +90,30 @@
       "required": ["path", "digest"],
       "additionalProperties": false
     },
+    "deployment": {
+      "type": "object",
+      "description": "Deployment input evidence. Emitted by new renders; optional for existing trial manifests.",
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "digest": { "$ref": "#/$defs/sha256_digest" }
+      },
+      "required": ["path", "digest"],
+      "additionalProperties": false
+    },
+    "package_repositories": {
+      "type": "array",
+      "description": "Selected package-repository content evidence, in configured order. Optional for existing trial manifests.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "digest": { "$ref": "#/$defs/sha256_digest" }
+        },
+        "required": ["name", "path", "digest"],
+        "additionalProperties": false
+      }
+    },
     "package_sets": {
       "type": "array",
       "description": "One entry per unique package_set file. Empty if all specs are inline.",

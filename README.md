@@ -10,18 +10,21 @@ machine state, or choose deployment paths.
 
 ## Product boundaries
 
-There are two long-term render products and one temporary helper:
+There are two render products and a supported blueprint assembly path:
 
 | Command | Output | Intended consumer |
 |---|---|---|
 | `render-static` | Reusable, include-ready platform scopes from one reviewed `profile.yaml` | Package managers authoring their own Spack environments |
 | `publish-static` | An immutable public copy of one reviewed static catalog, with checksums and approval metadata | Package managers and `init-workspace` |
 | `render` | A complete managed workspace from profile, deployment, defaults, stack intent, package content, and templates | A downstream build path such as bare Spack, `spack-build`, `spacktools`, or Ansible |
-| `init-workspace` | A workspace rendered from an authored blueprint plus one exact static catalog | Initial Conversion Trials only |
+| `init-workspace` | A workspace rendered from an authored blueprint, explicit values, and one exact static catalog | CSE trials and maintained specialized blueprints |
 
-`init-workspace` is not a third production mode. It exists to exercise the
-static/manual workflow during the trials and can be removed after the static
-and full-render procedures are complete.
+`init-workspace` remains supported as a blueprint assembler, not a second lane
+planner. It shares output safety and YAML validation with the other commands.
+The blueprint owns its package and layout policy. Full `render` continues to
+own the standard profile/deployment/defaults/stack planning interface. See
+[workspace workflows](docs/workspace-workflows-2026-09.md) for the package-growth
+proposal and the limits on cross-compiler reuse.
 
 ## Status
 
@@ -43,11 +46,10 @@ Current implementation status:
   approval metadata, applies CSE-group management and outside-consumer read
   modes, and can update a relative `current` symlink. It does not render or
   modify the restricted source tree.
-- `init-workspace` is a CSE pilot convenience that assembles an authored
+- `init-workspace` assembles an authored
   starter blueprint against an exact restricted or published static catalog
   selection. Published input is verified against `SHA256SUMS`, and its approval
-  metadata is retained in `workspace-manifest.yaml`. It is not a
-  production render mode or a supported long-term consumption seam; it does
+  metadata and input digests are retained in `workspace-manifest.yaml`. It does
   not probe, build, or replace full `render`.
 - `render` requires `deployment.yaml` and emits installer-owned install/cache
   paths into `configs/common/config.yaml`; profile filesystem entries are only
@@ -106,7 +108,10 @@ stack-composer init-workspace \
 The blueprint owns package intent and exposure policy. The values file selects
 real catalog scopes and deployment roots. The command rejects missing or
 escaping catalog paths, unsupported provider modes, incomplete values, and
-invalid generated YAML before publishing the workspace atomically. A blueprint
+invalid generated YAML before promoting the workspace. Existing output is
+retained until a validated replacement can be installed, with rollback on a
+failed promotion. This is recoverable replacement, not a portable atomic
+directory exchange or a power-loss guarantee. A blueprint
 may also request that the declared read/write policy be applied to the files and
 directories in the newly initialized workspace.
 

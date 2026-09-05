@@ -9,6 +9,7 @@ from jinja2 import Environment
 
 from stack_composer.errors import Issue, ValidationFailed
 from stack_composer.model.package_set import expand_specs_for_lane, spec_package_name
+from stack_composer.output import managed_output_path
 from stack_composer.render.platform_modules import platform_module_prereqs_for_lane
 from stack_composer.render.scopes import scopes_for_lane
 
@@ -128,7 +129,7 @@ def render_lane_environment(
     env: Environment,
     ctx: dict[str, Any],
     lane: dict[str, Any],
-) -> None:
+) -> list[str]:
     prereqs, prereq_issues = platform_module_prereqs_for_lane(lane, ctx["profile"])
     if prereq_issues:
         raise ValidationFailed(prereq_issues)
@@ -166,7 +167,8 @@ def render_lane_environment(
         }
     )
     src = template_dir / "environments" / lane["kind"] / "spack.yaml.j2"
-    dst = pending / lane["env_path"] / "spack.yaml"
+    dst = managed_output_path(pending, *Path(lane["env_path"]).parts, "spack.yaml")
     dst.parent.mkdir(parents=True, exist_ok=True)
     template_name = src.relative_to(template_dir).as_posix()
     dst.write_text(env.get_template(template_name).render(lane_ctx), encoding="utf-8")
+    return prereqs

@@ -8,7 +8,7 @@ from stack_composer.model.deployment import load_deployment, validate_deployment
 from stack_composer.model.package_set import load_package_set
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults, load_stack, merge_defaults
-from stack_composer.resolve.build_kind import normalize_builds
+from stack_composer.resolve.build_kind import normalize_builds, validate_build_names
 from stack_composer.yaml_io import load_yaml
 
 
@@ -51,6 +51,9 @@ def validate_inputs(
 
     stack = merge_defaults(defaults, raw_stack)
     stack = normalize_builds(stack)
+    issues.extend(validate_build_names(stack))
+    if issues:
+        return issues, {}
     issues.extend(cross_check_profile_contract(profile, stack))
     issues.extend(validate_package_sets(stack, package_sets_dir))
     issues.extend(validate_package_repositories(stack, package_repos_dir))
@@ -179,6 +182,16 @@ def validate_package_sets(stack: dict[str, Any], package_sets_dir: Path) -> list
                     f"{package_set_name!r} does not provide kind {required_kind!r}",
                 )
             )
+        specs = package_set.get("specs") or {}
+        if (
+            required_kind and isinstance(specs, dict)
+            and not (specs.get(required_kind) or specs.get("any"))
+        ):
+            issues.append(Issue(
+                "error", "package-set-spec-kind-mismatch",
+                f"stack.builds[{index}].package_set",
+                f"{package_set_name!r} has no root specs for kind {required_kind!r} or 'any'",
+            ))
     return issues
 
 
@@ -186,7 +199,9 @@ def load_spec_sources(
     stack: dict[str, Any], package_sets_dir: Path
 ) -> tuple[dict[str, dict[str, Any]], list[Issue]]:
     sources: dict[str, dict[str, Any]] = {}
-    issues: list[Issue] = []
+    issues = validate_build_names(stack)
+    if issues:
+        return sources, issues
     for build in stack.get("builds", []):
         build_name = build["name"]
         required_kind = build.get("kind", "serial")
@@ -345,7 +360,7 @@ def validate_narrowing_candidates(
     profile: dict[str, Any],
     stack: dict[str, Any],
 ) -> list[Issue]:
-    from stack_composer.render.plan import lane_candidates_for_build
+    from stack_composer.render.plan import compiler_narrowing_matches, lane_candidates_for_build
 
     lanes, _, _ = lane_candidates_for_build(profile, stack, build)
     candidates = {
@@ -362,6 +377,11 @@ def validate_narrowing_candidates(
     system_name = profile["system"]["name"]
     for axis, allowed in narrowing.items():
         unknown = sorted(set(allowed or []) - candidates.get(axis, set()))
+        if axis == "compilers":
+            unknown = sorted(
+                selected for selected in (allowed or [])
+                if not any(compiler_narrowing_matches(lane, selected, profile) for lane in lanes)
+            )
         if unknown:
             issues.append(
                 Issue(

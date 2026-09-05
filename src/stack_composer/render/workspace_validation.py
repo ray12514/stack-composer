@@ -3,30 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from stack_composer.errors import Issue
 from stack_composer.render.spack_specs import is_renderable_external_name_version
-
-
-class UniqueKeyLoader(yaml.SafeLoader):
-    pass
-
-
-def construct_mapping(loader: UniqueKeyLoader, node: yaml.MappingNode, deep: bool = False) -> Any:
-    mapping = {}
-    for key_node, value_node in node.value:
-        key = loader.construct_object(key_node, deep=deep)
-        if key in mapping:
-            raise yaml.YAMLError(f"duplicate key {key!r}")
-        mapping[key] = loader.construct_object(value_node, deep=deep)
-    return mapping
-
-
-UniqueKeyLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
-    construct_mapping,
-)
+from stack_composer.yaml_io import load_yaml
 
 
 def validate_rendered_workspace(workspace: Path) -> list[Issue]:
@@ -37,13 +16,21 @@ def validate_rendered_workspace(workspace: Path) -> list[Issue]:
             continue
         if path.name == "packages.yaml":
             issues.extend(validate_packages_yaml(path, data))
+        if path.name == "spack.yaml" and path.relative_to(workspace).parts[0] == "environments":
+            spack = data.get("spack") if isinstance(data, dict) else None
+            specs = spack.get("specs") if isinstance(spack, dict) else None
+            if not isinstance(specs, list) or not specs:
+                issues.append(Issue(
+                    "error", "rendered-specs-empty", str(path),
+                    "rendered environment must contain a nonempty spack.specs list",
+                ))
     return issues
 
 
 def load_unique_yaml(path: Path, issues: list[Issue]) -> Any:
     try:
-        return yaml.load(path.read_text(encoding="utf-8"), Loader=UniqueKeyLoader)
-    except (OSError, yaml.YAMLError) as exc:
+        return load_yaml(path, unique_keys=True)
+    except ValueError as exc:
         issues.append(
             Issue(
                 "error",
@@ -88,4 +75,3 @@ def is_safe_external_spec(spec: object) -> bool:
         return True
     name, version = head.split("@", 1)
     return is_renderable_external_name_version(name, version)
-

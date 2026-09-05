@@ -139,7 +139,8 @@ def verify_static_catalog_publication(
     actual_files = {
         path.relative_to(catalog_dir).as_posix()
         for path in catalog_dir.rglob("*")
-        if path.is_file() and path.name not in {"SHA256SUMS", "publication.yaml"}
+        if path.is_file()
+        and path.relative_to(catalog_dir).as_posix() not in {"SHA256SUMS", "publication.yaml"}
     }
     if set(recorded) != actual_files:
         missing = sorted(actual_files - set(recorded))

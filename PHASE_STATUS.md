@@ -3,8 +3,8 @@
 Current branch: `codex/simplified-render-plan`.
 
 This is the current pre-v1 implementation status. No released v1 behavior is
-being preserved; when system evidence changes the design, update the active
-model directly.
+being preserved as a final product contract. Existing CSE trial workspaces,
+locks, and caches must nevertheless remain usable during stabilization.
 
 ## Product model
 
@@ -18,10 +18,10 @@ model directly.
 - `render` produces the complete managed workspace from `profile.yaml`,
   `deployment.yaml`, `defaults.yaml`, `stack.yaml`, package content, and the
   active template set. It stops at the workspace handoff and never runs Spack.
-- `init-workspace` is an Initial Conversion Trials convenience. It combines an
-  authored blueprint with one exact static catalog. It is not a production
-  renderer and can be removed after the static/manual and full-render workflows
-  are complete and documented.
+- `init-workspace` is a supported blueprint assembler. It combines an authored
+  blueprint, explicit values, and one exact static catalog. It does not resolve
+  a second lane-planning language or replace full `render`. Broader Foundation
+  reuse remains a separate post-trial design change.
 
 Cluster Inspector owns observed facts. Stack Content owns authored inputs and
 templates. Stack Composer consumes only explicit inputs and never probes the
@@ -35,8 +35,13 @@ refresh, verification, and buildcache publication.
 - Deterministic `validate`, `show`, `render`, `render-static`, `publish-static`,
   `init-workspace`, `validate-template-set`, and `publish-manifest` command
   paths.
-- Atomic full and static rendering with strict template variables and generated
-  workspace validation.
+- Owned staging and recoverable replacement for full/static rendering and
+  initialization, with strict template variables and duplicate-key rejection.
+  Failed replacement restores the previous output; an unsuccessful rollback
+  retains a named recovery tree. No portable power-loss guarantee is claimed.
+- Deployment/package-repository digests in new full-render manifests and
+  blueprint/template/data/catalog/value digests in new initialization manifests.
+  Existing trial manifests remain readable without regeneration.
 - Generic compiler, MPI, GPU, OS, target, external-package, view, and
   front-door module planning from profile/defaults/stack/deployment inputs.
 - Provider identity and package-layout translation at one adapter seam when
@@ -67,6 +72,13 @@ refresh, verification, and buildcache publication.
   without changing ownership or unrelated paths.
 - Platform-neutral `.pyz` release packaging, exact runtime dependencies,
   third-party license checks, and the shipped `spack-build` companion.
+- Clean release staging with byte-exact source/wheel/archive inventory checks.
+- The companion preserves existing locks unless `--reconcretize` is explicit,
+  stops dependent build steps after failure, checks inventory command results,
+  and reports only successful cache pushes. It preserves rendered module
+  prerequisite evidence instead of replacing it with empty lists.
+- An opt-in native candidate build. The current Python 3.9+ `.pyz` path remains
+  the trial default; production native promotion has separate acceptance gates.
 
 ## Current Initial Conversion Trials evidence
 

@@ -13,6 +13,9 @@ def test_spack_build_runs_lanes_and_writes_publish_inputs(tmp_path: Path) -> Non
         env_dir = workspace / "environments" / lane
         env_dir.mkdir(parents=True)
         (env_dir / "spack.yaml").write_text("spack:\n  specs: []\n", encoding="utf-8")
+    (workspace / "reports").mkdir()
+    prereq_facts = {"lanes": {"gcc-core": [], "cce-mpi-craympich": ["cce/21.0", "cray-mpich"]}}
+    (workspace / "reports/platform-module-prereqs.yaml").write_text(yaml.safe_dump(prereq_facts))
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_log = tmp_path / "spack.log"
@@ -63,7 +66,7 @@ def test_spack_build_runs_lanes_and_writes_publish_inputs(tmp_path: Path) -> Non
     prereqs = yaml.safe_load(
         (reports / "platform-module-prereqs.yaml").read_text(encoding="utf-8")
     )
-    assert prereqs == {"lanes": {"gcc-core": [], "cce-mpi-craympich": []}}
+    assert prereqs == prereq_facts
     buildcache = yaml.safe_load(
         (reports / "buildcache-destinations.yaml").read_text(encoding="utf-8")
     )
@@ -75,7 +78,8 @@ def test_spack_build_runs_lanes_and_writes_publish_inputs(tmp_path: Path) -> Non
         }
     ]
     log = fake_log.read_text(encoding="utf-8")
-    assert "concretize --force -j 1" in log
+    assert "concretize -j 1" in log
+    assert "concretize --force" not in log
     assert "install -j 2" in log
     assert "find --explicit --format {prefix}" in log
     assert "find -H" in log

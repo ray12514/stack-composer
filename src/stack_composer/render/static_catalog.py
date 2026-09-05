@@ -9,6 +9,7 @@ from stack_composer import __version__
 from stack_composer.errors import Issue, ValidationFailed
 from stack_composer.model.profile import load_profile
 from stack_composer.model.stack import load_defaults
+from stack_composer.output import managed_output_path, output_transaction
 from stack_composer.render.fabric import (
     selected_build_fabric_externals,
     unselected_fabric_userspace,
@@ -85,37 +86,21 @@ def render_static_catalog(
         raise ValidationFailed(issues)
 
     system = str((profile.get("system") or {}).get("name") or "unknown-system")
-    workspace = Path(release_vars.output_root) / system / "static" / release_vars.release_tag
-    if workspace.exists() and not release_vars.overwrite:
-        raise ValidationFailed(
-            [
-                Issue(
-                    "error",
-                    "static-output-exists",
-                    str(workspace),
-                    "static catalog output already exists; pass --overwrite to replace it",
-                )
-            ]
-        )
-
-    pending = workspace.with_name(workspace.name + ".rendering")
-    if pending.exists():
-        shutil.rmtree(pending)
-    pending.mkdir(parents=True, exist_ok=True)
-
-    catalog = build_static_catalog(
-        profile=profile,
-        defaults=defaults,
-        workspace=pending,
-        release_vars=release_vars,
-        template_set_name=template_set_name,
+    workspace = managed_output_path(
+        Path(release_vars.output_root), system, "static", release_vars.release_tag
     )
-    write_static_catalog(pending, catalog)
-    shutil.copyfile(profile_path, pending / "profile.yaml")
-
-    if workspace.exists():
-        shutil.rmtree(workspace)
-    pending.rename(workspace)
+    with output_transaction(
+        workspace, overwrite=release_vars.overwrite, exists_code="static-output-exists"
+    ) as pending:
+        catalog = build_static_catalog(
+            profile=profile,
+            defaults=defaults,
+            workspace=pending,
+            release_vars=release_vars,
+            template_set_name=template_set_name,
+        )
+        write_static_catalog(pending, catalog)
+        shutil.copyfile(profile_path, pending / "profile.yaml")
     return workspace
 
 
@@ -580,7 +565,7 @@ def build_platform_scope(
 
 def write_static_catalog(workspace: Path, catalog: dict[str, Any]) -> None:
     for scope in catalog["scopes"]:
-        path = scope["absolute_path"]
+        path = managed_output_path(workspace, *Path(scope["path"]).parts)
         if scope.get("packages"):
             write_yaml(path / "packages.yaml", {"packages": scope["packages"]})
         if scope.get("toolchains"):
