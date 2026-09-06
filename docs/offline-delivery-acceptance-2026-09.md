@@ -6,6 +6,12 @@ Status: local candidate complete for offline tool rebuilding and the modeled
 workspace handoff. No remote push, production promotion, package installation,
 trial workspace update, or shared HPC Lab service change was performed.
 
+The outer delivery archive preserves the sealed input permission bits. The
+final transport check caught Docker's `0600` image archive being normalized to
+`0644`; the packaging utility now supports `--preserve-modes`, with an
+unpack-and-verify regression test. This outer transport correction does not
+change the sealed inputs or any of the two-build artifact hashes below.
+
 ## Recorded inputs
 
 | Repository | Source commit |
@@ -106,11 +112,15 @@ transaction lock. A read-only workspace rejected that lock as expected.
 
 ## Regression checks and limits
 
-Composer: 255 tests passed on macOS Python 3.14.7 and Python 3.9.25. CSE
+The frozen Composer payload passed 255 tests on macOS Python 3.14.7 and Python 3.9.25. CSE
 support: 85 tests passed. Ruff, ShellCheck, source/schema drift tests, capsule
 verification, artifact checksum checks, and application inventory checks
 passed. The new regression cases cover deterministic archives, unsafe links,
 vendored wheel metadata, dirty source exclusion, and modified input rejection.
+The outer-archive transport regression is additional to that frozen test set.
+The final repository, including that regression, passed 256 tests on each
+Python version. The transport fix changes only the outer archive wrapper;
+the frozen tool payload and its reproducibility results remain unchanged.
 
 Spack, the builtin recipe mirror, installed prefixes, caches, views, modules,
 compiler and MPI paths, and site permissions remain explicit downstream

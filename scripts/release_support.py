@@ -72,7 +72,7 @@ def checksums(root: Path) -> None:
     (root / "SHA256SUMS").write_text("".join(entries), encoding="utf-8")
 
 
-def release_archive(root: Path, artifact: Path, epoch: int) -> None:
+def release_archive(root: Path, artifact: Path, epoch: int, preserve_modes: bool = False) -> None:
     """Archive a delivery tree without host ownership, times, or gzip filenames."""
     root = root.resolve()
     if epoch < 0 or not root.is_dir():
@@ -98,7 +98,8 @@ def release_archive(root: Path, artifact: Path, epoch: int) -> None:
                     info.uname = info.gname = ""
                     info.mtime = epoch
                     info.pax_headers = {}
-                    info.mode = 0o755 if info.isdir() or info.mode & 0o111 else 0o644
+                    if not preserve_modes:
+                        info.mode = 0o755 if info.isdir() or info.mode & 0o111 else 0o644
                     if info.isfile():
                         with path.open("rb") as content:
                             archive.addfile(info, content)
@@ -123,6 +124,10 @@ def main() -> None:
     archive.add_argument("root", type=Path)
     archive.add_argument("artifact", type=Path)
     archive.add_argument("--epoch", type=int, required=True)
+    archive.add_argument(
+        "--preserve-modes", action="store_true",
+        help="Retain recorded permissions when wrapping an already sealed input capsule.",
+    )
     args = parser.parse_args()
     if args.command == "stage":
         stage_project(args.root, args.destination)
@@ -131,7 +136,7 @@ def main() -> None:
     elif args.command == "inventory":
         print(json.dumps(package_inventory(args.root), indent=2, sort_keys=True))
     elif args.command == "archive":
-        release_archive(args.root, args.artifact, args.epoch)
+        release_archive(args.root, args.artifact, args.epoch, args.preserve_modes)
     else:
         checksums(args.root)
 

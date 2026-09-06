@@ -179,3 +179,53 @@ def test_snapshot_excludes_dirty_files_and_seal_rejects_changed_source(tmp_path:
     assert result.returncode != 0
     assert "source export changed after snapshot" in result.stderr
     assert not (capsule / "RELEASE_INPUTS.json").exists()
+
+
+def test_outer_archive_preserves_sealed_input_modes(tmp_path: Path) -> None:
+    capsule = tmp_path / "inputs"
+    capsule.mkdir()
+    payload = capsule / "builder-image.tar"
+    payload.write_bytes(b"saved builder image\n")
+    payload.chmod(0o600)
+    (capsule / "RELEASE_INPUTS.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "files": {
+                    "builder-image.tar": {
+                        "sha256": hashlib.sha256(payload.read_bytes()).hexdigest(),
+                        "mode": 0o600,
+                    }
+                },
+            }
+        )
+    )
+    artifact = tmp_path / "delivery.tar.gz"
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/release_support.py"),
+            "archive",
+            str(capsule),
+            str(artifact),
+            "--epoch",
+            "1700000000",
+            "--preserve-modes",
+        ],
+        check=True,
+        capture_output=True,
+    )
+    received = tmp_path / "received"
+    received.mkdir()
+    with tarfile.open(artifact) as archive:
+        archive.extractall(received)
+    subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/offline_delivery.py"),
+            "verify",
+            str(received / "inputs"),
+        ],
+        check=True,
+        capture_output=True,
+    )

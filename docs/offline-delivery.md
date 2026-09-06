@@ -51,6 +51,15 @@ including the saved builder image; changed, missing, or additional files fail
 verification. A checksum inventory is not a signature or security approval.
 Distribute its approved checksum through the release's trusted review channel.
 
+When wrapping a sealed capsule in an outer delivery archive, retain its
+recorded permission bits. For example, Docker saves the image archive with
+mode `0600`. Normalizing that file to `0644` after sealing changes the input
+contract even though its content hash stays the same. Use a current checkout's
+`scripts/release_support.py archive --preserve-modes` with the recorded
+`--epoch`, or another archiver that preserves modes. On extraction, use
+`tar -xzpf` so the receiving umask does not alter recorded permissions. Verify
+the extracted capsule before accepting the handoff.
+
 ## Rebuild without source checkouts or network
 
 Transfer the complete `inputs` directory and verify its approved delivery
