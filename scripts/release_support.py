@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
+import os
 import shutil
+import tarfile
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -69,6 +72,40 @@ def checksums(root: Path) -> None:
     (root / "SHA256SUMS").write_text("".join(entries), encoding="utf-8")
 
 
+def release_archive(root: Path, artifact: Path, epoch: int) -> None:
+    """Archive a delivery tree without host ownership, times, or gzip filenames."""
+    root = root.resolve()
+    if epoch < 0 or not root.is_dir():
+        raise ValueError("archive requires a directory and a nonnegative epoch")
+    if artifact.resolve().is_relative_to(root):
+        raise ValueError("archive output must be outside its input tree")
+    paths = [root, *sorted(root.rglob("*"))]
+    for path in paths:
+        if path.is_symlink():
+            if Path(os.readlink(path)).is_absolute() or not path.resolve().is_relative_to(root):
+                raise ValueError(f"delivery symlink escapes its tree: {path.relative_to(root)}")
+            if not path.exists():
+                raise ValueError(f"broken delivery symlink: {path.relative_to(root)}")
+        elif not path.is_file() and not path.is_dir():
+            raise ValueError(f"unsupported delivery entry: {path}")
+    # Exclusive creation keeps a failed/repeated build from replacing an existing release.
+    with artifact.open("xb") as output:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=output, mtime=epoch) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w", format=tarfile.PAX_FORMAT) as archive:
+                for path in paths:
+                    info = archive.gettarinfo(str(path), path.relative_to(root.parent).as_posix())
+                    info.uid = info.gid = 0
+                    info.uname = info.gname = ""
+                    info.mtime = epoch
+                    info.pax_headers = {}
+                    info.mode = 0o755 if info.isdir() or info.mode & 0o111 else 0o644
+                    if info.isfile():
+                        with path.open("rb") as content:
+                            archive.addfile(info, content)
+                    else:
+                        archive.addfile(info)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -82,6 +119,10 @@ def main() -> None:
     inventory.add_argument("root", type=Path)
     checksum = commands.add_parser("checksums")
     checksum.add_argument("root", type=Path)
+    archive = commands.add_parser("archive")
+    archive.add_argument("root", type=Path)
+    archive.add_argument("artifact", type=Path)
+    archive.add_argument("--epoch", type=int, required=True)
     args = parser.parse_args()
     if args.command == "stage":
         stage_project(args.root, args.destination)
@@ -89,6 +130,8 @@ def main() -> None:
         verify_archive(args.root, args.artifact)
     elif args.command == "inventory":
         print(json.dumps(package_inventory(args.root), indent=2, sort_keys=True))
+    elif args.command == "archive":
+        release_archive(args.root, args.artifact, args.epoch)
     else:
         checksums(args.root)
 

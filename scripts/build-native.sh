@@ -3,6 +3,7 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PYTHON=${PYTHON:-python3}
 PYTHON=$("$PYTHON" -c 'import sys; print(sys.executable)')
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-315532800} PYTHONHASHSEED=0 TZ=UTC LC_ALL=C
 OUTPUT=""
 CANDIDATE=0
 while [[ $# -gt 0 ]]; do
@@ -36,7 +37,13 @@ export STACK_COMPOSER_NATIVE_SOURCE="$STAGE/source"
 PYTHONPATH='' "$PYTHON" -m PyInstaller --clean --noconfirm \
   --workpath "$STAGE/work" --distpath "$STAGE/dist" "$ROOT_DIR/packaging/stack-composer.spec"
 NATIVE="$STAGE/dist/stack-composer"
-cp "$STAGE/work/stack-composer/warn-stack-composer.txt" "$NATIVE/BUILD_WARNINGS.txt"
+"$PYTHON" - "$STAGE" "$ROOT_DIR" "$NATIVE/BUILD_WARNINGS.txt" <<'PY'
+from pathlib import Path
+import sys
+stage, root, output = sys.argv[1:]
+warnings = Path(stage, "work/stack-composer/warn-stack-composer.txt").read_text()
+Path(output).write_text(warnings.replace(stage, "<build>").replace(root, "<source>"))
+PY
 PYTHONPATH='' PYTHONHOME='' "$NATIVE/stack-composer" --help >/dev/null
 PYTHONPATH='' PYTHONHOME='' "$NATIVE/stack-composer" --licenses >/dev/null
 "$PYTHON" "$ROOT_DIR/scripts/native_inventory.py" "$ROOT_DIR" "$STAGE/source" "$NATIVE"
@@ -45,5 +52,6 @@ mkdir -p "$(dirname "$OUTPUT")"
 # OUTPUT is a complete candidate directory, not the versioned trial tool path.
 mkdir "$OUTPUT"
 cp -R "$NATIVE" "$OUTPUT/stack-composer"
-tar -C "$OUTPUT" -czf "$OUTPUT/stack-composer-native-candidate.tar.gz" stack-composer
+"$PYTHON" "$ROOT_DIR/scripts/release_support.py" archive "$OUTPUT/stack-composer" \
+  "$OUTPUT/stack-composer-native-candidate.tar.gz" --epoch "$SOURCE_DATE_EPOCH"
 echo "$OUTPUT/stack-composer/stack-composer"

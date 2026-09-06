@@ -4,6 +4,14 @@ set -euo pipefail
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 PYTHON=${PYTHON:-python3}
 PYTHON=$("$PYTHON" -c 'import sys; print(sys.executable)')
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-315532800} PYTHONHASHSEED=0 TZ=UTC LC_ALL=C
+
+if [[ -n ${STACK_COMPOSER_WHEELHOUSE:-} || -n ${STACK_COMPOSER_WHEEL_LOCK:-} ]]; then
+  [[ -d ${STACK_COMPOSER_WHEELHOUSE:-} && -f ${STACK_COMPOSER_WHEEL_LOCK:-} ]] || {
+    echo 'Offline pyz builds require STACK_COMPOSER_WHEELHOUSE and STACK_COMPOSER_WHEEL_LOCK.' >&2
+    exit 2
+  }
+fi
 
 cd "${ROOT_DIR}"
 
@@ -37,7 +45,12 @@ mkdir -p dist/wheelhouse
 APP_WHEELS=(dist/stack_composer-*.whl)
 [[ ${#APP_WHEELS[@]} -eq 1 && -f ${APP_WHEELS[0]} ]]
 "$PYTHON" "$ROOT_DIR/scripts/release_support.py" verify "$STAGE/source" "${APP_WHEELS[0]}"
-"${PYTHON}" -m pip wheel --no-deps --wheel-dir dist/wheelhouse dist/stack_composer-*.whl
+cp "${APP_WHEELS[0]}" dist/wheelhouse/
+if [[ -n ${STACK_COMPOSER_WHEELHOUSE:-} ]]; then
+  "${PYTHON}" -m pip download --no-cache-dir --no-index \
+    --find-links "$STACK_COMPOSER_WHEELHOUSE" --require-hashes --only-binary=:all: \
+    --dest dist/wheelhouse -r "$STACK_COMPOSER_WHEEL_LOCK"
+else
 "${PYTHON}" -m pip wheel --no-deps --only-binary=:all: --wheel-dir dist/wheelhouse \
   'click==8.1.8' \
   'fastjsonschema==2.21.2' \
@@ -54,6 +67,7 @@ PYYAML_FORCE_LIBYAML=0 "${PYTHON}" -m pip wheel \
   --no-binary=PyYAML \
   --wheel-dir dist/wheelhouse \
   'PyYAML==6.0.3'
+fi
 "${PYTHON}" - <<'PY'
 from pathlib import Path
 
@@ -109,7 +123,8 @@ EOF
   > "$RELEASE_DIR/APPLICATION_FILES.json"
 "$PYTHON" "$ROOT_DIR/scripts/release_support.py" checksums "$RELEASE_DIR"
 
-tar -C dist -czf "dist/stack-composer-${VERSION}.tar.gz" "stack-composer-${VERSION}"
+"$PYTHON" "$ROOT_DIR/scripts/release_support.py" archive "$RELEASE_DIR" \
+  "dist/stack-composer-${VERSION}.tar.gz" --epoch "$SOURCE_DATE_EPOCH"
 # Replace only complete, smoke-tested files. Failed builds leave the old
 # artifacts intact; unrelated distributions and staging trees are untouched.
 for artifact in stack-composer.pyz "stack-composer-${VERSION}.tar.gz"; do

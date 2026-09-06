@@ -1,0 +1,107 @@
+schema_version: 1
+workspace:
+  role: build
+build:
+  contexts:
+    login:
+      node_type: login
+      stages:
+        - /tmp/hpc-lab-cse/example-linux/login
+        - /shared/tests/workspace-init/stages/example-linux/login
+    compute:
+      node_type: cpu_compute
+      stages:
+        - /tmp/hpc-lab-cse/example-linux/compute
+        - /shared/tests/workspace-init/stages/example-linux/compute
+architecture:
+  target: x86_64_v3
+  binary_target: x86_64
+  node_types: [login, cpu_compute]
+system:
+  name: example-linux
+release: lab
+stack:
+  name: cse-initial-conversion-trials
+shared:
+  compiler:
+    name: gcc
+    version: 12.5.0
+    public_name: init-GCC
+    source: build
+    modules: []
+    commands:
+      c: gcc
+      cxx: g++
+      fortran: gfortran
+    build_with:
+      name: gcc
+      version: 11.4.0
+      modules: []
+  mpi:
+    name: openmpi
+    version: 4.1.8
+    source: build
+    modules: []
+    commands:
+      c: mpicc
+      cxx: mpicxx
+      fortran: mpifort
+    spec: openmpi@4.1.8 fabrics=ucx schedulers=slurm ~rsh ~cuda ~lustre +romio romio-filesystem=none +pmi +legacylaunchers
+    provider_constraint: openmpi@4.1.8 fabrics=ucx schedulers=slurm ~rsh ~cuda ~lustre +romio romio-filesystem=none +pmi +legacylaunchers
+  catalog_scopes:
+    compiler: scopes/compilers/gcc/11.4.0
+    mpi: null
+platform:
+  compiler:
+    name: aocc
+    version: 4.2.0
+    public_name: init-AOCC
+    source: external
+    modules: [aocc/4.2.0]
+    commands:
+      c: clang
+      cxx: clang++
+      fortran: flang
+  mpi:
+    name: openmpi
+    version: 4.1.8
+    source: build
+    modules: []
+    commands:
+      c: mpicc
+      cxx: mpicxx
+      fortran: mpifort
+    spec: openmpi@4.1.8 fabrics=ucx schedulers=slurm ~rsh ~cuda ~lustre +romio romio-filesystem=none +pmi +legacylaunchers
+    provider_constraint: openmpi@4.1.8 fabrics=ucx schedulers=slurm ~rsh ~cuda ~lustre +romio romio-filesystem=none +pmi +legacylaunchers
+  catalog_scopes:
+    compiler: scopes/compilers/aocc/4.2.0
+    runtime_compiler: null
+    mpi: null
+catalog_scopes:
+  common: scopes/common
+  platform: null
+paths:
+  install_tree: /shared/tests/workspace-init/published/example-linux/lab/spack/opt
+  source_cache: /shared/tests/workspace-init/cache/source
+  misc_cache: /shared/tests/workspace-init/cache/misc
+  views_root: /shared/tests/workspace-init/published/example-linux/lab/views
+  modules_root: /shared/tests/workspace-init/published/example-linux/lab/modules
+buildcache:
+  name: hpc-lab-example-linux
+  url: file:///shared/tests/workspace-init/buildcache/example-linux/lab
+permissions:
+  group: hpc
+  read: group
+  write: group
+build_jobs: 2
+spack:
+  source: https://github.com/spack/spack.git
+  version: 1.2.2
+  tag: v1.2.2
+  commit: 3e19345b6e12f5ff1b874f4059622fc6a1fd804a
+  default_mode: shared
+  shared_root: /opt/spack
+  initial_root: /opt/spack
+package_repo:
+  git: https://github.com/spack/spack-packages.git
+  tag: v2026.06.0

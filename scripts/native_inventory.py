@@ -60,7 +60,7 @@ def main() -> None:
     for distribution in sorted(metadata.distributions(), key=lambda item: item.metadata["Name"]):
         name = distribution.metadata["Name"]
         licenses = []
-        for path in distribution.files or []:
+        for path in sorted(distribution.files or []):
             if any(
                 part.lower().startswith(("license", "copying", "notice")) for part in path.parts
             ):
@@ -75,7 +75,7 @@ def main() -> None:
     candidates = [Path(sysconfig.get_path("stdlib")) / "LICENSE.txt"]
     for base in (Path("/usr/share/licenses"), Path(sys.base_prefix)):
         if base == Path("/usr/share/licenses") and base.exists():
-            candidates.extend(base.glob("python3.12*/LICENSE*"))
+            candidates.extend(sorted(base.glob("python3.12*/LICENSE*")))
     for index, origin in enumerate(candidates):
         if origin.is_file():
             target = notices / f"CPython-{index}-{origin.name}"
@@ -112,7 +112,7 @@ def main() -> None:
     evidence = {
         "status": "candidate-only; not approved for production",
         "python": sys.version,
-        "platform": platform.platform(),
+        "platform": sys.platform,
         "machine": platform.machine(),
         "libc": platform.libc_ver(),
         "application_files": package_inventory(source),
@@ -124,7 +124,8 @@ def main() -> None:
         "elf_files": binaries,
         "remaining_gates": [
             "Click/Python support decision", "complete frozen-runtime license and security review",
-            "target-system ABI/shared-filesystem acceptance", "two-build reproducibility",
+            "target-system ABI/shared-filesystem acceptance",
+            "release-specific two-build reproducibility receipt",
         ],
     }
     (artifact / "NATIVE_COMPONENTS.json").write_text(json.dumps(evidence, indent=2) + "\n")
