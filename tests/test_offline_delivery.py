@@ -125,9 +125,10 @@ def test_snapshot_excludes_dirty_files_and_seal_rejects_changed_source(tmp_path:
         (repo / "scripts").mkdir()
         for script in ("offline_delivery.py", "rebuild-offline.sh"):
             (repo / "scripts" / script).write_text("reviewed\n")
+        (repo / "CLAUDE.md").symlink_to("scripts/offline_delivery.py")
         for command in (
             ["init", "-q"],
-            ["add", "scripts"],
+            ["add", "scripts", "CLAUDE.md"],
             [
                 "-c",
                 "user.name=Test",

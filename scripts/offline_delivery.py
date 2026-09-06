@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -24,11 +25,18 @@ def digest(path: Path) -> str:
 
 
 def inventory(root: Path) -> dict:
+    root = root.resolve()
     result = {}
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
-            raise ValueError(f"input capsule must not contain symlinks: {path}")
-        if path.is_file() and path != root / "RELEASE_INPUTS.json":
+            if (
+                Path(os.readlink(path)).is_absolute()
+                or not path.is_file()
+                or not path.resolve().is_relative_to(root)
+            ):
+                raise ValueError(f"unsafe input symlink: {path}")
+            result[path.relative_to(root).as_posix()] = {"symlink": os.readlink(path)}
+        elif path.is_file() and path != root / "RELEASE_INPUTS.json":
             result[path.relative_to(root).as_posix()] = {
                 "sha256": digest(path),
                 "mode": path.stat().st_mode & 0o777,
@@ -60,7 +68,17 @@ def snapshot(args) -> None:
         destination.mkdir(parents=True)
         # Always export commits, never ambient build/lib, dirty files or ignored secrets.
         with tarfile.open(fileobj=io.BytesIO(git(origin, "archive", commit))) as archive:
+            regular_files = {member.name for member in archive.getmembers() if member.isfile()}
             for member in archive.getmembers():
+                if member.name.startswith("/") or ".." in Path(member.name).parts:
+                    raise ValueError(f"unsafe source archive path: {member.name}")
+                if member.issym() and not Path(member.linkname).is_absolute():
+                    target = (destination / member.name).parent / member.linkname
+                    if (
+                        target.resolve().is_relative_to(destination)
+                        and target.resolve().relative_to(destination).as_posix() in regular_files
+                    ):
+                        continue
                 if (
                     member.name.startswith("/")
                     or ".." in Path(member.name).parts
