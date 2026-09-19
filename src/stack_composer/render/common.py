@@ -50,9 +50,14 @@ def repos_mapping(
 ) -> dict[str, Any]:
     """repos.yaml content, fully decided: the builtin recipe-generation pin
     from declared policy (spack.package_repo) plus local package repositories
-    as named path entries. Always a complete mapping — empty when nothing is
-    declared — so the template prints it verbatim."""
-    repos: dict[str, Any] = {}
+    as named path entries in priority order, preserving authored order within
+    each priority. Always a complete mapping — empty when nothing is declared
+    — so the template prints it verbatim."""
+    repos: dict[str, Any] = {
+        str(repo["name"]): posixpath.join("..", "..", "package-repos", str(repo["name"]))
+        for repo in package_repos
+        if repo["priority"] == "before_builtin"
+    }
     spack_cfg = stack.get("spack")
     pin = spack_cfg.get("package_repo") if isinstance(spack_cfg, dict) else None
     if pin:
@@ -60,5 +65,8 @@ def repos_mapping(
             key: pin[key] for key in ("git", "tag", "commit", "branch") if pin.get(key)
         }
     for repo in package_repos:
-        repos[str(repo["name"])] = posixpath.join("..", "..", "package-repos", str(repo["name"]))
+        if repo["priority"] == "after_builtin":
+            repos[str(repo["name"])] = posixpath.join(
+                "..", "..", "package-repos", str(repo["name"])
+            )
     return repos

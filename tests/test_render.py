@@ -466,8 +466,56 @@ def test_repos_yaml_pins_builtin_recipe_generation(tmp_path: Path) -> None:
     repos = load_yaml(workspace / "configs" / "common" / "repos.yaml")
     builtin = repos["repos"]["builtin"]
     assert builtin["git"] == "https://github.com/spack/spack-packages.git"
-    assert builtin["tag"] == "v2026.06.0"
+    assert builtin["commit"] == "d4f7c711a6a42f1c4d551c8fd10fce9a11340a81"
+    assert "tag" not in builtin
     assert repos["repos"]["science"] == "../../package-repos/science"
+
+
+def test_repos_yaml_honors_priority_with_stable_authored_order(tmp_path: Path) -> None:
+    stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    stack["package_repositories"] = []
+    package_repos = tmp_path / "package-repos"
+    for name, priority in (
+        ("after_z", "after_builtin"),
+        ("before_z", "before_builtin"),
+        ("after_a", "after_builtin"),
+        ("before_a", "before_builtin"),
+    ):
+        repository = package_repos / name
+        repository.mkdir(parents=True)
+        (repository / "repo.yaml").write_text(f"repo:\n  namespace: {name}\n", encoding="utf-8")
+        stack["package_repositories"].append(
+            {
+                "name": name,
+                "namespace": name,
+                "path": f"package-repos/{name}",
+                "priority": priority,
+            }
+        )
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack, sort_keys=False), encoding="utf-8")
+
+    workspace = render_workspace(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        release_vars=ReleaseVars(
+            release_tag="2026.06",
+            output_root=(tmp_path / "out").as_posix(),
+            rendered_at="2026-06-19T00:00:00Z",
+            source_repo=SourceRepo(
+                url="git@example:stacks/science-stack",
+                commit="0375b16fdeadbeef0123456789abcdef01234567",
+                dirty=False,
+            ),
+        ),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=package_repos,
+    )
+
+    repos = load_yaml(workspace / "configs" / "common" / "repos.yaml")["repos"]
+    assert list(repos) == ["before_z", "before_a", "builtin", "after_z", "after_a"]
 
 
 def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
