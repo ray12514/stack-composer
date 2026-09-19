@@ -12,6 +12,7 @@ from __future__ import annotations
 import posixpath
 from typing import Any
 
+from stack_composer.render.repositories import repository_output_parts
 from stack_composer.render.scopes import common_external_packages
 
 
@@ -54,7 +55,9 @@ def repos_mapping(
     each priority. Always a complete mapping — empty when nothing is declared
     — so the template prints it verbatim."""
     repos: dict[str, Any] = {
-        str(repo["name"]): posixpath.join("..", "..", "package-repos", str(repo["name"]))
+        str(repo["name"]): posixpath.join(
+            "..", "..", "package-repos", *repository_output_parts(repo)
+        )
         for repo in package_repos
         if repo["priority"] == "before_builtin"
     }
@@ -67,6 +70,6 @@ def repos_mapping(
     for repo in package_repos:
         if repo["priority"] == "after_builtin":
             repos[str(repo["name"])] = posixpath.join(
-                "..", "..", "package-repos", str(repo["name"])
+                "..", "..", "package-repos", *repository_output_parts(repo)
             )
     return repos

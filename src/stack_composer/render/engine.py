@@ -21,6 +21,7 @@ from stack_composer.render.network import build_mpi_plan
 from stack_composer.render.plan import plan_lanes
 from stack_composer.render.plan_report import render_plan_report
 from stack_composer.render.release import ReleaseVars
+from stack_composer.render.repositories import repository_output_parts
 from stack_composer.render.scopes import (
     make_jinja_environment,
     render_template_tree,
@@ -165,6 +166,6 @@ def materialize_package_repositories(repos: list[dict], destination: Path) -> No
     destination.mkdir(parents=True, exist_ok=True)
     for repo in repos:
         source = Path(repo["path"])
-        target = managed_output_path(destination, repo["name"])
+        target = managed_output_path(destination, *repository_output_parts(repo))
         if source.is_dir():
             shutil.copytree(source, target)

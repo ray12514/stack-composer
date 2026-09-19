@@ -518,6 +518,58 @@ def test_repos_yaml_honors_priority_with_stable_authored_order(tmp_path: Path) -
     assert list(repos) == ["before_z", "before_a", "builtin", "after_z", "after_a"]
 
 
+@pytest.mark.parametrize(
+    ("api", "namespace", "relative_path"),
+    [
+        ("v1.0", "science", "package-repos/local-overlay"),
+        ("v2.0", "science", "package-repos/spack_repo/science"),
+        ("v2.0", "site.science", "package-repos/spack_repo/site/science"),
+        ("v2.5", "science", "package-repos/spack_repo/science"),
+    ],
+)
+def test_rendered_repository_path_matches_package_api(
+    tmp_path: Path, api: str, namespace: str, relative_path: str,
+) -> None:
+    source = tmp_path / "recipe-source"
+    source.mkdir()
+    (source / "repo.yaml").write_text(
+        yaml.safe_dump({"repo": {"namespace": namespace, "api": api}}), encoding="utf-8"
+    )
+    recipe = source / "packages" / "zlib" / "package.py"
+    recipe.parent.mkdir(parents=True)
+    recipe.write_text("# retained custom recipe\n", encoding="utf-8")
+    stack = load_yaml(fixture_path("stacks", "science-stack", "stack.yaml"))
+    stack["package_repositories"] = [
+        {"name": "local-overlay", "namespace": namespace, "path": str(source),
+         "priority": "before_builtin"}
+    ]
+    stack_path = tmp_path / "stack.yaml"
+    stack_path.write_text(yaml.safe_dump(stack), encoding="utf-8")
+
+    workspace = render_workspace(
+        profile_path=fixture_path("profiles", "example-cray", "profile.yaml"),
+        deployment_path=fixture_path("deployments", "example-cray.yaml"),
+        stack_path=stack_path,
+        templates_root=fixture_path("template-sets"),
+        release_vars=ReleaseVars(
+            release_tag="2026.06",
+            output_root=str(tmp_path / "out"),
+            rendered_at="2026-06-19T00:00:00Z",
+            source_repo=SourceRepo("local-recipe-fixture", "a" * 40, False),
+        ),
+        package_sets_dir=fixture_path("package-sets"),
+        package_repos_dir=tmp_path,
+    )
+
+    repos_file = workspace / "configs" / "common" / "repos.yaml"
+    repos = load_yaml(repos_file)["repos"]
+    assert repos["local-overlay"] == "../../" + relative_path
+    assert (repos_file.parent / repos["local-overlay"]).resolve() == workspace / relative_path
+    rendered_repo = workspace / relative_path
+    assert (rendered_repo / "packages/zlib/package.py").read_bytes() == recipe.read_bytes()
+    assert (rendered_repo / "repo.yaml").read_bytes() == (source / "repo.yaml").read_bytes()
+
+
 def test_lane_environment_renders_projected_module_view(tmp_path: Path) -> None:
     # Spack 1.1+ use_view module generation: payload lanes carry a root-only,
     # version-projected default view plus a named projected view that package-
