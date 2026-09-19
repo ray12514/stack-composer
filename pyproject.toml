@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "build>=1.2,<2",
+  "mypy==1.18.2",
   "pytest>=8,<9",
   "ruff>=0.6,<1",
   "shiv>=1.0,<2",
@@ -48,3 +49,21 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.9"
+files = [
+  "src/stack_composer/render/records.py",
+  "src/stack_composer/render/plan.py",
+  "src/stack_composer/render/deployment.py",
+  "src/stack_composer/render/compilers.py",
+  "src/stack_composer/render/context.py",
+  "src/stack_composer/render/release.py",
+]
+# Check the planning seam first. Imported modules are analyzed for their
+# interfaces, without claiming the rest of the renderer is fully type-checked.
+follow_imports = "silent"
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+warn_unused_ignores = true

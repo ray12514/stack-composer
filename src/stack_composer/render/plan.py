@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal, cast
 
 from stack_composer.errors import Issue
 from stack_composer.render.gpu import build_gpu_plan
@@ -16,6 +16,14 @@ from stack_composer.render.mpi import (
     select_compiler_provider,
     select_flavor_compiler,
     select_platform_mpi,
+)
+from stack_composer.render.records import (
+    AppliedNarrowing,
+    BuildNarrowing,
+    Lane,
+    NarrowedAxis,
+    SelectionError,
+    SkippedBuild,
 )
 from stack_composer.render.spack_specs import is_renderable_external_name_version
 from stack_composer.render.versioning import version_key
@@ -40,13 +48,13 @@ _HARD_REASON_CODES = {
 
 def plan_lanes(
     profile: dict[str, Any], stack: dict[str, Any]
-) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, Any] | None, list[Issue]]:
+) -> tuple[list[Lane], list[SkippedBuild], AppliedNarrowing | None, list[Issue]]:
     issues = validate_build_names(stack)
     if issues:
         return [], [], None, issues
-    lanes: list[dict[str, Any]] = []
-    skipped: list[dict[str, str]] = []
-    applied_narrowing = None
+    lanes: list[Lane] = []
+    skipped: list[SkippedBuild] = []
+    applied_narrowing: AppliedNarrowing | None = None
     stack = normalize_builds(stack)
     system_name = profile["system"]["name"]
     narrowing = ((stack.get("per_system") or {}).get(system_name) or {}).get("builds") or {}
@@ -96,7 +104,7 @@ def plan_lanes(
     return lanes, skipped, applied_narrowing, issues
 
 
-def mpi_flavor_issues(profile: dict[str, Any], lanes: list[dict[str, Any]]) -> list[Issue]:
+def mpi_flavor_issues(profile: dict[str, Any], lanes: list[Lane]) -> list[Issue]:
     """Error when no MPI flavor on this system accepts the lane's compiler.
 
     A flavor-based provider (Cray PE cray-mpich) ships one build per compiler
@@ -171,7 +179,7 @@ def mpi_flavor_issues(profile: dict[str, Any], lanes: list[dict[str, Any]]) -> l
 _GPU_ARCH_TOOLKITS = (("gfx", "rocm"), ("sm_", "cuda"))
 
 
-def gpu_toolkit_issues(profile: dict[str, Any], lanes: list[dict[str, Any]]) -> list[Issue]:
+def gpu_toolkit_issues(profile: dict[str, Any], lanes: list[Lane]) -> list[Issue]:
     """Warn when a GPU lane will not get toolkit externals from the profile.
 
     Such a lane concretizes, then surprises at fetch time with Spack building
@@ -219,7 +227,7 @@ def gpu_toolkit_issues(profile: dict[str, Any], lanes: list[dict[str, Any]]) -> 
 
 def lane_candidates_for_build(
     profile: dict[str, Any], stack: dict[str, Any], build: dict[str, Any]
-) -> tuple[list[dict[str, Any]], str, str]:
+) -> tuple[list[Lane], str, str]:
     """Resolve one build into lanes = selected compilers × (mpi provider, for
     mpi/gpu) × (gpu arch, for gpu). Everything is read from the merged site
     defaults, overridable per build, resolved against the profile."""
@@ -264,7 +272,8 @@ def lane_candidates_for_build(
                 profile, mpi_provider, requested_version, version_policy
             )
             if error_code:
-                return [], error_code, error
+                # select_platform_mpi pairs every error code with its message.
+                return [], error_code, cast(str, error)
             if mpi_record is None:
                 return (
                     [],
@@ -284,9 +293,11 @@ def lane_candidates_for_build(
                     if any(compiler_ref_matches(c, compat, mpi_record) for compat in compatible)
                 ]
                 if not narrowed:
-                    narrowed, _missing, error = resolve_compiler_refs(profile, sorted(compatible))
-                    if error:
-                        return [], error["code"], error["message"]
+                    narrowed, _missing, selection_error = resolve_compiler_refs(
+                        profile, sorted(compatible)
+                    )
+                    if selection_error:
+                        return [], selection_error["code"], selection_error["message"]
                 compilers = narrowed
                 if not compilers:
                     return (
@@ -296,7 +307,7 @@ def lane_candidates_for_build(
                     )
 
     target_policy = build.get("target") or stack.get("target") or "native"
-    lanes: list[dict[str, Any]] = []
+    lanes: list[Lane] = []
     if want_gpu:
         selected, missing_archs = resolve_gpu_archs(profile, stack, build, node_types)
         if missing_archs:
@@ -399,8 +410,8 @@ def renderable_compiler_providers(profile: dict[str, Any]) -> list[dict[str, Any
 
 def resolve_compilers(
     profile: dict[str, Any], stack: dict[str, Any], build: dict[str, Any]
-) -> tuple[list[str], list[str], bool, dict[str, str] | None]:
-    """Return (selected_compilers, missing, explicit). Selection = per-build
+) -> tuple[list[str], list[str], bool, SelectionError | None]:
+    """Return (selected_compilers, missing, explicit, error). Selection = per-build
     override, else site default, else 'baseline'.
 
     - 'baseline' (lean default): gcc if the profile reports it, else the first
@@ -447,7 +458,8 @@ def resolve_compilers(
         # observed inventory, so resolving against that inventory would reject
         # every valid selection. Take the stack's refs verbatim instead.
         return list(selection), [], True, None
-    selected, missing, error = resolve_compiler_refs(profile, selection)
+    # Schema validation limits non-policy selections to lists of strings.
+    selected, missing, error = resolve_compiler_refs(profile, cast(list[str], selection))
     return selected, missing, True, error
 
 
@@ -462,7 +474,7 @@ def compilers_are_stack_built(stack: dict[str, Any]) -> bool:
 
 def resolve_compiler_refs(
     profile: dict[str, Any], selection: list[str]
-) -> tuple[list[str], list[str], dict[str, str] | None]:
+) -> tuple[list[str], list[str], SelectionError | None]:
     selected: list[str] = []
     missing: list[str] = []
     for requested in selection:
@@ -664,7 +676,7 @@ def resolve_gpu_archs(
 ) -> tuple[list[str], list[str]]:
     available = sorted(
         {
-            (node.get("gpu") or {}).get("arch_target")
+            cast(str, (node.get("gpu") or {}).get("arch_target"))
             for _, node in node_types
             if (node.get("gpu") or {}).get("arch_target")
         }
@@ -674,7 +686,7 @@ def resolve_gpu_archs(
     if selection == "all":
         return available, []
     selected = [a for a in available if a in set(selection)]
-    missing = [a for a in selection if a not in set(available)]
+    missing = [a for a in cast(list[str], selection) if a not in set(available)]
     return selected, missing
 
 
@@ -709,7 +721,7 @@ def make_lane(
     target: str,
     node_name: str,
     gpu_arch: str | None,
-) -> dict[str, Any]:
+) -> Lane:
     # Key the lane on the build name so two builds of the same kind (e.g. two
     # cpu builds) never collide; the env template is still chosen by kind.
     lane_suffix = build["name"]
@@ -766,7 +778,7 @@ def spec_source_id(build: dict[str, Any]) -> str:
 
 
 def compiler_narrowing_matches(
-    lane: dict[str, Any], selection: str, profile: dict[str, Any]
+    lane: Lane, selection: str, profile: dict[str, Any]
 ) -> bool:
     if selection == lane["compiler"]:
         return True
@@ -775,22 +787,28 @@ def compiler_narrowing_matches(
 
 
 def apply_narrowing(
-    lanes: list[dict[str, Any]], narrowing: dict[str, Any], *, profile: dict[str, Any]
-) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    lanes: list[Lane], narrowing: dict[str, Any], *, profile: dict[str, Any]
+) -> tuple[list[Lane], BuildNarrowing | None]:
     """Subset-narrow resolved lanes by compiler / gpu arch / mpi provider."""
     if not narrowing:
         return lanes, None
     narrowed = lanes
-    narrowed_by: dict[str, dict[str, list[str]]] = {}
-    for axis, lane_key in (("compilers", "compiler"), ("gpu_archs", "gpu_arch")):
+    narrowed_by: dict[str, NarrowedAxis] = {}
+    axes: tuple[tuple[str, Literal["compiler", "gpu_arch"]], ...] = (
+        ("compilers", "compiler"), ("gpu_archs", "gpu_arch")
+    )
+    for axis, lane_key in axes:
         allowed = narrowing.get(axis)
         if not allowed:
             continue
         allowed_set = set(allowed)
-        report_key = "compiler_ref" if axis == "compilers" and any(
-            "@" in selected for selected in allowed
-        ) else lane_key
-        before = {lane[report_key] for lane in narrowed if lane.get(report_key)}
+        report_key: Literal["compiler_ref", "compiler", "gpu_arch"] = (
+            "compiler_ref" if axis == "compilers" and any(
+                "@" in selected for selected in allowed
+            ) else lane_key
+        )
+        # The presence checks exclude None without changing the observed keys.
+        before = {cast(str, lane[report_key]) for lane in narrowed if lane.get(report_key)}
         if axis == "compilers":
             narrowed = [
                 lane for lane in narrowed
@@ -800,19 +818,23 @@ def apply_narrowing(
             narrowed = [
                 lane for lane in narrowed if not lane.get(lane_key) or lane[lane_key] in allowed_set
             ]
-        after = {lane[report_key] for lane in narrowed if lane.get(report_key)}
+        after = {cast(str, lane[report_key]) for lane in narrowed if lane.get(report_key)}
         dropped = sorted(before - after)
         if dropped or (axis == "compilers" and len(narrowed) < len(lanes)):
             narrowed_by[axis] = {"kept": sorted(after), "dropped": dropped}
     if narrowing.get("mpi"):
         allowed_mpi = set(narrowing["mpi"])
-        before_providers = {lane["mpi_provider"] for lane in narrowed if lane.get("mpi_provider")}
+        before_providers = {
+            cast(str, lane["mpi_provider"]) for lane in narrowed if lane.get("mpi_provider")
+        }
         narrowed = [
             lane
             for lane in narrowed
             if not lane.get("mpi_provider") or lane["mpi_provider"] in allowed_mpi
         ]
-        after_providers = {lane["mpi_provider"] for lane in narrowed if lane.get("mpi_provider")}
+        after_providers = {
+            cast(str, lane["mpi_provider"]) for lane in narrowed if lane.get("mpi_provider")
+        }
         dropped = sorted(before_providers - after_providers)
         if dropped:
             narrowed_by["mpi"] = {"kept": sorted(after_providers), "dropped": dropped}

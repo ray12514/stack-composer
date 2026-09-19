@@ -51,22 +51,18 @@ if [[ -n ${STACK_COMPOSER_WHEELHOUSE:-} ]]; then
     --find-links "$STACK_COMPOSER_WHEELHOUSE" --require-hashes --only-binary=:all: \
     --dest dist/wheelhouse -r "$STACK_COMPOSER_WHEEL_LOCK"
 else
-"${PYTHON}" -m pip wheel --no-deps --only-binary=:all: --wheel-dir dist/wheelhouse \
-  'click==8.1.8' \
-  'fastjsonschema==2.21.2' \
-  'Jinja2==3.1.6'
-CC=/usr/bin/false "${PYTHON}" -m pip wheel \
-  --no-cache-dir \
-  --no-deps \
-  --no-binary=MarkupSafe \
-  --wheel-dir dist/wheelhouse \
-  'MarkupSafe==2.1.5'
-PYYAML_FORCE_LIBYAML=0 "${PYTHON}" -m pip wheel \
-  --no-cache-dir \
-  --no-deps \
-  --no-binary=PyYAML \
-  --wheel-dir dist/wheelhouse \
-  'PyYAML==6.0.3'
+  "$PYTHON" "$ROOT_DIR/scripts/generate-third-party.py" --requirements pyz-binary \
+    --pyproject "$STAGE/source/pyproject.toml" \
+    > "$STAGE/binary-requirements.txt"
+  "$PYTHON" "$ROOT_DIR/scripts/generate-third-party.py" --requirements pyz-source \
+    --pyproject "$STAGE/source/pyproject.toml" \
+    > "$STAGE/source-requirements.txt"
+  "${PYTHON}" -m pip wheel --no-deps --only-binary=:all: --wheel-dir dist/wheelhouse \
+    -r "$STAGE/binary-requirements.txt"
+  CC=/usr/bin/false PYYAML_FORCE_LIBYAML=0 "${PYTHON}" -m pip wheel \
+    --no-cache-dir --no-deps --no-build-isolation --no-binary=:all: \
+    --wheel-dir dist/wheelhouse \
+    -r "$STAGE/source-requirements.txt"
 fi
 "${PYTHON}" - <<'PY'
 from pathlib import Path

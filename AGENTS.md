@@ -57,9 +57,12 @@ If a tool proposes one, remove it before committing.
 ## Validation before claiming done
 
 ```bash
-.venv/bin/python -m pytest tests/ -q
-.venv/bin/ruff check src tests
+bash scripts/check.sh
 ```
+
+Install the development extra in the dedicated virtual environment first.
+The check script includes the scoped planning type check and dependency
+consistency checks as well as the full test suite and lint checks.
 
 If render behavior changes, also render a reference fixture and inspect the
 workspace. If the rendered tree or `spack-build` seam changes, run the available

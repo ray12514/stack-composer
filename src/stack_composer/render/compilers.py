@@ -11,13 +11,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from stack_composer.render.records import Lane
 from stack_composer.render.scopes import compiler_external_packages
 
 
 def build_compiler_plan(
     profile: dict[str, Any],
     stack: dict[str, Any],
-    rendered_lanes: list[dict[str, Any]],
+    rendered_lanes: list[Lane],
 ) -> dict[str, list[dict[str, Any]]]:
     """Resolve compiler externals for every vendor scope a lane renders into.
 

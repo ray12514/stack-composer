@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -19,7 +20,7 @@ class ReleaseVars:
     overwrite: bool = False
 
 
-def release_vars_dict(vars: ReleaseVars, system_name: str) -> dict:
+def release_vars_dict(vars: ReleaseVars, system_name: str) -> dict[str, Any]:
     return {
         "release_tag": vars.release_tag,
         "system_name": system_name,

@@ -79,6 +79,10 @@ refresh, verification, and buildcache publication.
   prerequisite evidence instead of replacing it with empty lists.
 - An opt-in native candidate build. The current Python 3.9+ `.pyz` path remains
   the trial default; production native promotion has separate acceptance gates.
+- Behavior-preserving typed planning records and a scoped development-only
+  type check. Release acquisition derives runtime pins from `pyproject.toml`;
+  `scripts/check.sh` is the common maintenance gate. See
+  `docs/development.md` for the update and compatibility procedure.
 
 ## Current Initial Conversion Trials evidence
 
@@ -139,9 +143,7 @@ together.
 Before a Stack Composer change is ready:
 
 ```bash
-.venv/bin/python -m pytest tests/ -q
-.venv/bin/ruff check src tests
-git diff --check
+bash scripts/check.sh
 ```
 
 When render behavior changes, also inspect a reference workspace and run the

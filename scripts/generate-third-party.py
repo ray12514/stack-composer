@@ -21,6 +21,10 @@ ALLOWED_LICENSES = {
     "Python-2.0",
 }
 
+# Acquisition mechanics, not versions. These two distributions need explicit
+# source builds to keep the .pyz wheelhouse platform-neutral.
+PYZ_SOURCE_PACKAGES = {"markupsafe", "pyyaml"}
+
 
 @dataclass(frozen=True)
 class Dependency:
@@ -37,6 +41,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true", help="Check manifest consistency.")
     parser.add_argument(
+        "--requirements",
+        choices=("all", "pyz-binary", "pyz-source"),
+        help="Print exact pyproject runtime pins; no installed packages needed.",
+    )
+    parser.add_argument(
+        "--pyproject", type=Path, help="Read requirements from a private source export."
+    )
+    parser.add_argument(
         "--refresh",
         action="store_true",
         help="Rewrite THIRD_PARTY.toml and license texts from installed wheels.",
@@ -48,6 +60,20 @@ def main() -> int:
     )
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
+    if args.requirements:
+        if args.check or args.refresh or args.sync_resources:
+            parser.error("--requirements cannot be combined with manifest actions")
+        try:
+            print(
+                requirements_text(args.pyproject or root / "pyproject.toml", args.requirements),
+                end="",
+            )
+        except ValueError as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    if args.pyproject:
+        parser.error("--pyproject requires --requirements")
     if args.refresh:
         refresh_manifest(root)
     errors = check_manifest(root)
@@ -112,6 +138,21 @@ def runtime_dependencies(pyproject: Path) -> dict[str, str]:
         if match:
             deps[normalize_name(match.group(1))] = match.group(2).strip()
     return deps
+
+
+def requirements_text(pyproject: Path, group: str) -> str:
+    dependencies = runtime_dependencies(pyproject)
+    if not dependencies:
+        raise ValueError("no runtime dependencies found in pyproject.toml")
+    requirements = []
+    for name, constraint in dependencies.items():
+        if not re.fullmatch(r"==[A-Za-z0-9][A-Za-z0-9.!+_-]*", constraint):
+            raise ValueError(f"runtime dependency {name!r} needs an exact version pin")
+        source = name in PYZ_SOURCE_PACKAGES
+        if group == "pyz-binary" and source or group == "pyz-source" and not source:
+            continue
+        requirements.append(f"{name}{constraint}\n")
+    return "".join(requirements)
 
 
 def third_party_manifest(path: Path) -> dict[str, Dependency]:

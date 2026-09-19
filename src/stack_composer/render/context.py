@@ -3,15 +3,16 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Any
 
+from stack_composer.render.records import AppliedNarrowing, Lane, SkippedBuild
 from stack_composer.render.release import ReleaseVars, release_vars_dict
 
 
 def build_render_context(
     *,
     base_context: dict[str, Any],
-    rendered_lanes: list[dict[str, Any]],
-    skipped_builds: list[dict[str, str]],
-    applied_narrowing: dict[str, Any] | None,
+    rendered_lanes: list[Lane],
+    skipped_builds: list[SkippedBuild],
+    applied_narrowing: AppliedNarrowing | None,
     module_plan: dict[str, Any],
     mpi_plan: dict[str, Any],
     gpu_plan: dict[str, Any],
@@ -19,7 +20,7 @@ def build_render_context(
     compiler_plan: dict[str, Any],
     release_vars: ReleaseVars,
     renderer_identity: dict[str, str],
-) -> MappingProxyType:
+) -> MappingProxyType[str, Any]:
     profile = base_context["profile"]
     context = {
         "profile": profile,

@@ -2,19 +2,20 @@ from __future__ import annotations
 
 import posixpath
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 
 from stack_composer.errors import Issue, ValidationFailed
+from stack_composer.render.records import Lane
 
 
 def materialize_lane_paths(
-    lanes: list[dict[str, Any]],
+    lanes: list[Lane],
     *,
     profile: dict[str, Any],
     stack: dict[str, Any],
     deployment: dict[str, Any],
     release_tag: str,
-) -> list[dict[str, Any]]:
+) -> list[Lane]:
     """Attach installer-owned view/module paths to logical lanes.
 
     The profile reports filesystem candidates; the deployment overlay records
@@ -36,7 +37,7 @@ def materialize_lane_paths(
                 )
             ]
         )
-    rendered: list[dict[str, Any]] = []
+    rendered: list[Lane] = []
     for lane in lanes:
         lane = deepcopy(lane)
         lane["view_root"] = posixpath.join(
@@ -50,7 +51,8 @@ def materialize_lane_paths(
         if exposure == "direct":
             # No front door: package modules land directly in the
             # installer-chosen root already on the site MODULEPATH.
-            lane["package_module_root"] = publish_root
+            # The direct-exposure preflight above requires this path.
+            lane["package_module_root"] = cast(str, publish_root)
         else:
             lane["package_module_root"] = posixpath.join(
                 deployment["roots"]["modules"],

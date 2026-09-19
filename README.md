@@ -80,8 +80,7 @@ wired and exits with a clear not-implemented error.
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-.venv/bin/pytest
-.venv/bin/ruff check .
+bash scripts/check.sh
 ```
 
 Build a local release artifact with:

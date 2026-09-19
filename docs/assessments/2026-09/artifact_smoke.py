@@ -24,7 +24,7 @@ def main() -> None:
     composer = args.development / "stack-composer"
     fixtures = composer / "tests/fixtures"
     blueprint = args.development / "stack-content/pilots/cse-pilot"
-    values_root = args.development / "hpc-lab/fixtures/workspace-init"
+    values_root = fixtures / "portability"
     # All generated deployment strings refer to the harness's private root.
     # The harness renders only; no Spack/build/module activation is executed.
     source = [sys.executable, "-m", "stack_composer"]
