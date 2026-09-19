@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 from email.parser import BytesParser
 from pathlib import Path
@@ -146,6 +147,9 @@ def verify_bundle(root: Path) -> dict:
 
 def bundle(args) -> None:
     """Assemble a small receiver bundle from the existing offline build products."""
+    # The documented entry point may be inside the sealed source export.
+    # Loading its sibling helper must not add bytecode to those recorded inputs.
+    sys.dont_write_bytecode = True
     from release_support import release_archive, verify_archive
 
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", args.version):

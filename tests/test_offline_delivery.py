@@ -390,3 +390,25 @@ def test_bundle_keeps_sealed_inputs_and_build_outputs_unchanged(
     )
     assert result.returncode != 0
     assert not output.exists()
+
+
+def test_bundle_runs_from_sealed_source_export_without_creating_bytecode(tmp_path: Path) -> None:
+    inputs, artifacts = _deployment_inputs(tmp_path)
+    source_script = inputs / "sources/stack-composer/scripts/offline_delivery.py"
+    support = source_script.with_name("release_support.py")
+    support.write_bytes((ROOT / "scripts/release_support.py").read_bytes())
+    manifest = json.loads((inputs / "RELEASE_INPUTS.json").read_text())
+    manifest["files"][support.relative_to(inputs).as_posix()] = {
+        "sha256": hashlib.sha256(support.read_bytes()).hexdigest(),
+        "mode": support.stat().st_mode & 0o777,
+    }
+    (inputs / "RELEASE_INPUTS.json").write_text(json.dumps(manifest))
+    (artifacts / "RELEASE_INPUTS.json").write_bytes((inputs / "RELEASE_INPUTS.json").read_bytes())
+    result = subprocess.run(
+        [sys.executable, str(source_script), "bundle", "--inputs", str(inputs),
+         "--artifacts", str(artifacts), "--version", "trial-update",
+         "--output", str(tmp_path / "receiver")],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not list(inputs.rglob("*.pyc"))
