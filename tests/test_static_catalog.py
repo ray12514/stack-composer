@@ -103,6 +103,31 @@ def test_static_catalog_renders_cray_include_scopes(tmp_path: Path) -> None:
     assert {"hip", "hsa-rocr-dev", "rocprim"} <= set(rocm["packages"])
 
 
+def test_static_catalog_recommended_scopes_exist_without_system_externals(tmp_path: Path) -> None:
+    profile = load_yaml(fixture_path("profiles", "example-cray", "profile.yaml"))
+    profile["system_externals"] = []
+    profile["fabric"]["userspace"] = []
+    profile_path = tmp_path / "profile.yaml"
+    profile_path.write_text(yaml.safe_dump(profile), encoding="utf-8")
+
+    workspace = render_static_catalog(
+        profile_path=profile_path,
+        templates_root=fixture_path("template-sets"),
+        template_set_name="v6",
+        release_vars=ReleaseVars(
+            release_tag="alpha-001",
+            output_root=str(tmp_path / "output"),
+            rendered_at="2026-07-09T00:00:00Z",
+            source_repo=SourceRepo("local-static-alpha", "abc123", False),
+        ),
+    )
+
+    manifest = load_yaml(workspace / "manifest.yaml")
+    for scope in manifest["recommendations"]["include"]:
+        assert (workspace / scope).is_dir(), f"recommended scope is missing: {scope}"
+    assert load_yaml(workspace / "scopes" / "common" / "packages.yaml") == {"packages": {}}
+
+
 def test_static_catalog_keeps_cray_mpi_baseline_for_future_cse_compiler(
     tmp_path: Path,
 ) -> None:

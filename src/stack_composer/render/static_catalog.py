@@ -153,8 +153,7 @@ def build_static_catalog(
     common_scope, common_report, common_not_rendered = build_common_scope(
         profile, defaults, workspace
     )
-    if common_scope:
-        scopes.append(common_scope)
+    scopes.append(common_scope)
     reports["common_externals"] = common_report
     reports["not_rendered"].extend(common_not_rendered)
 
@@ -504,7 +503,7 @@ def build_gpu_scopes(profile: dict[str, Any], workspace: Path) -> list[dict[str,
 
 def build_common_scope(
     profile: dict[str, Any], defaults: dict[str, Any], workspace: Path
-) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
     external_policy = defaults.get("externals") or {}
     packages: dict[str, dict[str, Any]] = {}
 
@@ -518,9 +517,7 @@ def build_common_scope(
 
     selected_fabric = selected_build_fabric_externals(profile, defaults)
     not_rendered = unselected_fabric_userspace(profile, selected_fabric)
-    if not packages:
-        return None, [], not_rendered
-
+    # Common is a stable catalog include even when no external is selected.
     scope_rel = Path("scopes") / "common"
     scope = {
         "kind": "common",
@@ -566,7 +563,7 @@ def build_platform_scope(
 def write_static_catalog(workspace: Path, catalog: dict[str, Any]) -> None:
     for scope in catalog["scopes"]:
         path = managed_output_path(workspace, *Path(scope["path"]).parts)
-        if scope.get("packages"):
+        if scope["kind"] == "common" or scope.get("packages"):
             write_yaml(path / "packages.yaml", {"packages": scope["packages"]})
         if scope.get("toolchains"):
             write_yaml(path / "toolchains.yaml", {"toolchains": scope["toolchains"]})
