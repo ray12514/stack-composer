@@ -229,3 +229,164 @@ def test_outer_archive_preserves_sealed_input_modes(tmp_path: Path) -> None:
         check=True,
         capture_output=True,
     )
+
+
+def _deployment_inputs(tmp_path: Path) -> tuple[Path, Path]:
+    inputs = tmp_path / "inputs"
+    composer = inputs / "sources/stack-composer"
+    (composer / "src/stack_composer").mkdir(parents=True)
+    (composer / "src/stack_composer/__init__.py").write_text("version = 'tested'\n")
+    (composer / "scripts").mkdir()
+    (composer / "scripts/offline_delivery.py").write_bytes(
+        (ROOT / "scripts/offline_delivery.py").read_bytes()
+    )
+    (composer / "docs").mkdir()
+    (composer / "docs/cluster-delivery.md").write_text("Receive @VERSION@ in a new directory.\n")
+    (composer / "scripts/spack-build").write_text("#!/bin/sh\nexit 0\n")
+    (composer / "scripts/spack-build").chmod(0o755)
+    for name in ("stack-content", "stack-planning"):
+        (inputs / "sources" / name).mkdir()
+        (inputs / "sources" / name / "README.md").write_text(name + "\n")
+    (inputs / "wheels/pyz").mkdir(parents=True)
+    (inputs / "wheels/pyz/dependency-1.0-py3-none-any.whl").write_bytes(b"reviewed dependency")
+    (inputs / "locks").mkdir()
+    (inputs / "locks/pyz.txt").write_text("reviewed hash lock\n")
+    sources = {
+        name: {"commit": str(index) * 40, "tree": str(index + 1) * 40}
+        for index, name in enumerate(("stack-composer", "stack-content", "stack-planning"), 1)
+    }
+    sources["source_date_epoch"] = 1700000000
+    files = {
+        path.relative_to(inputs).as_posix(): {
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "mode": path.stat().st_mode & 0o777,
+        }
+        for path in inputs.rglob("*") if path.is_file()
+    }
+    (inputs / "RELEASE_INPUTS.json").write_text(
+        json.dumps({"schema_version": 1, "sources": sources, "files": files})
+    )
+    artifacts = tmp_path / "artifacts"
+    artifacts.mkdir()
+    (artifacts / "RELEASE_INPUTS.json").write_bytes((inputs / "RELEASE_INPUTS.json").read_bytes())
+    with ZipFile(artifacts / "stack-composer.pyz", "w") as archive:
+        archive.write(
+            composer / "src/stack_composer/__init__.py",
+            "site-packages/stack_composer/__init__.py",
+        )
+    return inputs, artifacts
+
+
+def test_versioned_delivery_is_reproducible_and_verifiable_after_extraction(tmp_path: Path) -> None:
+    inputs, artifacts = _deployment_inputs(tmp_path)
+    outputs = [tmp_path / "first", tmp_path / "second"]
+    command = [sys.executable, str(ROOT / "scripts/offline_delivery.py")]
+    version = "stack-tools-2026.09.19-test"
+    for output in outputs:
+        result = subprocess.run(
+            [*command, "bundle", "--inputs", str(inputs), "--artifacts", str(artifacts),
+             "--version", version, "--output", str(output)],
+            capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+    assert (outputs[0] / f"{version}.tar.gz").read_bytes() == (
+        outputs[1] / f"{version}.tar.gz"
+    ).read_bytes()
+    received = tmp_path / "received"
+    received.mkdir()
+    with tarfile.open(outputs[0] / f"{version}.tar.gz") as archive:
+        archive.extractall(received)
+    delivery = received / version
+    result = subprocess.run(
+        [sys.executable, str(delivery / "verify-delivery.py"), "verify-bundle", str(delivery)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads((delivery / "DELIVERY.json").read_text())
+    assert manifest["version"] == version
+    assert manifest["sources"]["stack-content"]["commit"] == "2" * 40
+    assert (delivery / "tools/spack-build").stat().st_mode & 0o111
+    assert (delivery / "wheels/dependency-1.0-py3-none-any.whl").is_file()
+    assert not (delivery / "builder-image.tar").exists()
+    assert not list(delivery.rglob("spack.lock"))
+
+
+@pytest.mark.parametrize("change", ["modified", "missing", "unrecorded", "mode"])
+def test_delivery_verifier_refuses_changed_receiver_payload(tmp_path: Path, change: str) -> None:
+    inputs, artifacts = _deployment_inputs(tmp_path)
+    output = tmp_path / "delivery"
+    command = [sys.executable, str(ROOT / "scripts/offline_delivery.py")]
+    subprocess.run(
+        [*command, "bundle", "--inputs", str(inputs), "--artifacts", str(artifacts),
+         "--version", "trial-update", "--output", str(output)],
+        check=True, capture_output=True,
+    )
+    root = output / "trial-update"
+    target = root / "tools/spack-build"
+    if change == "modified":
+        target.write_text("unexpected helper\n")
+    elif change == "missing":
+        target.unlink()
+    elif change == "mode":
+        target.chmod(0o644)
+    else:
+        (root / "unrecorded-script").write_text("unexpected\n")
+    result = subprocess.run(
+        [sys.executable, str(root / "verify-delivery.py"), "verify-bundle", str(root)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "delivery differs" in result.stderr
+
+
+@pytest.mark.parametrize("change", ["application", "provenance"])
+def test_bundle_refuses_artifacts_from_another_source_checkpoint(
+    tmp_path: Path, change: str,
+) -> None:
+    inputs, artifacts = _deployment_inputs(tmp_path)
+    if change == "provenance":
+        (artifacts / "RELEASE_INPUTS.json").write_text("another capsule\n")
+    else:
+        with ZipFile(artifacts / "stack-composer.pyz", "w") as archive:
+            archive.writestr("site-packages/stack_composer/__init__.py", "stale code\n")
+    output = tmp_path / "delivery"
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/offline_delivery.py"), "bundle",
+         "--inputs", str(inputs), "--artifacts", str(artifacts),
+         "--version", "trial-update", "--output", str(output)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert not output.exists()
+
+
+def test_bundle_refuses_to_replace_an_existing_delivery(tmp_path: Path) -> None:
+    inputs, artifacts = _deployment_inputs(tmp_path)
+    output = tmp_path / "delivery"
+    output.mkdir()
+    (output / "retained").write_text("earlier release\n")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/offline_delivery.py"), "bundle",
+         "--inputs", str(inputs), "--artifacts", str(artifacts),
+         "--version", "trial-update", "--output", str(output)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert (output / "retained").read_text() == "earlier release\n"
+    assert len(list(output.iterdir())) == 1
+
+
+@pytest.mark.parametrize("parent", ["inputs", "artifacts"])
+def test_bundle_keeps_sealed_inputs_and_build_outputs_unchanged(
+    tmp_path: Path, parent: str,
+) -> None:
+    inputs, artifacts = _deployment_inputs(tmp_path)
+    output = {"inputs": inputs, "artifacts": artifacts}[parent] / "receiver"
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/offline_delivery.py"), "bundle",
+         "--inputs", str(inputs), "--artifacts", str(artifacts),
+         "--version", "trial-update", "--output", str(output)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert not output.exists()

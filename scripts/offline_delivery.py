@@ -24,10 +24,12 @@ def digest(path: Path) -> str:
     return result.hexdigest()
 
 
-def inventory(root: Path) -> dict:
+def inventory(root: Path, excluded: tuple = ("RELEASE_INPUTS.json",)) -> dict:
     root = root.resolve()
     result = {}
     for path in sorted(root.rglob("*")):
+        if path.relative_to(root).as_posix() in excluded:
+            continue
         if path.is_symlink():
             if (
                 Path(os.readlink(path)).is_absolute()
@@ -36,12 +38,12 @@ def inventory(root: Path) -> dict:
             ):
                 raise ValueError(f"unsafe input symlink: {path}")
             result[path.relative_to(root).as_posix()] = {"symlink": os.readlink(path)}
-        elif path.is_file() and path != root / "RELEASE_INPUTS.json":
+        elif path.is_file():
             result[path.relative_to(root).as_posix()] = {
                 "sha256": digest(path),
                 "mode": path.stat().st_mode & 0o777,
             }
-        elif not path.is_dir() and path != root / "RELEASE_INPUTS.json":
+        elif not path.is_dir():
             raise ValueError(f"unsupported input: {path}")
     return result
 
@@ -121,13 +123,94 @@ def wheel_lock(root: Path) -> str:
     return "".join(entries[name] for name in sorted(entries))
 
 
+def delivery_checksums(root: Path) -> str:
+    return "".join(
+        f"{digest(path)}  {path.relative_to(root).as_posix()}\n"
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and path != root / "SHA256SUMS"
+    )
+
+
+def verify_bundle(root: Path) -> dict:
+    """Check an extracted delivery before selecting any tool or authored source."""
+    manifest = json.loads((root / "DELIVERY.json").read_text())
+    if (
+        manifest.get("schema_version") != 1
+        or manifest.get("kind") != "cluster-tools"
+        or manifest.get("files") != inventory(root, ("DELIVERY.json", "SHA256SUMS"))
+        or (root / "SHA256SUMS").read_text() != delivery_checksums(root)
+    ):
+        raise ValueError("delivery differs from its recorded inventory or checksums")
+    return manifest
+
+
+def bundle(args) -> None:
+    """Assemble a small receiver bundle from the existing offline build products."""
+    from release_support import release_archive, verify_archive
+
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", args.version):
+        raise ValueError("version must be a simple directory name of at most 128 characters")
+    inputs = args.inputs.resolve()
+    artifacts = args.artifacts.resolve()
+    manifest = verify(inputs)
+    if (artifacts / "RELEASE_INPUTS.json").read_bytes() != (
+        inputs / "RELEASE_INPUTS.json"
+    ).read_bytes():
+        raise ValueError("artifacts were built from a different release input capsule")
+    composer = inputs / "sources/stack-composer"
+    verify_archive(composer, artifacts / "stack-composer.pyz")
+    output = args.output.resolve()
+    if output.is_relative_to(inputs) or output.is_relative_to(artifacts):
+        raise ValueError("delivery output must be outside the sealed inputs and build outputs")
+    # A new directory makes an interrupted attempt visible and prevents overwrite.
+    output.mkdir(parents=True, exist_ok=False)
+    root = output / args.version
+    root.mkdir()
+    shutil.copytree(inputs / "sources", root / "sources", symlinks=True)
+    (root / "tools").mkdir()
+    shutil.copy2(artifacts / "stack-composer.pyz", root / "tools/stack-composer.pyz")
+    (root / "tools/stack-composer.pyz").chmod(0o755)
+    shutil.copy2(composer / "scripts/spack-build", root / "tools/spack-build")
+    shutil.copytree(inputs / "wheels/pyz", root / "wheels")
+    shutil.copy2(inputs / "locks/pyz.txt", root / "runtime-requirements.txt")
+    shutil.copy2(composer / "scripts/offline_delivery.py", root / "verify-delivery.py")
+    instructions = (composer / "docs/cluster-delivery.md").read_text()
+    (root / "UPDATE.md").write_text(instructions.replace("@VERSION@", args.version))
+    # Preserve links and executable bits, normalize other modes before recording.
+    for path in [root, *root.rglob("*")]:
+        if not path.is_symlink():
+            path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
+    delivery = {
+        "schema_version": 1,
+        "kind": "cluster-tools",
+        "version": args.version,
+        "sources": manifest["sources"],
+        "release_inputs_sha256": digest(inputs / "RELEASE_INPUTS.json"),
+        "runtime": {"python": ">=3.9", "entrypoint": "tools/stack-composer.pyz"},
+        "files": inventory(root, ("DELIVERY.json", "SHA256SUMS")),
+    }
+    (root / "DELIVERY.json").write_text(json.dumps(delivery, indent=2, sort_keys=True) + "\n")
+    (root / "DELIVERY.json").chmod(0o644)
+    (root / "SHA256SUMS").write_text(delivery_checksums(root))
+    (root / "SHA256SUMS").chmod(0o644)
+    verify_bundle(root)
+    artifact = output / f"{args.version}.tar.gz"
+    release_archive(root, artifact, manifest["sources"]["source_date_epoch"])
+    (output / f"{artifact.name}.sha256").write_text(f"{digest(artifact)}  {artifact.name}\n")
+    print(artifact)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     capture = commands.add_parser("snapshot")
     for name in ("stack-composer", "stack-content", "stack-planning", "output"):
         capture.add_argument("--" + name, type=Path, required=True)
-    for command in ("verify", "seal", "wheel-lock"):
+    package = commands.add_parser("bundle")
+    for name in ("inputs", "artifacts", "output"):
+        package.add_argument("--" + name, type=Path, required=True)
+    package.add_argument("--version", required=True)
+    for command in ("verify", "seal", "wheel-lock", "verify-bundle"):
         child = commands.add_parser(command)
         child.add_argument("root", type=Path)
         if command == "seal":
@@ -135,6 +218,11 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "snapshot":
         snapshot(args)
+    elif args.command == "bundle":
+        bundle(args)
+    elif args.command == "verify-bundle":
+        manifest = verify_bundle(args.root)
+        print(f"Delivery {manifest['version']} inventory and checksums verified.")
     elif args.command == "wheel-lock":
         print(wheel_lock(args.root), end="")
     elif args.command == "verify":

@@ -98,6 +98,38 @@ not proof that CPython, every dependency wheel, or the RPM builder can be
 rebuilt from upstream source with identical bytes. The saved image makes the
 builder restorable; it does not recreate upstream RPM repositories.
 
+## Assemble a versioned cluster maintenance delivery
+
+After both offline builds pass and their bytes match, package the portable tool
+with its exact authored source checkpoints and the portable dependency wheels:
+
+```bash
+python3 "$DELIVERY/inputs/sources/stack-composer/scripts/offline_delivery.py" bundle \
+  --inputs "$DELIVERY/inputs" --artifacts "$DELIVERY/build-a" \
+  --version stack-tools-2026.09.19-recovery.2 \
+  --output "$DELIVERY/receiver"
+```
+
+The output directory must be new. Assembly verifies the sealed inputs, checks
+the artifact's capsule provenance and compares the Composer application inside
+the `.pyz` with the captured source. It reuses the existing deterministic archive
+writer. The receiving archive contains the `.pyz`, matching `spack-build`, all
+three source exports, hash-locked portable wheels, a per-file manifest,
+checksums and exact receiving instructions in `UPDATE.md`. The native candidate
+and saved build image stay in the build delivery; targets do not need them.
+
+Extract into a new directory and use the delivered standard-library verifier:
+
+```bash
+python3 "$RECEIVED/verify-delivery.py" verify-bundle "$RECEIVED"
+```
+
+Follow [`cluster-delivery.md`](cluster-delivery.md) (instantiated as `UPDATE.md`
+inside the delivery) to install the preparation helper dependencies offline,
+select the new source/tool paths and preview an existing workspace's scoped
+maintenance. Receiving and selecting tools does not render, solve, build or
+change any existing trial workspace.
+
 ## Model the moved workspace
 
 Use new scratch directories. Do not run this against a trial workspace or a
