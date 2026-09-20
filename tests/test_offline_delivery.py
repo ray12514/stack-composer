@@ -274,7 +274,15 @@ def _deployment_inputs(tmp_path: Path) -> tuple[Path, Path]:
             composer / "src/stack_composer/__init__.py",
             "site-packages/stack_composer/__init__.py",
         )
+    _artifact_checksums(artifacts)
     return inputs, artifacts
+
+
+def _artifact_checksums(artifacts: Path) -> None:
+    (artifacts / "SHA256SUMS").write_text("".join(
+        f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
+        for path in sorted(artifacts.iterdir()) if path.name != "SHA256SUMS"
+    ))
 
 
 def test_versioned_delivery_is_reproducible_and_verifiable_after_extraction(tmp_path: Path) -> None:
@@ -404,6 +412,7 @@ def test_bundle_runs_from_sealed_source_export_without_creating_bytecode(tmp_pat
     }
     (inputs / "RELEASE_INPUTS.json").write_text(json.dumps(manifest))
     (artifacts / "RELEASE_INPUTS.json").write_bytes((inputs / "RELEASE_INPUTS.json").read_bytes())
+    _artifact_checksums(artifacts)
     result = subprocess.run(
         [sys.executable, str(source_script), "bundle", "--inputs", str(inputs),
          "--artifacts", str(artifacts), "--version", "trial-update",
@@ -412,3 +421,24 @@ def test_bundle_runs_from_sealed_source_export_without_creating_bytecode(tmp_pat
     )
     assert result.returncode == 0, result.stderr
     assert not list(inputs.rglob("*.pyc"))
+
+
+@pytest.mark.parametrize("corruption", ["__main__.py", "site-packages/yaml/__init__.py", "receipt"])
+def test_bundle_rejects_corruption_outside_the_composer_application(
+    tmp_path: Path, corruption: str,
+) -> None:
+    inputs, artifacts = _deployment_inputs(tmp_path)
+    if corruption == "receipt":
+        (artifacts / "SHA256SUMS").unlink()
+    else:
+        with ZipFile(artifacts / "stack-composer.pyz", "a") as archive:
+            archive.writestr(corruption, "raise RuntimeError('damaged build product')\n")
+    output = tmp_path / "receiver"
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "scripts/offline_delivery.py"), "bundle",
+         "--inputs", str(inputs), "--artifacts", str(artifacts),
+         "--version", "trial-update", "--output", str(output)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert not output.exists()

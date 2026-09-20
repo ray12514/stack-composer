@@ -110,9 +110,10 @@ python3 "$DELIVERY/inputs/sources/stack-composer/scripts/offline_delivery.py" bu
   --output "$DELIVERY/receiver"
 ```
 
-The output directory must be new. Assembly verifies the sealed inputs, checks
-the artifact's capsule provenance and compares the Composer application inside
-the `.pyz` with the captured source. It reuses the existing deterministic archive
+The output directory must be new. Assembly verifies the sealed inputs and every
+build product against the build's `SHA256SUMS`, checks the artifact's capsule
+provenance and compares the Composer application inside the `.pyz` with the
+captured source. It reuses the existing deterministic archive
 writer. The receiving archive contains the `.pyz`, matching `spack-build`, all
 three source exports, hash-locked portable wheels, a per-file manifest,
 checksums and exact receiving instructions in `UPDATE.md`. The native candidate

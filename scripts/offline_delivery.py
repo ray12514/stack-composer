@@ -157,6 +157,12 @@ def bundle(args) -> None:
     inputs = args.inputs.resolve()
     artifacts = args.artifacts.resolve()
     manifest = verify(inputs)
+    checksum_receipt = artifacts / "SHA256SUMS"
+    if (
+        not checksum_receipt.is_file()
+        or checksum_receipt.read_text() != delivery_checksums(artifacts)
+    ):
+        raise ValueError("build artifact checksums are missing or do not match the build products")
     if (artifacts / "RELEASE_INPUTS.json").read_bytes() != (
         inputs / "RELEASE_INPUTS.json"
     ).read_bytes():
