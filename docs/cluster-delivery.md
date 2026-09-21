@@ -65,20 +65,50 @@ remains available by its own path.
 
 ## Update an existing completed or partial trial
 
-First follow the delivered
-[`CONTROL-REFRESH.md`](sources/stack-content/pilots/cse-pilot/CONTROL-REFRESH.md).
-It specifies the current older-workspace rehearsal, prerequisite adoption,
-preview, retained recovery record and module acceptance steps. Use the workspace's
-recorded values, catalog and Spack identity. If old values lack current required
-fields, make the render-only copy with the supplied
-`prepare-existing-workspace-values.py` procedure; keep the original values.
-
-Set `BUILD_WORKSPACE` and `REFRESH_VALUES` to the reviewed absolute paths. Start
-by previewing only the workspace's module entrance and lane presentation:
+After receiving the tools, restore the existing system/release operator session
+in Bash. Use its recorded path, for example:
 
 ```bash
-BUILD_WORKSPACE=/absolute/site/path/to/existing-trial
-REFRESH_VALUES=/absolute/site/path/to/reviewed-render-values.yaml
+source "$HOME/STACK_TESTING/operator-sessions/<system>/<trial-release>/activate.sh"
+cse_session_status
+REFRESH_VALUES="$BUILD_VALUES"
+```
+
+That session restores `BUILD_WORKSPACE`, the recorded `BUILD_VALUES`, evidence
+and Spack paths. It also selects checkout-based tools, so **after activation**
+reselect the delivery using the already installed runtime (do not recreate it):
+
+```bash
+DELIVERY_ROOT="$TOOLS_ROOT/$VERSION"
+PREP_RUNTIME="$TOOLS_ROOT/$VERSION-runtime"
+PREP_PYTHON="$PREP_RUNTIME/bin/python"
+STACK_COMPOSER="$DELIVERY_ROOT/tools/stack-composer.pyz"
+CONTENT="$DELIVERY_ROOT/sources/stack-content"
+PLANNING="$DELIVERY_ROOT/sources/stack-planning"
+export SHIV_ROOT="$PREP_RUNTIME/shiv-cache"
+export PYTHONDONTWRITEBYTECODE=1
+"$PREP_PYTHON" "$STACK_COMPOSER" --help
+```
+
+On a later login, set `TOOLS_ROOT` and `VERSION` to this delivery's recorded
+locations first. Resourcing the operator session resets the tool paths again;
+repeat the delivery selection afterward. It does not activate Spack or a CSE
+consumer module. The generated `cse-build` prepares its own Spack process.
+
+Then follow the
+[`CONTROL-REFRESH.md`](sources/stack-content/pilots/cse-pilot/CONTROL-REFRESH.md).
+It walks from existing build checks through module inspection, scoped changes,
+generation, clean-session `module use` testing and the publication boundary.
+Use the workspace's recorded values, catalog and Spack identity.
+
+`REFRESH_VALUES` is an input YAML path, not an activation command or a generated
+output of the refresh script. Use the recorded `BUILD_VALUES` directly when
+compatible. If old values lack required fields or need reviewed presentation
+edits, the guide shows how to create a separate render-only copy and select it
+as `REFRESH_VALUES`. Preserve the original file. Preview only the workspace's
+module entrance and lane presentation:
+
+```bash
 "$PREP_PYTHON" "$CONTENT/pilots/cse-pilot/scripts/refresh-workspace-controls.py" \
   --composer "$STACK_COMPOSER" --blueprint "$CONTENT/pilots/cse-pilot" \
   --values "$REFRESH_VALUES" --workspace "$BUILD_WORKSPACE" \
